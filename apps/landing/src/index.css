@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-zinc-950 text-white antialiased;
+    font-family: "Inter", system-ui, sans-serif;
+  }
+
+  ::selection {
+    @apply bg-purple-500/30 text-white;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] rounded-2xl;
+  }
+
+  .glass-card-hover {
+    @apply glass-card transition-all duration-500 hover:bg-white/[0.06] hover:border-white/[0.15] hover:shadow-xl hover:shadow-purple-500/[0.05];
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-violet-400 to-indigo-400;
+  }
+
+  .gradient-text-alt {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400;
+  }
+
+  .btn-gradient {
+    @apply relative inline-flex items-center justify-center px-8 py-3 text-sm font-semibold text-white rounded-xl overflow-hidden transition-all duration-300;
+    background: linear-gradient(135deg, #9333ea 0%, #6366f1 50%, #8b5cf6 100%);
+    box-shadow: 0 0 20px rgba(147, 51, 234, 0.3), 0 0 60px rgba(147, 51, 234, 0.1);
+  }
+
+  .btn-gradient:hover {
+    box-shadow: 0 0 30px rgba(147, 51, 234, 0.5), 0 0 80px rgba(147, 51, 234, 0.2);
+    transform: translateY(-1px);
+  }
+
+  .btn-outline-glow {
+    @apply relative inline-flex items-center justify-center px-8 py-3 text-sm font-semibold text-white rounded-xl border border-white/20 bg-white/5 backdrop-blur-sm transition-all duration-300;
+  }
+
+  .btn-outline-glow:hover {
+    @apply border-purple-400/40 bg-white/10;
+    box-shadow: 0 0 20px rgba(147, 51, 234, 0.15);
+  }
+
+  .glow-orb {
+    @apply absolute rounded-full blur-3xl opacity-20 pointer-events-none;
+  }
+
+  .section-padding {
+    @apply py-24 md:py-32 px-4;
+  }
+
+  .marquee-track {
+    display: flex;
+    gap: 1.5rem;
+    animation: scroll-x var(--duration, 40s) linear infinite;
+  }
+
+  .marquee-track:hover {
+    animation-play-state: paused;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@keyframes scroll-x {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes gradient-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
