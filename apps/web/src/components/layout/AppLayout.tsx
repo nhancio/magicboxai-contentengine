@@ -17,6 +17,7 @@ import {
 } from "@shared/components/ui/dropdown-menu";
 import {
   LayoutDashboard,
+  Video,
   Wand2,
   Palette,
   Megaphone,
@@ -36,6 +37,7 @@ import {
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/" },
+  { label: "Create Video", icon: Video, path: "/create-video" },
   { label: "Avatar Builder", icon: Wand2, path: "/avatar-builder" },
   { label: "Content Studio", icon: Palette, path: "/content-studio" },
   { label: "Ad Generator", icon: Megaphone, path: "/ad-generator" },

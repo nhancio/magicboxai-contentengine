@@ -9,6 +9,11 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
       "@shared": path.resolve(__dirname, "../../shared"),
       // Shared code: force resolution from app node_modules
+      "react": path.resolve(__dirname, "node_modules/react"),
+      "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
+      "@google/generative-ai": path.resolve(__dirname, "node_modules/@google/generative-ai"),
+      "lucide-react": path.resolve(__dirname, "node_modules/lucide-react"),
+      "sonner": path.resolve(__dirname, "node_modules/sonner"),
       "class-variance-authority": path.resolve(__dirname, "node_modules/class-variance-authority"),
       "clsx": path.resolve(__dirname, "node_modules/clsx"),
       "tailwind-merge": path.resolve(__dirname, "node_modules/tailwind-merge"),

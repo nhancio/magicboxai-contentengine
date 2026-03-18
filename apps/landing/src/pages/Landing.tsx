@@ -1,22 +1,25 @@
 import { useState, useEffect, useRef } from "react";
-import { motion, useInView, useAnimation } from "framer-motion";
+import { motion, useInView } from "framer-motion";
 import {
+  Video,
+  Users,
   Wand2,
-  Palette,
-  Megaphone,
-  Share2,
-  Calendar,
-  BarChart3,
+  Sparkles,
   ArrowRight,
   Play,
   Check,
   Menu,
   X,
-  Sparkles,
   Zap,
   Star,
   ChevronRight,
   ExternalLink,
+  Film,
+  Megaphone,
+  Package,
+  Share2,
+  MessageSquare,
+  LayoutTemplate,
 } from "lucide-react";
 import { Button } from "@shared/components/ui/button";
 import { Badge } from "@shared/components/ui/badge";
@@ -28,92 +31,182 @@ const LOGIN_URL = "https://app.magicboxai.in/login";
 
 const navLinks = [
   { label: "Features", href: "#features" },
+  { label: "Templates", href: "#templates" },
   { label: "Pricing", href: "#pricing" },
-  { label: "About", href: "#how-it-works" },
+  { label: "How It Works", href: "#how-it-works" },
 ];
 
 const stats = [
-  { value: 10000, suffix: "+", label: "Creators", prefix: "" },
-  { value: 500, suffix: "K+", label: "Avatars Generated", prefix: "" },
-  { value: 50, suffix: "M+", label: "Content Pieces", prefix: "" },
-  { value: 99.9, suffix: "%", label: "Uptime", prefix: "" },
+  { value: 10, suffix: "K+", label: "Creators" },
+  { value: 500, suffix: "K+", label: "Videos Generated" },
+  { value: 10, suffix: "", label: "Viral Templates" },
+  { value: 8, suffix: "", label: "AI Avatars" },
 ];
 
 const features = [
   {
-    icon: Wand2,
-    title: "AI Avatar Builder",
+    icon: Users,
+    title: "AI Avatar Library",
     description:
-      "Generate photorealistic avatars from simple text prompts. Choose styles, expressions, and outfits with precision control.",
+      "8 pre-built UGC-style avatars with unique personalities, voices, and styles. From GenZ energy to luxury influencer vibes.",
     gradient: "from-purple-500 to-violet-600",
   },
   {
-    icon: Palette,
-    title: "Content Studio",
+    icon: LayoutTemplate,
+    title: "Viral Template Engine",
     description:
-      "Create scroll-stopping social media posts, stories, and reels with AI-powered design tools and templates.",
+      "10 proven viral formats like Problem-Solution, GRWM, Unboxing, and Storytime. Each template is optimized for maximum engagement.",
     gradient: "from-indigo-500 to-blue-600",
   },
   {
-    icon: Megaphone,
-    title: "Ad Generator",
+    icon: Wand2,
+    title: "AI Script Generator",
     description:
-      "Produce high-converting ad creatives in seconds. A/B test variations and optimize for maximum engagement.",
+      "Gemini-powered scripts that convert. Just describe your product and get scroll-stopping scripts tailored to each template format.",
     gradient: "from-pink-500 to-rose-600",
   },
   {
-    icon: Share2,
-    title: "Multi-Platform Publishing",
+    icon: Package,
+    title: "Product Integration",
     description:
-      "Publish directly to Instagram, TikTok, YouTube, LinkedIn, and Twitter from a single dashboard.",
+      "Upload your product images and let AI seamlessly integrate them into your UGC videos. No studio, no props, no hassle.",
     gradient: "from-emerald-500 to-teal-600",
   },
   {
-    icon: Calendar,
-    title: "Smart Scheduling",
+    icon: Share2,
+    title: "Multi-Platform Export",
     description:
-      "AI-optimized scheduling picks the perfect time to post for maximum reach and engagement across all platforms.",
+      "Export videos perfectly sized for TikTok, Instagram Reels, and YouTube Shorts. One click, three platforms ready.",
     gradient: "from-amber-500 to-orange-600",
   },
   {
-    icon: BarChart3,
-    title: "Analytics Dashboard",
+    icon: MessageSquare,
+    title: "Hook Optimizer",
     description:
-      "Track performance across every channel with real-time analytics, audience insights, and growth recommendations.",
+      "AI generates scroll-stopping hooks proven to capture attention in the first 2 seconds. A/B test different hooks instantly.",
     gradient: "from-cyan-500 to-sky-600",
   },
 ];
 
-const showcaseItems = [
-  { label: "Fashion Influencer", gradient: "from-pink-500 via-rose-500 to-red-500" },
-  { label: "Tech Reviewer", gradient: "from-blue-500 via-indigo-500 to-violet-500" },
-  { label: "Fitness Coach", gradient: "from-emerald-500 via-green-500 to-teal-500" },
-  { label: "Travel Blogger", gradient: "from-amber-500 via-orange-500 to-red-500" },
-  { label: "Food Creator", gradient: "from-yellow-500 via-amber-500 to-orange-500" },
-  { label: "Gaming Streamer", gradient: "from-purple-500 via-violet-500 to-indigo-500" },
-  { label: "Beauty Expert", gradient: "from-pink-400 via-fuchsia-500 to-purple-500" },
-  { label: "Music Artist", gradient: "from-cyan-500 via-blue-500 to-indigo-500" },
+const avatars = [
+  {
+    name: "Zara",
+    personality: "GenZ Girl",
+    useCases: "Beauty, Fashion, Lifestyle",
+    gradient: "from-pink-500 via-rose-500 to-red-500",
+  },
+  {
+    name: "Marcus",
+    personality: "Tech Bro",
+    useCases: "SaaS, Apps, Gadgets",
+    gradient: "from-blue-500 via-indigo-500 to-violet-500",
+  },
+  {
+    name: "Victoria",
+    personality: "Luxury Influencer",
+    useCases: "Premium, Luxury, Wellness",
+    gradient: "from-amber-400 via-yellow-500 to-orange-500",
+  },
+  {
+    name: "Tyler",
+    personality: "Fitness Coach",
+    useCases: "Supplements, Activewear, Health",
+    gradient: "from-emerald-500 via-green-500 to-teal-500",
+  },
+  {
+    name: "Sarah",
+    personality: "Relatable Mom",
+    useCases: "Home, Kids, Family Products",
+    gradient: "from-purple-400 via-fuchsia-500 to-pink-500",
+  },
+  {
+    name: "Alex",
+    personality: "Entrepreneur",
+    useCases: "Courses, Tools, Business",
+    gradient: "from-slate-400 via-zinc-500 to-neutral-600",
+  },
+  {
+    name: "Luna",
+    personality: "Aesthetic Creator",
+    useCases: "Skincare, Decor, Stationery",
+    gradient: "from-violet-400 via-purple-500 to-indigo-500",
+  },
+  {
+    name: "Jake",
+    personality: "Comedy Creator",
+    useCases: "Food, Gaming, Everyday Products",
+    gradient: "from-orange-500 via-red-500 to-pink-500",
+  },
+];
+
+const templates = [
+  {
+    name: "Problem \u2192 Solution",
+    hook: "\"Stop wasting money on...\"",
+    tone: "Urgent & Direct",
+    platforms: ["TikTok", "Reels"],
+    gradient: "from-red-500 to-rose-600",
+  },
+  {
+    name: "Get Ready With Me",
+    hook: "\"GRWM while I tell you about...\"",
+    tone: "Casual & Relatable",
+    platforms: ["TikTok", "Reels", "Shorts"],
+    gradient: "from-pink-500 to-fuchsia-600",
+  },
+  {
+    name: "3 Reasons Why",
+    hook: "\"3 reasons why you need this...\"",
+    tone: "Listicle & Punchy",
+    platforms: ["TikTok", "Reels"],
+    gradient: "from-purple-500 to-violet-600",
+  },
+  {
+    name: "Unboxing",
+    hook: "\"Let me unbox this viral product...\"",
+    tone: "Excited & Authentic",
+    platforms: ["TikTok", "Shorts"],
+    gradient: "from-indigo-500 to-blue-600",
+  },
+  {
+    name: "Before & After",
+    hook: "\"Watch this transformation...\"",
+    tone: "Dramatic & Visual",
+    platforms: ["Reels", "TikTok"],
+    gradient: "from-emerald-500 to-teal-600",
+  },
+  {
+    name: "Storytime",
+    hook: "\"Storytime: How I discovered...\"",
+    tone: "Narrative & Personal",
+    platforms: ["TikTok", "Reels", "Shorts"],
+    gradient: "from-amber-500 to-orange-600",
+  },
 ];
 
 const steps = [
   {
     step: "01",
-    title: "Sign Up",
-    description: "Create your free account in seconds. No credit card required to get started.",
+    icon: Users,
+    title: "Pick Your Avatar",
+    description:
+      "Choose from 8 AI personalities, each with their own style, voice, and vibe. From GenZ energy to luxury influencer aesthetics.",
     gradient: "from-purple-500 to-indigo-500",
   },
   {
     step: "02",
-    title: "Create Your Avatar",
+    icon: LayoutTemplate,
+    title: "Choose a Viral Template",
     description:
-      "Use our AI builder to craft your perfect digital avatar. Customize every detail to match your brand.",
+      "Select from 10 proven viral formats. Problem-Solution, GRWM, Unboxing, Storytime, and more. Each template is battle-tested.",
     gradient: "from-indigo-500 to-blue-500",
   },
   {
     step: "03",
-    title: "Publish & Grow",
+    icon: Film,
+    title: "Generate & Export",
     description:
-      "Generate content, schedule posts, and watch your audience grow with AI-powered optimization.",
+      "AI creates your UGC video in seconds. Add your product, customize the script, and export for TikTok, Reels, or Shorts.",
     gradient: "from-blue-500 to-violet-500",
   },
 ];
@@ -122,54 +215,60 @@ const pricingTiers = [
   {
     name: "Free",
     price: "$0",
-    period: "forever",
-    description: "Perfect for getting started",
+    period: "",
+    badge: "FREE During Launch!",
+    description: "Everything you need to start creating",
     features: [
-      "5 avatars per month",
-      "Basic content templates",
-      "1 social platform",
-      "Community support",
-      "720p exports",
+      "10 videos per month",
+      "All 8 AI avatars",
+      "All 10 viral templates",
+      "AI script generator",
+      "720p export quality",
+      "MagicBox watermark",
     ],
-    cta: "Get Started Free",
+    cta: "Start Creating Free",
     popular: false,
     gradient: "from-zinc-600 to-zinc-700",
   },
   {
-    name: "Pro",
+    name: "Creator",
     price: "$29",
     period: "/month",
-    description: "For serious creators",
+    badge: "Most Popular",
+    description: "For serious content creators",
     features: [
-      "Unlimited avatars",
-      "All content templates",
-      "All social platforms",
-      "Priority support",
-      "4K exports",
-      "Smart scheduling",
-      "Advanced analytics",
-      "Custom brand kit",
+      "50 videos per month",
+      "All 8 AI avatars",
+      "All 10 viral templates",
+      "AI script generator",
+      "1080p export quality",
+      "No watermark",
+      "Priority rendering",
+      "Hook A/B testing",
     ],
-    cta: "Start Pro Trial",
+    cta: "Start Creator Plan",
     popular: true,
     gradient: "from-purple-600 to-indigo-600",
   },
   {
-    name: "Enterprise",
-    price: "Custom",
-    period: "",
-    description: "For teams & agencies",
+    name: "Pro",
+    price: "$79",
+    period: "/month",
+    badge: null,
+    description: "For agencies & power users",
     features: [
-      "Everything in Pro",
+      "200 videos per month",
+      "All 8 AI avatars",
+      "All 10 viral templates",
+      "AI script generator",
+      "4K export quality",
+      "No watermark",
       "API access",
-      "Dedicated account manager",
-      "Custom AI model training",
-      "SSO & team management",
-      "SLA guarantee",
-      "White-label options",
-      "Onboarding & training",
+      "Bulk generation",
+      "Custom avatar training",
+      "Priority support",
     ],
-    cta: "Contact Sales",
+    cta: "Start Pro Plan",
     popular: false,
     gradient: "from-indigo-600 to-blue-600",
   },
@@ -177,36 +276,36 @@ const pricingTiers = [
 
 const testimonials = [
   {
-    name: "Sarah Chen",
-    role: "Fashion Influencer",
-    initials: "SC",
+    name: "Jessica Kim",
+    role: "DTC Brand Owner",
+    initials: "JK",
     quote:
-      "MagicBox AI completely transformed my content workflow. I went from spending 8 hours per day on content to just 2 hours, while actually increasing my engagement by 3x.",
+      "We replaced our entire UGC creator budget with MagicBox AI. 50 videos a month for $29 vs paying creators $200+ per video. The ROI is insane.",
     gradient: "from-pink-500 to-rose-500",
   },
   {
-    name: "Marcus Rodriguez",
-    role: "Marketing Agency CEO",
-    initials: "MR",
+    name: "Daniel Torres",
+    role: "TikTok Creator \u2022 120K Followers",
+    initials: "DT",
     quote:
-      "We use MagicBox AI for all our client campaigns. The AI avatar generation is insanely good, and the multi-platform publishing saves us countless hours every week.",
+      "I use MagicBox to batch-create content for my brand deals. Pick an avatar, choose a template, and I have a scroll-stopping video in 60 seconds. Game changer.",
     gradient: "from-purple-500 to-indigo-500",
   },
   {
-    name: "Priya Patel",
-    role: "Tech Content Creator",
-    initials: "PP",
+    name: "Aisha Patel",
+    role: "Social Media Agency CEO",
+    initials: "AP",
     quote:
-      "The analytics dashboard alone is worth the subscription. But combined with the AI content generation and smart scheduling, it's an absolute game-changer for any creator.",
+      "Our agency manages 30+ brands. MagicBox AI lets us produce UGC-style content at scale without hiring creators. The template library is pure gold.",
     gradient: "from-indigo-500 to-blue-500",
   },
 ];
 
 const footerLinks = {
-  Product: ["Features", "Pricing", "API", "Integrations", "Changelog"],
+  Product: ["Features", "Templates", "Pricing", "API", "Changelog"],
   Company: ["About", "Blog", "Careers", "Press", "Partners"],
   Legal: ["Privacy Policy", "Terms of Service", "Cookie Policy", "GDPR"],
-  Social: ["Twitter", "Instagram", "LinkedIn", "YouTube", "Discord"],
+  Social: ["Twitter", "Instagram", "LinkedIn", "YouTube", "TikTok"],
 };
 
 /* ───────────────────────── Helpers ───────────────────────── */
@@ -245,7 +344,7 @@ function AnimatedCounter({ value, suffix, duration = 2 }: { value: number; suffi
     if (!isInView) return;
     let start = 0;
     const end = value;
-    const stepTime = Math.max(duration * 1000 / end, 10);
+    const stepTime = Math.max((duration * 1000) / end, 10);
     const increment = Math.max(Math.ceil(end / (duration * 100)), 1);
 
     const timer = setInterval(() => {
@@ -263,7 +362,7 @@ function AnimatedCounter({ value, suffix, duration = 2 }: { value: number; suffi
 
   return (
     <span ref={ref}>
-      {value === 99.9 ? (isInView ? "99.9" : "0") : count.toLocaleString()}
+      {count.toLocaleString()}
       {suffix}
     </span>
   );
@@ -326,7 +425,7 @@ function Navbar() {
             </a>
             <a href={APP_URL}>
               <button className="btn-gradient text-sm h-10 px-6">
-                Get Started
+                Start Creating
                 <ArrowRight className="w-4 h-4 ml-1 inline" />
               </button>
             </a>
@@ -369,7 +468,7 @@ function Navbar() {
               </a>
               <a href={APP_URL} className="block">
                 <button className="btn-gradient w-full h-11">
-                  Get Started <ArrowRight className="w-4 h-4 ml-1 inline" />
+                  Start Creating <ArrowRight className="w-4 h-4 ml-1 inline" />
                 </button>
               </a>
             </div>
@@ -408,7 +507,7 @@ function Hero() {
         >
           <Badge className="mb-6 inline-flex items-center gap-1.5 px-4 py-1.5 text-sm">
             <Zap className="w-3.5 h-3.5" />
-            Now with GPT-4o Vision & FLUX Models
+            FREE During Launch &mdash; Create Viral UGC Videos in 60 Seconds
           </Badge>
         </motion.div>
 
@@ -418,20 +517,29 @@ function Hero() {
           transition={{ duration: 0.8, delay: 0.15, ease: "easeOut" }}
           className="font-display font-extrabold text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight leading-[1.05] mb-6"
         >
-          Create Stunning{" "}
-          <span className="gradient-text">AI Avatars</span>
+          Create Viral{" "}
+          <span className="gradient-text">UGC Videos</span>
           <br />
-          & <span className="gradient-text-alt">Social Content</span>
+          with <span className="gradient-text-alt">AI Avatars</span>
         </motion.h1>
 
         <motion.p
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
-          className="max-w-2xl mx-auto text-lg md:text-xl text-white/50 leading-relaxed mb-10"
+          className="max-w-2xl mx-auto text-lg md:text-xl text-white/50 leading-relaxed mb-4"
         >
-          The all-in-one AI platform for creators, influencers, and brands. Generate photorealistic
-          avatars, craft viral content, and grow your audience across every platform.
+          Turn products into scroll-stopping content. Select an AI avatar, pick a proven viral
+          template, and generate UGC videos that convert &mdash; all in under 60 seconds.
+        </motion.p>
+
+        <motion.p
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.38, ease: "easeOut" }}
+          className="max-w-xl mx-auto text-sm text-white/30 mb-10"
+        >
+          No creators to hire. No studios to book. No editing skills needed.
         </motion.p>
 
         <motion.div
@@ -442,7 +550,7 @@ function Hero() {
         >
           <a href={APP_URL}>
             <button className="btn-gradient h-13 px-10 text-base gap-2">
-              Get Started Free
+              Start Creating Free
               <ArrowRight className="w-5 h-5 inline" />
             </button>
           </a>
@@ -452,7 +560,7 @@ function Hero() {
           </button>
         </motion.div>
 
-        {/* Floating cards */}
+        {/* Floating phone mockups */}
         <motion.div
           initial={{ opacity: 0, y: 60 }}
           animate={{ opacity: 1, y: 0 }}
@@ -460,41 +568,71 @@ function Hero() {
           className="mt-20 relative max-w-5xl mx-auto"
         >
           <div className="relative flex items-center justify-center gap-4 md:gap-6">
-            {/* Left card */}
+            {/* Left phone */}
             <motion.div
               animate={{ y: [0, -12, 0] }}
               transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-              className="hidden sm:block w-48 md:w-56 h-64 md:h-72 rounded-2xl bg-gradient-to-br from-purple-600/30 to-indigo-600/30 border border-white/10 backdrop-blur-sm p-4 -rotate-6"
+              className="hidden sm:block w-44 md:w-52 h-72 md:h-80 rounded-[2rem] bg-zinc-900/80 border-2 border-white/10 backdrop-blur-sm p-2 -rotate-6 shadow-xl"
             >
-              <div className="w-full h-36 md:h-44 rounded-xl bg-gradient-to-br from-purple-500 to-violet-600 mb-3" />
-              <div className="h-2.5 w-3/4 bg-white/10 rounded-full mb-2" />
-              <div className="h-2.5 w-1/2 bg-white/10 rounded-full" />
+              <div className="w-full h-full rounded-[1.5rem] bg-gradient-to-br from-purple-600 via-pink-500 to-rose-500 relative overflow-hidden">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <Play className="w-10 h-10 text-white/80 mx-auto mb-2" />
+                    <p className="text-xs text-white/70 font-medium">Problem → Solution</p>
+                  </div>
+                </div>
+                <div className="absolute bottom-3 left-3 right-3">
+                  <div className="h-2 w-3/4 bg-white/20 rounded-full mb-1.5" />
+                  <div className="h-2 w-1/2 bg-white/15 rounded-full" />
+                </div>
+              </div>
             </motion.div>
 
-            {/* Center card */}
+            {/* Center phone */}
             <motion.div
               animate={{ y: [0, -16, 0] }}
               transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
-              className="w-56 md:w-72 h-72 md:h-[340px] rounded-2xl bg-gradient-to-br from-indigo-600/30 to-purple-600/30 border border-white/10 backdrop-blur-sm p-4 z-10 shadow-2xl shadow-purple-500/10"
+              className="w-52 md:w-64 h-80 md:h-[380px] rounded-[2rem] bg-zinc-900/80 border-2 border-purple-500/30 backdrop-blur-sm p-2 z-10 shadow-2xl shadow-purple-500/20"
             >
-              <div className="w-full h-44 md:h-56 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 mb-3" />
-              <div className="h-3 w-3/4 bg-white/15 rounded-full mb-2" />
-              <div className="h-3 w-1/2 bg-white/10 rounded-full" />
+              <div className="w-full h-full rounded-[1.5rem] bg-gradient-to-br from-indigo-600 via-purple-500 to-violet-600 relative overflow-hidden">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm mx-auto mb-3 flex items-center justify-center">
+                      <Play className="w-8 h-8 text-white" />
+                    </div>
+                    <p className="text-sm text-white/90 font-semibold">UGC Video</p>
+                    <p className="text-xs text-white/60 mt-1">AI Avatar: Zara</p>
+                  </div>
+                </div>
+                <div className="absolute bottom-4 left-4 right-4">
+                  <div className="h-2.5 w-3/4 bg-white/20 rounded-full mb-2" />
+                  <div className="h-2.5 w-1/2 bg-white/15 rounded-full" />
+                </div>
+              </div>
             </motion.div>
 
-            {/* Right card */}
+            {/* Right phone */}
             <motion.div
               animate={{ y: [0, -10, 0] }}
               transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
-              className="hidden sm:block w-48 md:w-56 h-64 md:h-72 rounded-2xl bg-gradient-to-br from-pink-600/30 to-purple-600/30 border border-white/10 backdrop-blur-sm p-4 rotate-6"
+              className="hidden sm:block w-44 md:w-52 h-72 md:h-80 rounded-[2rem] bg-zinc-900/80 border-2 border-white/10 backdrop-blur-sm p-2 rotate-6 shadow-xl"
             >
-              <div className="w-full h-36 md:h-44 rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 mb-3" />
-              <div className="h-2.5 w-3/4 bg-white/10 rounded-full mb-2" />
-              <div className="h-2.5 w-1/2 bg-white/10 rounded-full" />
+              <div className="w-full h-full rounded-[1.5rem] bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 relative overflow-hidden">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <Play className="w-10 h-10 text-white/80 mx-auto mb-2" />
+                    <p className="text-xs text-white/70 font-medium">Get Ready With Me</p>
+                  </div>
+                </div>
+                <div className="absolute bottom-3 left-3 right-3">
+                  <div className="h-2 w-3/4 bg-white/20 rounded-full mb-1.5" />
+                  <div className="h-2 w-1/2 bg-white/15 rounded-full" />
+                </div>
+              </div>
             </motion.div>
           </div>
 
-          {/* Glow under cards */}
+          {/* Glow under phones */}
           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-32 bg-purple-600/20 blur-[100px] rounded-full" />
         </motion.div>
       </div>
@@ -504,14 +642,14 @@ function Hero() {
 
 /* ───────────────────────── Stats ───────────────────────── */
 
-function Stats() {
+function StatsSection() {
   return (
     <section className="relative py-20 border-y border-white/[0.04]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <AnimatedSection>
           <div className="text-center mb-12">
             <p className="text-sm uppercase tracking-widest text-white/40 font-medium">
-              Trusted by creators worldwide
+              Trusted by creators & brands worldwide
             </p>
           </div>
         </AnimatedSection>
@@ -523,6 +661,50 @@ function Stats() {
                   <AnimatedCounter value={stat.value} suffix={stat.suffix} />
                 </div>
                 <p className="text-sm md:text-base text-white/40">{stat.label}</p>
+              </div>
+            </AnimatedSection>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ───────────────────────── How It Works ───────────────────────── */
+
+function HowItWorks() {
+  return (
+    <section id="how-it-works" className="section-padding relative overflow-hidden">
+      <div className="glow-orb w-[350px] h-[350px] bg-violet-600 top-[30%] left-[50%] -translate-x-1/2" />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <AnimatedSection className="text-center mb-16 md:mb-20">
+          <Badge className="mb-4">Simple 3-Step Process</Badge>
+          <h2 className="font-display font-bold text-3xl sm:text-4xl md:text-5xl mb-5">
+            How It <span className="gradient-text">Works</span>
+          </h2>
+          <p className="max-w-xl mx-auto text-white/40 text-lg">
+            Go from zero to viral-ready UGC video in under 60 seconds. No editing skills required.
+          </p>
+        </AnimatedSection>
+
+        <div className="grid md:grid-cols-3 gap-8 md:gap-6 relative">
+          {/* Connecting line */}
+          <div className="hidden md:block absolute top-24 left-[20%] right-[20%] h-px bg-gradient-to-r from-purple-500/30 via-indigo-500/30 to-blue-500/30" />
+
+          {steps.map((step, i) => (
+            <AnimatedSection key={step.step} delay={i * 0.15}>
+              <div className="glass-card p-8 text-center relative group hover:bg-white/[0.05] transition-all duration-500">
+                <div
+                  className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${step.gradient} mb-6 shadow-lg group-hover:scale-110 transition-transform duration-300`}
+                >
+                  <step.icon className="w-7 h-7 text-white" />
+                </div>
+                <div className="text-xs font-mono text-white/30 mb-2">Step {step.step}</div>
+                <h3 className="font-display font-semibold text-xl text-white mb-3">
+                  {step.title}
+                </h3>
+                <p className="text-white/40 text-sm leading-relaxed">{step.description}</p>
               </div>
             </AnimatedSection>
           ))}
@@ -548,11 +730,11 @@ function Features() {
           </Badge>
           <h2 className="font-display font-bold text-3xl sm:text-4xl md:text-5xl mb-5">
             Everything You Need to{" "}
-            <span className="gradient-text">Create & Grow</span>
+            <span className="gradient-text">Go Viral</span>
           </h2>
           <p className="max-w-2xl mx-auto text-white/40 text-lg">
-            From AI avatar generation to multi-platform publishing, MagicBox AI gives you the
-            complete toolkit to dominate social media.
+            From AI avatars to viral templates, MagicBox AI gives you the complete
+            toolkit to create scroll-stopping UGC content at scale.
           </p>
         </AnimatedSection>
 
@@ -578,84 +760,101 @@ function Features() {
   );
 }
 
-/* ───────────────────────── Showcase Marquee ───────────────────────── */
+/* ───────────────────────── Avatar Showcase ───────────────────────── */
 
-function Showcase() {
-  const items = [...showcaseItems, ...showcaseItems];
-
+function AvatarShowcase() {
   return (
-    <section className="section-padding overflow-hidden">
-      <AnimatedSection className="text-center mb-14">
-        <h2 className="font-display font-bold text-3xl sm:text-4xl md:text-5xl mb-5">
-          AI Content <span className="gradient-text">Showcase</span>
-        </h2>
-        <p className="max-w-xl mx-auto text-white/40 text-lg">
-          See what creators are building with MagicBox AI
-        </p>
-      </AnimatedSection>
+    <section className="section-padding relative overflow-hidden">
+      <div className="glow-orb w-[400px] h-[400px] bg-pink-600 top-[10%] right-[-100px]" />
 
-      <div className="relative">
-        {/* Fade edges */}
-        <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-zinc-950 to-transparent z-10 pointer-events-none" />
-        <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-zinc-950 to-transparent z-10 pointer-events-none" />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <AnimatedSection className="text-center mb-14">
+          <Badge className="mb-4">
+            <Users className="w-3.5 h-3.5 mr-1" />
+            Meet Your Avatars
+          </Badge>
+          <h2 className="font-display font-bold text-3xl sm:text-4xl md:text-5xl mb-5">
+            8 AI Avatars, <span className="gradient-text">Infinite Content</span>
+          </h2>
+          <p className="max-w-xl mx-auto text-white/40 text-lg">
+            Each avatar has a unique personality, speaking style, and aesthetic. Pick the perfect
+            creator for your brand.
+          </p>
+        </AnimatedSection>
 
-        <div className="overflow-hidden">
-          <div className="marquee-track" style={{ "--duration": "50s" } as React.CSSProperties}>
-            {items.map((item, i) => (
-              <div
-                key={`${item.label}-${i}`}
-                className="flex-shrink-0 w-52 md:w-64 rounded-2xl border border-white/[0.08] bg-white/[0.02] overflow-hidden group hover:border-white/20 transition-all duration-300"
-              >
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
+          {avatars.map((avatar, i) => (
+            <AnimatedSection key={avatar.name} delay={i * 0.06}>
+              <div className="glass-card-hover p-5 md:p-6 text-center group h-full">
                 <div
-                  className={`w-full h-56 md:h-72 bg-gradient-to-br ${item.gradient} opacity-80 group-hover:opacity-100 transition-opacity duration-300`}
-                />
-                <div className="p-4">
-                  <p className="text-sm font-medium text-white/70">{item.label}</p>
-                  <p className="text-xs text-white/30 mt-1">AI Generated Avatar</p>
+                  className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${avatar.gradient} mx-auto mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300 flex items-center justify-center`}
+                >
+                  <span className="text-2xl font-display font-bold text-white">
+                    {avatar.name[0]}
+                  </span>
                 </div>
+                <h3 className="font-display font-semibold text-base text-white mb-1">
+                  {avatar.name}
+                </h3>
+                <p className="text-sm text-purple-400 font-medium mb-2">{avatar.personality}</p>
+                <p className="text-xs text-white/30 leading-relaxed">{avatar.useCases}</p>
               </div>
-            ))}
-          </div>
+            </AnimatedSection>
+          ))}
         </div>
       </div>
     </section>
   );
 }
 
-/* ───────────────────────── How It Works ───────────────────────── */
+/* ───────────────────────── Template Preview ───────────────────────── */
 
-function HowItWorks() {
+function TemplatePreview() {
   return (
-    <section id="how-it-works" className="section-padding relative overflow-hidden">
-      <div className="glow-orb w-[350px] h-[350px] bg-violet-600 top-[30%] left-[50%] -translate-x-1/2" />
+    <section id="templates" className="section-padding relative overflow-hidden">
+      <div className="glow-orb w-[400px] h-[400px] bg-indigo-600 bottom-[10%] left-[-100px]" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <AnimatedSection className="text-center mb-16 md:mb-20">
-          <Badge className="mb-4">Simple Process</Badge>
+        <AnimatedSection className="text-center mb-14">
+          <Badge className="mb-4">
+            <Video className="w-3.5 h-3.5 mr-1" />
+            Viral Templates
+          </Badge>
           <h2 className="font-display font-bold text-3xl sm:text-4xl md:text-5xl mb-5">
-            How It <span className="gradient-text">Works</span>
+            Proven Formats That{" "}
+            <span className="gradient-text">Go Viral</span>
           </h2>
           <p className="max-w-xl mx-auto text-white/40 text-lg">
-            Get started in minutes, not hours. Three simple steps to transform your content.
+            Battle-tested UGC templates that have generated millions of views. Just add your product.
           </p>
         </AnimatedSection>
 
-        <div className="grid md:grid-cols-3 gap-8 md:gap-6 relative">
-          {/* Connecting line */}
-          <div className="hidden md:block absolute top-24 left-[20%] right-[20%] h-px bg-gradient-to-r from-purple-500/30 via-indigo-500/30 to-blue-500/30" />
-
-          {steps.map((step, i) => (
-            <AnimatedSection key={step.step} delay={i * 0.15}>
-              <div className="glass-card p-8 text-center relative group hover:bg-white/[0.05] transition-all duration-500">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
+          {templates.map((template, i) => (
+            <AnimatedSection key={template.name} delay={i * 0.08}>
+              <div className="glass-card-hover p-6 md:p-7 h-full group">
                 <div
-                  className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br ${step.gradient} text-2xl font-display font-bold mb-6 shadow-lg group-hover:scale-110 transition-transform duration-300`}
+                  className={`w-full h-28 rounded-xl bg-gradient-to-br ${template.gradient} mb-5 flex items-center justify-center opacity-80 group-hover:opacity-100 transition-opacity duration-300`}
                 >
-                  {step.step}
+                  <Film className="w-8 h-8 text-white/70" />
                 </div>
-                <h3 className="font-display font-semibold text-xl text-white mb-3">
-                  {step.title}
+                <h3 className="font-display font-semibold text-base text-white mb-2">
+                  {template.name}
                 </h3>
-                <p className="text-white/40 text-sm leading-relaxed">{step.description}</p>
+                <p className="text-sm text-white/50 italic mb-3">{template.hook}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-purple-400 font-medium">{template.tone}</span>
+                  <div className="flex gap-1.5">
+                    {template.platforms.map((platform) => (
+                      <span
+                        key={platform}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-white/40 border border-white/[0.08]"
+                      >
+                        {platform}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
             </AnimatedSection>
           ))}
@@ -679,7 +878,7 @@ function Pricing() {
             Simple, Transparent <span className="gradient-text">Pricing</span>
           </h2>
           <p className="max-w-xl mx-auto text-white/40 text-lg">
-            Start free, upgrade when you're ready. No hidden fees, cancel anytime.
+            Start free during our launch period. No credit card required. Upgrade when you need more.
           </p>
         </AnimatedSection>
 
@@ -693,10 +892,16 @@ function Pricing() {
                     : "glass-card hover:bg-white/[0.05]"
                 }`}
               >
-                {tier.popular && (
+                {tier.badge && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <Badge className="px-4 py-1 bg-purple-600 border-purple-500 text-white text-xs font-semibold">
-                      Most Popular
+                    <Badge
+                      className={`px-4 py-1 text-white text-xs font-semibold ${
+                        tier.popular
+                          ? "bg-purple-600 border-purple-500"
+                          : "bg-emerald-600 border-emerald-500"
+                      }`}
+                    >
+                      {tier.badge}
                     </Badge>
                   </div>
                 )}
@@ -761,10 +966,10 @@ function Testimonials() {
             Testimonials
           </Badge>
           <h2 className="font-display font-bold text-3xl sm:text-4xl md:text-5xl mb-5">
-            Loved by <span className="gradient-text">Creators</span>
+            Loved by <span className="gradient-text">Creators & Brands</span>
           </h2>
           <p className="max-w-xl mx-auto text-white/40 text-lg">
-            See why thousands of creators choose MagicBox AI for their content workflow.
+            See why thousands of creators and DTC brands choose MagicBox AI for their UGC content.
           </p>
         </AnimatedSection>
 
@@ -781,7 +986,7 @@ function Testimonials() {
                   ))}
                 </div>
                 <p className="text-white/60 text-sm leading-relaxed mb-6 flex-1">
-                  "{t.quote}"
+                  &ldquo;{t.quote}&rdquo;
                 </p>
                 <div className="flex items-center gap-3 pt-4 border-t border-white/[0.06]">
                   <div
@@ -822,18 +1027,21 @@ function FinalCTA() {
 
             <div className="relative z-10">
               <h2 className="font-display font-bold text-3xl sm:text-4xl md:text-5xl mb-5">
-                Ready to Transform
+                Start Creating Viral
                 <br />
-                <span className="gradient-text">Your Content?</span>
+                <span className="gradient-text">UGC Videos Today</span>
               </h2>
-              <p className="max-w-lg mx-auto text-white/50 text-lg mb-8">
-                Join 10,000+ creators already using MagicBox AI to build their brand and grow their
-                audience.
+              <p className="max-w-lg mx-auto text-white/50 text-lg mb-3">
+                Join 10,000+ creators already using MagicBox AI to generate scroll-stopping
+                UGC content with AI avatars.
+              </p>
+              <p className="text-sm text-purple-400 font-medium mb-8">
+                It&apos;s completely free during launch. No credit card required.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <a href={APP_URL}>
                   <button className="btn-gradient h-13 px-10 text-base gap-2">
-                    Get Started Free
+                    Start Creating Free
                     <ArrowRight className="w-5 h-5 inline" />
                   </button>
                 </a>
@@ -841,7 +1049,7 @@ function FinalCTA() {
                   href={APP_URL}
                   className="inline-flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition-colors"
                 >
-                  View all features
+                  View all templates
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               </div>
@@ -871,7 +1079,7 @@ function Footer() {
               </span>
             </a>
             <p className="text-sm text-white/30 leading-relaxed max-w-xs">
-              The all-in-one AI platform for creating stunning avatars and social media content.
+              The AI-powered platform for creating viral UGC videos with AI avatars and proven templates.
             </p>
           </div>
 
@@ -923,10 +1131,11 @@ export default function Landing() {
     <div className="min-h-screen bg-zinc-950 text-white overflow-x-hidden">
       <Navbar />
       <Hero />
-      <Stats />
-      <Features />
-      <Showcase />
+      <StatsSection />
       <HowItWorks />
+      <Features />
+      <AvatarShowcase />
+      <TemplatePreview />
       <Pricing />
       <Testimonials />
       <FinalCTA />

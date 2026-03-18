@@ -44,6 +44,25 @@ export interface GeneratedAd {
   createdAt: Date;
 }
 
+export interface GeneratedVideo {
+  id: string;
+  userId: string;
+  avatarId: string;
+  templateId: string;
+  productName: string;
+  productDescription: string;
+  script: string;
+  hookLine: string;
+  captions: string[];
+  cta: string;
+  platform: string;
+  tone: string;
+  videoUrl: string;
+  thumbnailUrl: string;
+  status: "generating" | "completed" | "failed";
+  createdAt: Date;
+}
+
 export interface ApiLogEntry {
   id: string;
   endpoint: string;

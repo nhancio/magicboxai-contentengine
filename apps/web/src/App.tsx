@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import AvatarBuilder from "./pages/AvatarBuilder";
 import ContentStudio from "./pages/ContentStudio";
 import AdGenerator from "./pages/AdGenerator";
+import VideoCreator from "./pages/VideoCreator";
 import Library from "./pages/Library";
 import Schedule from "./pages/Schedule";
 import Analytics from "./pages/Analytics";
@@ -49,6 +50,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ContentStudio />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/create-video"
+            element={
+              <ProtectedRoute>
+                <VideoCreator />
               </ProtectedRoute>
             }
           />
