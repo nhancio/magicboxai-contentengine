@@ -2,6 +2,8 @@
 
 AI-powered content creation platform for building digital avatars, generating social media content, and managing multi-platform publishing.
 
+**Production checklist:** See **[nxtsteps.md](./nxtsteps.md)** — update it whenever you make production-related changes.
+
 ## Architecture
 
 ```
