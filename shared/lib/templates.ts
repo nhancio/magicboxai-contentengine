@@ -179,6 +179,25 @@ ENDING (50-60s): "And that's when everything changed" + CTA`,
     estimatedDuration: "45-60s",
   },
   {
+    id: "template-product-explanation",
+    name: "Product Explanation",
+    hookLine: "Let me show you exactly why [product] is a game-changer",
+    scriptStructure: `HOOK (0-3s): "You need to see this — let me explain why [product] is different"
+INTRO (3-10s): Hold up the product, introduce what it is
+FEATURE 1 (10-20s): Explain the main feature/benefit with enthusiasm
+FEATURE 2 (20-30s): Show second key feature, demonstrate how it works
+FEATURE 3 (30-40s): Highlight what makes it unique vs alternatives
+SOCIAL PROOF (40-48s): Share results, reviews, or personal experience
+CTA (48-60s): "Link in bio — seriously, go check this out right now"`,
+    targetUseCase: "Any product that needs clear explanation of features and benefits",
+    tone: "Knowledgeable, enthusiastic, trustworthy",
+    description: "The perfect format for explaining what a product does and why it matters. Your avatar breaks down features, shows benefits, and convinces viewers to buy.",
+    gradient: "from-orange-500 to-amber-600",
+    platform: ["TikTok", "Instagram Reels", "YouTube Shorts"],
+    category: "Conversion",
+    estimatedDuration: "45-60s",
+  },
+  {
     id: "template-comparison",
     name: "This vs. That Comparison",
     hookLine: "I tested [product] vs [competitor] so you don't have to",

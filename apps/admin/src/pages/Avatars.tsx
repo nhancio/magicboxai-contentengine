@@ -234,7 +234,7 @@ export default function Avatars() {
           </DialogHeader>
           {selectedAvatar && (
             <div className="space-y-4">
-              {selectedAvatar.imageUrl && (
+              {!!selectedAvatar.imageUrl && (
                 <div className="rounded-lg overflow-hidden">
                   <img
                     src={selectedAvatar.imageUrl as string}
@@ -265,7 +265,7 @@ export default function Avatars() {
                 </div>
               </div>
 
-              {selectedAvatar.prompt && (
+              {!!selectedAvatar.prompt && (
                 <>
                   <Separator />
                   <div>
@@ -277,7 +277,7 @@ export default function Avatars() {
                 </>
               )}
 
-              {selectedAvatar.settings &&
+              {!!selectedAvatar.settings &&
                 Object.keys(
                   selectedAvatar.settings as Record<string, string>
                 ).length > 0 && (

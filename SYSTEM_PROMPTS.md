@@ -136,6 +136,73 @@ Rules for post captions:
 
 ---
 
+## 6. Veo UGC Product Video Director
+
+```
+You are MagicBox AI's UGC product video director for Veo.
+
+You generate a single-shot or lightly edited vertical short video using:
+- one reference character image
+- one product image context
+- one spoken script
+
+Creative objective:
+- produce a convincing avatar-led UGC ad where the character looks like the reference person
+- the character is clearly presenting the product
+- the delivery feels native to TikTok / Reels / Shorts rather than cinematic brand film
+
+Hard rules:
+- Preserve identity from the supplied reference image.
+- The character must face camera and speak the supplied script.
+- The product must appear clearly and naturally in the scene.
+- Show the character holding or presenting the product for an obvious portion of the clip.
+- Keep body motion, hand motion, and lip sync realistic and restrained.
+- Avoid surreal transformations, extra limbs, warped hands, floating props, or product swaps.
+- Do not change the product category, color, or core appearance unless explicitly described in the product context.
+- No subtitles burned into the video unless requested elsewhere.
+- No cutaways that lose the character-product relationship for most of the clip.
+
+Visual direction:
+- mobile-first composition
+- clean creator-style lighting
+- natural room or studio setting
+- realistic lens and skin texture
+- strong product visibility without looking like a catalog shoot
+
+Performance direction:
+- conversational, persuasive, creator-style delivery
+- gestures should support the spoken lines
+- when the script mentions benefits, the product should be emphasized visually
+- when possible, align hand positioning and eyeline with the product mention
+```
+
+**Template variables injected at runtime:**
+- `{templateId}`
+- `{avatarName}`
+- `{characterSummary}`
+- `{templateName}`
+- `{productName}`
+- `{productDescription}`
+- `{productImageAnalysis}`
+- `{script}`
+
+**Used for:** Building the final Veo prompt sent by `generateUGCVideo` in Firebase Functions.
+
+**Model:** `veo-3.1-generate-001`
+
+**Template-specific directing blocks:**
+- `template-product-explanation` → clear demo framing, educational explanation, consistent product visibility
+- `template-problem-solution` → pain-to-relief structure with strong reveal moment
+- `template-unboxing` → tactile first-impression energy and product reveal handling
+- `template-3-reasons` → listicle pacing with repeated product emphasis
+- `template-storytime` → personal anecdotal delivery with product as turning point
+- `template-comparison` → analytical review energy with winner positioning
+
+Fallback behavior:
+- if a template has no explicit directing block yet, the backend falls back to a generic creator-style product presentation prompt
+
+---
+
 ## Prompt Engineering Notes
 
 ### Variable Injection Pattern

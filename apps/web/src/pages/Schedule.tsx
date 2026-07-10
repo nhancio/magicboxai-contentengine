@@ -1,304 +1,266 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "@shared/lib/auth";
+import type { Post, PostStatus, SocialPlatform } from "@shared/types";
+import { getPostsInRange } from "@shared/lib/automations";
 import { Button } from "@shared/components/ui/button";
-import { Input } from "@shared/components/ui/input";
-import { Label } from "@shared/components/ui/label";
-import { Textarea } from "@shared/components/ui/textarea";
-import { Badge } from "@shared/components/ui/badge";
+import { cn } from "@shared/lib/utils";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@shared/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@shared/components/ui/select";
-import {
-  Calendar,
-  Clock,
-  Plus,
-  Send,
+  Bot,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  FileText,
   Instagram,
-  Facebook,
-  Youtube,
-  Play,
+  Linkedin,
+  Plus,
+  Twitter,
 } from "lucide-react";
 
-function getWeekDays(baseDate: Date): Date[] {
-  const start = new Date(baseDate);
-  start.setDate(start.getDate() - start.getDay());
-  return Array.from({ length: 7 }, (_, i) => {
+const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
+  instagram: Instagram,
+  twitter: Twitter,
+  linkedin: Linkedin,
+};
+
+const STATUS_DOT: Record<PostStatus, string> = {
+  draft: "bg-white/30",
+  pending_approval: "bg-amber-400",
+  scheduled: "bg-sky-400",
+  generating: "bg-violet-400",
+  ready: "bg-violet-300",
+  posting: "bg-violet-400",
+  posted: "bg-emerald-400",
+  failed: "bg-rose-400",
+  cancelled: "bg-white/20",
+};
+
+const STATUS_LABEL: Record<PostStatus, string> = {
+  draft: "Draft",
+  pending_approval: "Awaiting approval",
+  scheduled: "Scheduled",
+  generating: "Generating",
+  ready: "Ready",
+  posting: "Publishing",
+  posted: "Published",
+  failed: "Failed",
+  cancelled: "Cancelled",
+};
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function monthMatrix(anchor: Date): Date[] {
+  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+  return Array.from({ length: 42 }, (_, i) => {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
     return d;
   });
 }
 
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-const PLATFORM_OPTIONS = [
-  { value: "instagram", label: "Instagram", icon: Instagram },
-  { value: "facebook", label: "Facebook", icon: Facebook },
-  { value: "tiktok", label: "TikTok", icon: Play },
-  { value: "youtube", label: "YouTube", icon: Youtube },
-];
+const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
 export default function Schedule() {
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedPlatform, setSelectedPlatform] = useState("");
-  const [selectedContent, setSelectedContent] = useState("");
-  const [caption, setCaption] = useState("");
-  const [scheduleDate, setScheduleDate] = useState("");
-  const [scheduleTime, setScheduleTime] = useState("09:00");
+  const { user } = useAuth();
+  const [anchor, setAnchor] = useState(() => new Date());
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
 
+  const days = useMemo(() => monthMatrix(anchor), [anchor]);
+
+  useEffect(() => {
+    if (!user) return;
+    setLoading(true);
+    const start = days[0];
+    const end = new Date(days[days.length - 1]);
+    end.setHours(23, 59, 59);
+    getPostsInRange(user.uid, start, end)
+      .then(setPosts)
+      .finally(() => setLoading(false));
+  }, [user, days]);
+
+  const postsByDay = useMemo(() => {
+    const map = new Map<string, Post[]>();
+    for (const post of posts) {
+      const key = dayKey(post.scheduledFor);
+      map.set(key, [...(map.get(key) ?? []), post]);
+    }
+    return map;
+  }, [posts]);
+
+  const selectedPosts = postsByDay.get(dayKey(selectedDay)) ?? [];
   const today = new Date();
-  const baseDate = new Date(today);
-  baseDate.setDate(today.getDate() + weekOffset * 7);
-  const weekDays = getWeekDays(baseDate);
-
-  const isToday = (d: Date) =>
-    d.getDate() === today.getDate() &&
-    d.getMonth() === today.getMonth() &&
-    d.getFullYear() === today.getFullYear();
-
-  const handleSchedule = () => {
-    setDialogOpen(false);
-    setSelectedPlatform("");
-    setSelectedContent("");
-    setCaption("");
-    setScheduleDate("");
-    setScheduleTime("09:00");
-  };
+  const monthLabel = anchor.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/25">
-              <CalendarDays className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-gradient">Content Schedule</span>
-          </h2>
-          <p className="mt-2 text-white/60">
-            Plan and schedule your content across all platforms.
+          <h1 className="text-2xl font-bold tracking-tight">Calendar</h1>
+          <p className="mt-1 text-sm text-white/40">
+            Every scheduled and published post across your channels.
           </p>
         </div>
+        <Button asChild className="bg-violet-600 hover:bg-violet-500">
+          <Link to="/automations/new">
+            <Plus className="mr-1.5 h-4 w-4" /> New automation
+          </Link>
+        </Button>
+      </div>
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white shadow-lg shadow-purple-500/25">
-              <Plus className="mr-2 h-4 w-4" />
-              Schedule New
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-zinc-900 border-white/[0.06]">
-            <DialogHeader>
-              <DialogTitle className="text-white">Schedule Content</DialogTitle>
-              <DialogDescription className="text-white/50">
-                Select content from your library and choose when to publish.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label className="text-white/80">Content</Label>
-                <Select value={selectedContent} onValueChange={setSelectedContent}>
-                  <SelectTrigger className="bg-white/[0.03] border-white/[0.06]">
-                    <SelectValue placeholder="Select from library..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="placeholder-1">Sample Ad - Summer Collection</SelectItem>
-                    <SelectItem value="placeholder-2">Avatar Post - Brand Ambassador</SelectItem>
-                    <SelectItem value="placeholder-3">Product Showcase - New Arrivals</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-white/80">Date</Label>
-                  <Input
-                    type="date"
-                    value={scheduleDate}
-                    onChange={(e) => setScheduleDate(e.target.value)}
-                    className="bg-white/[0.03] border-white/[0.06]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-white/80">Time</Label>
-                  <Input
-                    type="time"
-                    value={scheduleTime}
-                    onChange={(e) => setScheduleTime(e.target.value)}
-                    className="bg-white/[0.03] border-white/[0.06]"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-white/80">Platform</Label>
-                <Select value={selectedPlatform} onValueChange={setSelectedPlatform}>
-                  <SelectTrigger className="bg-white/[0.03] border-white/[0.06]">
-                    <SelectValue placeholder="Select platform..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PLATFORM_OPTIONS.map((p) => (
-                      <SelectItem key={p.value} value={p.value}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-white/80">Caption</Label>
-                <Textarea
-                  placeholder="Write your post caption..."
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  rows={3}
-                  className="bg-white/[0.03] border-white/[0.06] resize-none"
-                />
-              </div>
-            </div>
-            <DialogFooter>
+      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="glass-card p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-semibold">{monthLabel}</h2>
+            <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
-                onClick={() => setDialogOpen(false)}
-                className="text-white/60"
+                size="icon"
+                className="h-8 w-8 text-white/50"
+                onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1))}
               >
-                Cancel
+                <ChevronLeft className="h-4 w-4" />
               </Button>
               <Button
-                onClick={handleSchedule}
-                className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white"
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs text-white/50"
+                onClick={() => {
+                  setAnchor(new Date());
+                  setSelectedDay(new Date());
+                }}
               >
-                <Send className="mr-2 h-4 w-4" />
-                Schedule
+                Today
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { label: "Scheduled This Week", value: "0", icon: Calendar, color: "purple" },
-          { label: "Published", value: "0", icon: Send, color: "green" },
-          { label: "Drafts", value: "0", icon: FileText, color: "amber" },
-        ].map((stat) => (
-          <div key={stat.label} className="glass-card p-5 flex items-center gap-4">
-            <div
-              className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                stat.color === "purple"
-                  ? "bg-purple-500/20"
-                  : stat.color === "green"
-                    ? "bg-green-500/20"
-                    : "bg-amber-500/20"
-              }`}
-            >
-              <stat.icon
-                className={`h-6 w-6 ${
-                  stat.color === "purple"
-                    ? "text-purple-400"
-                    : stat.color === "green"
-                      ? "text-green-400"
-                      : "text-amber-400"
-                }`}
-              />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">{stat.value}</p>
-              <p className="text-sm text-white/50">{stat.label}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Calendar Week Header */}
-      <div className="glass-card p-4">
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => setWeekOffset((w) => w - 1)}
-            className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.06] text-white/60 hover:bg-white/[0.06] hover:text-white transition-colors"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <h3 className="text-lg font-semibold text-white">
-            {MONTH_NAMES[weekDays[0].getMonth()]} {weekDays[0].getFullYear()}
-          </h3>
-          <button
-            onClick={() => setWeekOffset((w) => w + 1)}
-            className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.06] text-white/60 hover:bg-white/[0.06] hover:text-white transition-colors"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-7 gap-2">
-          {weekDays.map((day, i) => (
-            <div
-              key={i}
-              className={`rounded-xl p-3 text-center transition-colors ${
-                isToday(day)
-                  ? "bg-purple-600/20 border border-purple-500/30"
-                  : "bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04]"
-              }`}
-            >
-              <p className="text-xs text-white/40 font-medium">{DAY_NAMES[i]}</p>
-              <p
-                className={`text-lg font-bold mt-1 ${
-                  isToday(day) ? "text-purple-300" : "text-white/80"
-                }`}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-white/50"
+                onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1))}
               >
-                {day.getDate()}
-              </p>
-              {isToday(day) && (
-                <Badge className="mt-1 bg-purple-500/30 text-purple-300 border-purple-500/40 text-[10px]">
-                  Today
-                </Badge>
-              )}
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Timeline / Empty State */}
-      <div className="glass-card p-12">
-        <div className="flex flex-col items-center justify-center text-center">
-          <div className="h-20 w-20 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
-            <Clock className="h-10 w-10 text-white/20" />
           </div>
-          <p className="text-lg font-medium text-white/60">No scheduled posts</p>
-          <p className="text-sm text-white/40 mt-1 max-w-sm">
-            Plan your content calendar! Click "Schedule New" to start organizing your posts across platforms.
-          </p>
-          <Button
-            onClick={() => setDialogOpen(true)}
-            className="mt-6 bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/25"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Schedule Your First Post
-          </Button>
+
+          <div className="grid grid-cols-7 gap-1">
+            {WEEKDAYS.map((d) => (
+              <div key={d} className="pb-2 text-center text-[11px] font-medium text-white/30">
+                {d}
+              </div>
+            ))}
+            {days.map((day) => {
+              const inMonth = day.getMonth() === anchor.getMonth();
+              const isToday = dayKey(day) === dayKey(today);
+              const isSelected = dayKey(day) === dayKey(selectedDay);
+              const dayPosts = postsByDay.get(dayKey(day)) ?? [];
+              return (
+                <button
+                  key={day.toISOString()}
+                  onClick={() => setSelectedDay(day)}
+                  className={cn(
+                    "flex aspect-square flex-col items-center justify-start rounded-lg border p-1 pt-1.5 transition-colors sm:aspect-[4/3]",
+                    isSelected
+                      ? "border-violet-500/60 bg-violet-600/10"
+                      : "border-transparent hover:bg-white/[0.04]",
+                    !inMonth && "opacity-30"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex h-6 w-6 items-center justify-center rounded-full text-xs",
+                      isToday ? "bg-violet-600 font-semibold text-white" : "text-white/60"
+                    )}
+                  >
+                    {day.getDate()}
+                  </span>
+                  {dayPosts.length > 0 && (
+                    <div className="mt-1 flex flex-wrap items-center justify-center gap-0.5">
+                      {dayPosts.slice(0, 4).map((post) => (
+                        <span
+                          key={post.id}
+                          className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[post.status])}
+                        />
+                      ))}
+                      {dayPosts.length > 4 && (
+                        <span className="text-[9px] text-white/40">+{dayPosts.length - 4}</span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/[0.06] pt-3 text-[11px] text-white/40">
+            {(["scheduled", "pending_approval", "posted", "failed"] as PostStatus[]).map((s) => (
+              <span key={s} className="flex items-center gap-1.5">
+                <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[s])} />
+                {STATUS_LABEL[s]}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Day detail */}
+        <div className="glass-card p-5">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+            <CalendarDays className="h-4 w-4 text-violet-300" />
+            {selectedDay.toLocaleDateString(undefined, {
+              weekday: "long",
+              month: "short",
+              day: "numeric",
+            })}
+          </h3>
+          {loading ? (
+            <div className="space-y-2">
+              {[0, 1].map((i) => (
+                <div key={i} className="h-16 animate-pulse rounded-xl bg-white/[0.04]" />
+              ))}
+            </div>
+          ) : selectedPosts.length === 0 ? (
+            <div className="py-10 text-center">
+              <Bot className="mx-auto mb-2 h-6 w-6 text-white/20" />
+              <p className="text-sm text-white/35">Nothing scheduled this day.</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {selectedPosts
+                .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime())
+                .map((post) => (
+                  <Link
+                    key={post.id}
+                    to="/posts"
+                    className="block rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]"
+                  >
+                    <div className="flex items-center gap-2 text-xs text-white/40">
+                      <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[post.status])} />
+                      {STATUS_LABEL[post.status]}
+                      <span className="ml-auto">
+                        {post.scheduledFor.toLocaleTimeString(undefined, {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 line-clamp-2 text-sm text-white/80">
+                      {post.content?.caption ?? post.brief}
+                    </p>
+                    <div className="mt-2 flex items-center gap-1.5 text-white/40">
+                      {post.platforms.map((p) => {
+                        const Icon = PLATFORM_ICONS[p];
+                        return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;
+                      })}
+                    </div>
+                  </Link>
+                ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -8,13 +8,6 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@shared": path.resolve(__dirname, "../../shared"),
-      // Force resolution from app node_modules when shared code imports these
-      "react": path.resolve(__dirname, "node_modules/react"),
-      "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
-      "class-variance-authority": path.resolve(__dirname, "node_modules/class-variance-authority"),
-      "@radix-ui/react-slot": path.resolve(__dirname, "node_modules/@radix-ui/react-slot"),
-      "clsx": path.resolve(__dirname, "node_modules/clsx"),
-      "tailwind-merge": path.resolve(__dirname, "node_modules/tailwind-merge"),
     },
   },
   server: { port: 5173, host: true },

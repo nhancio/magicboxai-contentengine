@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Check if the user is an admin
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+
+    // Admins can read/write everything
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Users can read/write their own data
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Influencers (Generated Avatars)
+    match /influencers/{id} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Photo Avatars
+    match /photoAvatars/{id} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Ads
+    match /ads/{id} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Videos
+    match /videos/{videoId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Subscriptions
+    match /subscriptions/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+
+    // API Logs (Admins only)
+    match /apiLogs/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // Social accounts (written by backend sync; users read their own)
+    match /socialAccounts/{id} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Brand profiles
+    match /brandProfiles/{id} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Automations — created/updated via callables; clients may read,
+    // pause/resume (status + updatedAt only), and delete their own
+    match /automations/{id} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['active', 'paused'];
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Posts — lifecycle state is driven by backend + callables; clients can
+    // read their own and create manual drafts, but not touch pipeline fields
+    match /posts/{id} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid
+        && request.resource.data.source == 'manual'
+        && request.resource.data.status in ['draft', 'scheduled', 'ready'];
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid
+        && resource.data.status in ['draft', 'failed', 'cancelled'];
+    }
+
+    // Public avatars and templates are readable by all authenticated users
+    match /avatars/{avatarId} {
+      allow read: if request.auth != null;
+    }
+
+    match /templates/{templateId} {
+      allow read: if request.auth != null;
+    }
+  }
+}

@@ -24,8 +24,8 @@ import {
 import { Button } from "@shared/components/ui/button";
 import { Badge } from "@shared/components/ui/badge";
 
-const APP_URL = "https://app.magicboxai.in";
-const LOGIN_URL = "https://app.magicboxai.in/login";
+const APP_URL = import.meta.env.DEV ? "http://localhost:5174" : "https://app.magicboxai.in";
+const LOGIN_URL = import.meta.env.DEV ? "http://localhost:5174/login" : "https://app.magicboxai.in/login";
 
 /* ───────────────────────── Data ───────────────────────── */
 

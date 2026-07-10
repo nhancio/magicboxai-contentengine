@@ -23,6 +23,22 @@ export interface AvatarSettings {
   style: string;
 }
 
+export interface PhotoAvatar {
+  id: string;
+  userId: string;
+  name: string;
+  photoUrls: string[];
+  photoStoragePaths?: string[];
+  description: string;
+  personality: string;
+  voiceTone: string;
+  videoUrl?: string;
+  previewStatus?: "pending" | "completed" | "failed";
+  previewError?: string;
+  status: "processing" | "ready" | "failed";
+  createdAt: Date;
+}
+
 export interface GeneratedAvatar {
   id: string;
   userId: string;
@@ -31,6 +47,18 @@ export interface GeneratedAvatar {
   imageUrl: string;
   settings: AvatarSettings;
   createdAt: Date;
+}
+
+export type SubscriptionPlan = "free" | "starter" | "pro";
+
+export interface UserSubscription {
+  plan: SubscriptionPlan;
+  videosUsed: number;
+  videosLimit: number;
+  status?: "inactive" | "active" | "past_due" | "cancelled";
+  razorpayOrderId?: string;
+  razorpaySubscriptionId?: string;
+  currentPeriodEnd?: Date;
 }
 
 export interface GeneratedAd {
@@ -57,10 +85,150 @@ export interface GeneratedVideo {
   cta: string;
   platform: string;
   tone: string;
-  videoUrl: string;
-  thumbnailUrl: string;
-  status: "generating" | "completed" | "failed";
+  productImageUrl?: string;
+  videoUrl?: string;
+  thumbnailUrl?: string;
+  renderProvider?: "veo" | "remotion";
+  errorMessage?: string;
+  previewVideoUrl?: string;
+  status: "queued" | "generating" | "completed" | "failed";
   createdAt: Date;
+}
+
+// --- Marketing Automation Suite ---
+
+export type SocialPlatform = "instagram" | "twitter" | "linkedin";
+
+export interface SocialAccount {
+  id: string;
+  userId: string;
+  provider: "postbridge";
+  pbAccountId: string;
+  platform: SocialPlatform;
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  status: "active" | "disconnected";
+  linkedAt: Date;
+  lastSyncedAt?: Date;
+}
+
+export interface BrandProfile {
+  id: string;
+  userId: string;
+  name: string;
+  logoUrl?: string;
+  colors?: { primary: string; secondary?: string; accent?: string };
+  industry: string;
+  toneOfVoice: string;
+  audience: string;
+  bannedTopics?: string[];
+  hashtagSets?: { default: string[] };
+  sampleCaptions?: string[];
+  websiteUrl?: string;
+  createdAt: Date;
+  updatedAt?: Date;
+}
+
+export type AutomationStatus = "active" | "paused" | "draft" | "error";
+export type ContentPreset = "announcement" | "educational" | "promo" | "story" | "custom";
+
+export interface AutomationSchedule {
+  type: "recurring" | "once";
+  /** cron expression evaluated in `timezone`, e.g. "0 7 * * *" */
+  cron?: string;
+  /** "HH:mm" local time */
+  time: string;
+  /** 0 = Sunday ... 6 = Saturday; omitted = every day */
+  daysOfWeek?: number[];
+  /** IANA timezone, e.g. "Asia/Kolkata" */
+  timezone: string;
+  startAt?: Date;
+  endAt?: Date;
+}
+
+export interface Automation {
+  id: string;
+  userId: string;
+  brandProfileId?: string;
+  name: string;
+  status: AutomationStatus;
+  /** the user prompt / content brief driving generation */
+  brief: string;
+  platforms: SocialPlatform[];
+  socialAccountIds: string[];
+  contentTypes: { text: boolean; image: boolean; video: boolean };
+  preset: ContentPreset;
+  tone: string;
+  schedule: AutomationSchedule;
+  /** precomputed next fire time (UTC) — scheduler queries this */
+  nextRunAt: Date;
+  lastRunAt?: Date;
+  runCount: number;
+  failureCount: number;
+  lastError?: string;
+  /** how far ahead of scheduledFor content generation starts */
+  generateLeadMinutes: number;
+  requiresApproval: boolean;
+  createdAt: Date;
+  updatedAt?: Date;
+}
+
+export type PostStatus =
+  | "draft"
+  | "pending_approval"
+  | "scheduled"
+  | "generating"
+  | "ready"
+  | "posting"
+  | "posted"
+  | "failed"
+  | "cancelled";
+
+export interface PostMedia {
+  type: "image" | "video";
+  storagePath?: string;
+  url: string;
+  pbMediaId?: string;
+  source: "imagen" | "veo" | "remotion" | "upload";
+}
+
+export interface PostPlatformResult {
+  platform: SocialPlatform;
+  pbAccountId?: string;
+  status: "pending" | "posted" | "failed";
+  permalink?: string;
+  error?: string;
+}
+
+export interface Post {
+  id: string;
+  userId: string;
+  automationId?: string;
+  brandProfileId?: string;
+  source: "automation" | "manual";
+  scheduledFor: Date;
+  timezone: string;
+  status: PostStatus;
+  brief: string;
+  content?: {
+    caption: string;
+    hashtags: string[];
+    perPlatform?: Partial<Record<SocialPlatform, { caption: string }>>;
+  };
+  media?: PostMedia[];
+  platforms: SocialPlatform[];
+  socialAccountIds: string[];
+  pb?: { postId?: string; dryRun: boolean; submittedAt?: Date };
+  results?: PostPlatformResult[];
+  attempts: number;
+  maxAttempts: number;
+  nextAttemptAt?: Date;
+  error?: string;
+  /** `${automationId}_${slotISO}` — also used as the Firestore doc ID */
+  idempotencyKey?: string;
+  createdAt: Date;
+  updatedAt?: Date;
 }
 
 export interface ApiLogEntry {

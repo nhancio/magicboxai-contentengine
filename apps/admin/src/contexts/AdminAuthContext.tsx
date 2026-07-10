@@ -1,46 +1,103 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut, type User } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { auth, db, functions, googleProvider } from "@shared/lib/firebase";
 
 interface AdminAuthContextValue {
   isAuthenticated: boolean;
-  login: (username: string, password: string) => boolean;
+  isAdmin: boolean;
+  user: User | null;
+  loading: boolean;
+  login: () => Promise<void>;
   logout: () => void;
 }
 
 const AdminAuthContext = createContext<AdminAuthContextValue | null>(null);
 
-const STORAGE_KEY = "magicbox_admin_auth";
-const VALID_USERNAME = "admin123";
-const VALID_PASSWORD = "admin123";
-
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  const login = useCallback((username: string, password: string): boolean => {
-    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
-      setIsAuthenticated(true);
-      try {
-        localStorage.setItem(STORAGE_KEY, "true");
-      } catch {}
-      return true;
+  useEffect(() => {
+    if (!auth) {
+      setLoading(false);
+      return;
     }
-    return false;
+
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+
+      if (firebaseUser) {
+        try {
+          // Method 1: Check Firebase custom claims (secure, server-set)
+          const tokenResult = await firebaseUser.getIdTokenResult(true);
+          if (tokenResult.claims.admin === true) {
+            setIsAdmin(true);
+            setLoading(false);
+            return;
+          }
+
+          // Method 2: Verify via Cloud Function (checks claims + Firestore)
+          if (functions) {
+            try {
+              const verifyFn = httpsCallable<void, { isAdmin: boolean }>(
+                functions,
+                "verifyAdminStatus"
+              );
+              const result = await verifyFn();
+              if (result.data.isAdmin) {
+                // Force token refresh to get updated claims
+                await firebaseUser.getIdToken(true);
+                setIsAdmin(true);
+                setLoading(false);
+                return;
+              }
+            } catch {
+              // Cloud function may not be deployed yet, fall through to Firestore check
+            }
+          }
+
+          // Method 3: Fallback to Firestore admins collection
+          if (db) {
+            const adminDoc = await getDoc(doc(db, "admins", firebaseUser.email || ""));
+            setIsAdmin(adminDoc.exists());
+          } else {
+            setIsAdmin(false);
+          }
+        } catch (err) {
+          console.error("Error checking admin status:", err);
+          setIsAdmin(false);
+        }
+      } else {
+        setIsAdmin(false);
+      }
+
+      setLoading(false);
+    });
+
+    return unsubscribe;
   }, []);
 
-  const logout = useCallback(() => {
-    setIsAuthenticated(false);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {}
-  }, []);
+  const login = async () => {
+    if (!auth || !googleProvider) throw new Error("Firebase not initialized");
+    await signInWithPopup(auth, googleProvider);
+  };
+
+  const logout = () => {
+    if (auth) firebaseSignOut(auth);
+  };
 
   return (
-    <AdminAuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AdminAuthContext.Provider value={{
+      isAuthenticated: !!user && isAdmin,
+      isAdmin,
+      user,
+      loading,
+      login,
+      logout
+    }}>
       {children}
     </AdminAuthContext.Provider>
   );

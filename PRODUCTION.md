@@ -175,7 +175,7 @@ VITE_FIREBASE_PROJECT_ID=your-project-id
 VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
 VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
-VITE_GEMINI_API_KEY=your_gemini_api_key
+# VITE_GEMINI_API_KEY is NO LONGER NEEDED on the frontend (moved to Cloud Functions)
 ```
 
 ### Cloud Functions (functions/.env)
@@ -190,7 +190,7 @@ GEMINI_API_KEY=your_gemini_api_key
 ### Install dependencies
 ```bash
 cd functions
-npm install @google/generative-ai firebase-admin firebase-functions
+npm install @google/genai firebase-admin firebase-functions uuid
 ```
 
 ### Deploy
@@ -198,11 +198,11 @@ npm install @google/generative-ai firebase-admin firebase-functions
 firebase deploy --only functions
 ```
 
-### Key Functions to Deploy
-- `generateScript` - Gemini-powered script generation
-- `optimizeHook` - Hook line optimization
-- `generateCaptions` - Video caption generation
-- `generateVideo` - Video rendering orchestration (future)
+### Key Functions Deployed
+- `generateScript` - Gemini-powered script generation (protected)
+- `generateImage` - Imagen 3 powered image generation
+- `analyzeImage` - Gemini 1.5/2.0 powered image analysis
+- `generateUGCVideo` - Veo 3.1 powered video generation
 
 ---
 

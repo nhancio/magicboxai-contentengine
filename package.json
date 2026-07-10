@@ -1,0 +1,14 @@
+{
+  "name": "magicboxai",
+  "private": true,
+  "scripts": {
+    "build:landing": "npm run build --workspace=apps/landing",
+    "build:web": "npm run build --workspace=apps/web",
+    "build:admin": "npm run build --workspace=apps/admin",
+    "build:hosting": "npm run build:landing && npm run build:web && npm run build:admin"
+  },
+  "workspaces": [
+    "apps/*",
+    "functions"
+  ]
+}

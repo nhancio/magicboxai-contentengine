@@ -1,357 +1,303 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@shared/lib/auth";
+import type { Post, PostStatus, SocialPlatform } from "@shared/types";
+import { getPosts } from "@shared/lib/automations";
 import {
-  getInfluencers,
-  getAds,
-  deleteInfluencer,
-  deleteAd,
-  type InfluencerRecord,
-  type AdRecord,
-} from "@shared/lib/firestore";
+  approvePost,
+  retryPost,
+  cancelPost,
+  regeneratePostContent,
+} from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
-import { Input } from "@shared/components/ui/input";
-import { Badge } from "@shared/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@shared/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@shared/components/ui/tabs";
+import { cn } from "@shared/lib/utils";
+import PlatformPreview from "../components/previews/PlatformPreview";
 import {
-  FolderOpen,
-  Search,
-  Trash2,
-  Wand2,
-  Megaphone,
-  User,
-  Image,
-  Calendar,
+  Bot,
+  Check,
+  ExternalLink,
+  Instagram,
+  Linkedin,
   Loader2,
-  Sparkles,
+  RefreshCw,
+  RotateCcw,
+  Twitter,
+  X,
 } from "lucide-react";
+
+const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
+  instagram: Instagram,
+  twitter: Twitter,
+  linkedin: Linkedin,
+};
+
+const STATUS_META: Record<PostStatus, { label: string; dot: string }> = {
+  draft: { label: "Draft", dot: "bg-white/30" },
+  pending_approval: { label: "Awaiting approval", dot: "bg-amber-400" },
+  scheduled: { label: "Scheduled", dot: "bg-sky-400" },
+  generating: { label: "Generating", dot: "bg-violet-400" },
+  ready: { label: "Ready to publish", dot: "bg-violet-300" },
+  posting: { label: "Publishing", dot: "bg-violet-400" },
+  posted: { label: "Published", dot: "bg-emerald-400" },
+  failed: { label: "Failed", dot: "bg-rose-400" },
+  cancelled: { label: "Cancelled", dot: "bg-white/20" },
+};
+
+type Tab = "all" | "queue" | "approval" | "published" | "failed";
+
+const TAB_FILTERS: Record<Tab, (p: Post) => boolean> = {
+  all: () => true,
+  queue: (p) => ["scheduled", "generating", "ready", "posting"].includes(p.status),
+  approval: (p) => p.status === "pending_approval",
+  published: (p) => p.status === "posted",
+  failed: (p) => p.status === "failed",
+};
 
 export default function Library() {
   const { user } = useAuth();
-  const [influencers, setInfluencers] = useState<InfluencerRecord[]>([]);
-  const [ads, setAds] = useState<AdRecord[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("all");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const refresh = async () => {
+    if (!user) return;
+    const list = await getPosts(user.uid, 200);
+    setPosts(list);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    if (!user?.uid) return;
-    setLoading(true);
-    Promise.all([getInfluencers(user.uid), getAds(user.uid)])
-      .then(([inf, adList]) => {
-        setInfluencers(inf);
-        setAds(adList);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [user?.uid]);
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
-  const handleDeleteInfluencer = async (id: string) => {
-    setDeletingId(id);
+  const filtered = useMemo(() => posts.filter(TAB_FILTERS[tab]), [posts, tab]);
+  const approvalCount = posts.filter(TAB_FILTERS.approval).length;
+
+  const act = async (
+    postId: string,
+    fn: (args: { postId: string }) => Promise<unknown>,
+    success: string
+  ) => {
+    setBusy(postId);
     try {
-      await deleteInfluencer(id);
-      setInfluencers((prev) => prev.filter((i) => i.id !== id));
-      toast.success("Avatar deleted");
-    } catch {
-      toast.error("Failed to delete avatar");
+      await fn({ postId });
+      toast.success(success);
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Action failed");
     } finally {
-      setDeletingId(null);
+      setBusy(null);
     }
   };
-
-  const handleDeleteAd = async (id: string) => {
-    setDeletingId(id);
-    try {
-      await deleteAd(id);
-      setAds((prev) => prev.filter((a) => a.id !== id));
-      toast.success("Ad deleted");
-    } catch {
-      toast.error("Failed to delete ad");
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const filteredInfluencers = influencers.filter((i) =>
-    i.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const filteredAds = ads.filter((a) =>
-    a.productName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const formatDate = (timestamp: unknown) => {
-    if (!timestamp) return "Unknown date";
-    const ts = timestamp as { toDate?: () => Date };
-    if (ts.toDate) return ts.toDate().toLocaleDateString();
-    return new Date(timestamp as string).toLocaleDateString();
-  };
-
-  const EmptyState = ({ message, sub }: { message: string; sub: string }) => (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="h-20 w-20 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
-        <FolderOpen className="h-10 w-10 text-white/20" />
-      </div>
-      <p className="text-lg font-medium text-white/60">{message}</p>
-      <p className="text-sm text-white/40 mt-1">{sub}</p>
-    </div>
-  );
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/25">
-            <FolderOpen className="h-5 w-5 text-white" />
-          </div>
-          <span className="text-gradient">Content Library</span>
-        </h2>
-        <p className="mt-2 text-white/60">
-          Browse and manage all your saved avatars and ads in one place.
-        </p>
-      </div>
-
-      {/* Search */}
-      <div className="glass-card p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-          <Input
-            placeholder="Search your library..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-white/[0.03] border-white/[0.06]"
-          />
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Posts</h1>
+          <p className="mt-1 text-sm text-white/40">
+            Everything your automations have written, are writing, and have published.
+          </p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => refresh()}
+          className="border-white/10 bg-white/[0.04]"
+        >
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Refresh
+        </Button>
       </div>
 
-      {/* Loading */}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="mb-5">
+        <TabsList className="bg-white/[0.04]">
+          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="queue">Queue</TabsTrigger>
+          <TabsTrigger value="approval">
+            Approval
+            {approvalCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-amber-500/20 px-1.5 text-[10px] text-amber-300">
+                {approvalCount}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="published">Published</TabsTrigger>
+          <TabsTrigger value="failed">Failed</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
+        <div className="space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="glass-card h-28 animate-pulse" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="glass-card flex flex-col items-center gap-3 py-16 text-center">
+          <Bot className="h-8 w-8 text-white/20" />
+          <p className="text-sm text-white/40">
+            {tab === "all"
+              ? "No posts yet — launch an automation and they'll appear here."
+              : "Nothing here right now."}
+          </p>
+          {tab === "all" && (
+            <Button asChild size="sm" className="bg-violet-600 hover:bg-violet-500">
+              <Link to="/automations/new">Create automation</Link>
+            </Button>
+          )}
         </div>
       ) : (
-        <Tabs defaultValue="avatars" className="space-y-6">
-          <TabsList className="bg-white/[0.03] border border-white/[0.06]">
-            <TabsTrigger value="avatars" className="data-[state=active]:bg-purple-600/20 data-[state=active]:text-purple-300">
-              <User className="mr-2 h-4 w-4" />
-              Avatars ({filteredInfluencers.length})
-            </TabsTrigger>
-            <TabsTrigger value="ads" className="data-[state=active]:bg-purple-600/20 data-[state=active]:text-purple-300">
-              <Megaphone className="mr-2 h-4 w-4" />
-              Ads ({filteredAds.length})
-            </TabsTrigger>
-            <TabsTrigger value="all" className="data-[state=active]:bg-purple-600/20 data-[state=active]:text-purple-300">
-              <FolderOpen className="mr-2 h-4 w-4" />
-              All ({filteredInfluencers.length + filteredAds.length})
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Avatars Tab */}
-          <TabsContent value="avatars">
-            {filteredInfluencers.length === 0 ? (
-              <EmptyState
-                message="No avatars yet"
-                sub="Create your first avatar in the Avatar Builder!"
-              />
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredInfluencers.map((inf) => (
-                  <div key={inf.id} className="glass-card overflow-hidden group">
-                    {/* Gradient placeholder image */}
-                    <div className="aspect-[4/3] bg-gradient-to-br from-purple-600/30 via-indigo-600/20 to-violet-600/30 flex items-center justify-center relative">
-                      {inf.imageUrl ? (
-                        <img
-                          src={inf.imageUrl}
-                          alt={inf.name}
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                      ) : (
-                        <User className="h-16 w-16 text-white/20" />
+        <div className="space-y-3">
+          {filtered.map((post) => {
+            const status = STATUS_META[post.status];
+            const isExpanded = expanded === post.id;
+            const permalink = post.results?.find((r) => r.permalink)?.permalink;
+            return (
+              <div key={post.id} className="glass-card p-5">
+                <div className="flex items-start gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-xs text-white/40">
+                      <span className={cn("h-1.5 w-1.5 rounded-full", status.dot)} />
+                      {status.label}
+                      <span>·</span>
+                      <span>
+                        {post.scheduledFor.toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <span className="flex items-center gap-1 pl-1">
+                        {post.platforms.map((p) => {
+                          const Icon = PLATFORM_ICONS[p];
+                          return Icon ? <Icon key={p} className="h-3 w-3" /> : null;
+                        })}
+                      </span>
+                      {post.source === "automation" && post.automationId && (
+                        <Link
+                          to={`/automations/${post.automationId}`}
+                          className="text-violet-300/70 hover:text-violet-300"
+                        >
+                          automation
+                        </Link>
                       )}
                     </div>
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="font-semibold text-white">{inf.name}</h4>
-                          <div className="flex items-center gap-1.5 mt-1 text-xs text-white/40">
-                            <Calendar className="h-3 w-3" />
-                            {formatDate(inf.createdAt)}
-                          </div>
-                        </div>
-                        <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-xs">
-                          Avatar
-                        </Badge>
-                      </div>
-
-                      {/* Settings summary */}
-                      {inf.settings && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {Object.entries(inf.settings).slice(0, 3).map(([key, val]) => (
-                            <span
-                              key={key}
-                              className="text-xs bg-white/[0.05] text-white/50 rounded-full px-2 py-0.5"
-                            >
-                              {val}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-2 pt-1">
-                        <Button
-                          size="sm"
-                          className="flex-1 bg-purple-600/20 text-purple-300 border border-purple-500/20 hover:bg-purple-600/30"
-                        >
-                          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                          Use in Studio
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => inf.id && handleDeleteInfluencer(inf.id)}
-                          disabled={deletingId === inf.id}
-                          className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
+                    <button
+                      onClick={() => setExpanded(isExpanded ? null : post.id)}
+                      className="mt-2 block w-full text-left"
+                    >
+                      <p
+                        className={cn(
+                          "whitespace-pre-line text-sm text-white/85",
+                          !isExpanded && "line-clamp-2"
+                        )}
+                      >
+                        {post.content?.caption ?? post.brief}
+                      </p>
+                    </button>
+                    {post.status === "failed" && post.error && (
+                      <p className="mt-2 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300/90">
+                        {post.error}
+                      </p>
+                    )}
                   </div>
-                ))}
+                  {post.media?.[0]?.type === "image" && (
+                    <img
+                      src={post.media[0].url}
+                      alt=""
+                      className="h-16 w-16 shrink-0 rounded-lg border border-white/10 object-cover"
+                    />
+                  )}
+                </div>
+
+                {isExpanded && post.content?.caption && (
+                  <div className="mt-4 flex justify-center border-t border-white/[0.06] pt-4">
+                    <PlatformPreview
+                      platform={post.platforms[0] ?? "instagram"}
+                      content={{
+                        caption:
+                          post.content.perPlatform?.[post.platforms[0]]?.caption ??
+                          post.content.caption,
+                        hashtags: post.content.hashtags,
+                        imageUrl: post.media?.find((m) => m.type === "image")?.url,
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* actions */}
+                <div className="mt-3 flex items-center gap-2">
+                  {post.status === "pending_approval" && (
+                    <>
+                      <Button
+                        size="sm"
+                        disabled={busy === post.id}
+                        onClick={() => act(post.id, approvePost, "Post approved — publishing at its slot")}
+                        className="bg-emerald-600 hover:bg-emerald-500"
+                      >
+                        {busy === post.id ? (
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Check className="mr-1.5 h-3.5 w-3.5" />
+                        )}
+                        Approve
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy === post.id}
+                        onClick={() => act(post.id, regeneratePostContent, "Rewritten — take a look")}
+                        className="border-white/10 bg-white/[0.04]"
+                      >
+                        <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Rewrite
+                      </Button>
+                    </>
+                  )}
+                  {post.status === "failed" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy === post.id}
+                      onClick={() => act(post.id, retryPost, "Retrying")}
+                      className="border-white/10 bg-white/[0.04]"
+                    >
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Retry
+                    </Button>
+                  )}
+                  {["draft", "pending_approval", "scheduled", "ready", "generating", "failed"].includes(
+                    post.status
+                  ) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy === post.id}
+                      onClick={() => act(post.id, cancelPost, "Post cancelled")}
+                      className="text-white/40 hover:text-rose-300"
+                    >
+                      <X className="mr-1 h-3.5 w-3.5" /> Cancel
+                    </Button>
+                  )}
+                  {permalink && (
+                    <a
+                      href={permalink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-auto flex items-center gap-1 text-xs text-violet-300/80 hover:text-violet-300"
+                    >
+                      View live <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
               </div>
-            )}
-          </TabsContent>
-
-          {/* Ads Tab */}
-          <TabsContent value="ads">
-            {filteredAds.length === 0 ? (
-              <EmptyState
-                message="No ads yet"
-                sub="Head to the Ad Generator to create your first ad!"
-              />
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredAds.map((ad) => (
-                  <div key={ad.id} className="glass-card overflow-hidden group">
-                    <div className="aspect-video bg-gradient-to-br from-indigo-600/20 via-purple-600/20 to-pink-600/20 flex items-center justify-center relative">
-                      {ad.imageUrl ? (
-                        <img
-                          src={ad.imageUrl}
-                          alt={ad.productName}
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Image className="h-12 w-12 text-white/20" />
-                      )}
-                    </div>
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="font-semibold text-white">{ad.productName}</h4>
-                          <div className="flex items-center gap-1.5 mt-1 text-xs text-white/40">
-                            <Calendar className="h-3 w-3" />
-                            {formatDate(ad.createdAt)}
-                          </div>
-                        </div>
-                        <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/30 text-xs capitalize">
-                          {ad.platform}
-                        </Badge>
-                      </div>
-
-                      {ad.adCopy && (
-                        <p className="text-sm text-white/50 line-clamp-2">{ad.adCopy}</p>
-                      )}
-
-                      <div className="flex items-center gap-2 pt-1">
-                        <Button
-                          size="sm"
-                          className="flex-1 bg-indigo-600/20 text-indigo-300 border border-indigo-500/20 hover:bg-indigo-600/30"
-                        >
-                          <Wand2 className="mr-1.5 h-3.5 w-3.5" />
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => ad.id && handleDeleteAd(ad.id)}
-                          disabled={deletingId === ad.id}
-                          className="text-red-400/60 hover:text-red-400 hover:bg-red-500/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          {/* All Tab */}
-          <TabsContent value="all">
-            {filteredInfluencers.length === 0 && filteredAds.length === 0 ? (
-              <EmptyState
-                message="No items yet"
-                sub="Create your first avatar or ad to get started!"
-              />
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Avatars */}
-                {filteredInfluencers.map((inf) => (
-                  <div key={`avatar-${inf.id}`} className="glass-card overflow-hidden">
-                    <div className="aspect-[4/3] bg-gradient-to-br from-purple-600/30 via-indigo-600/20 to-violet-600/30 flex items-center justify-center relative">
-                      {inf.imageUrl ? (
-                        <img
-                          src={inf.imageUrl}
-                          alt={inf.name}
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                      ) : (
-                        <User className="h-16 w-16 text-white/20" />
-                      )}
-                    </div>
-                    <div className="p-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-semibold text-white">{inf.name}</h4>
-                        <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-xs">
-                          Avatar
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-white/40 mt-1">{formatDate(inf.createdAt)}</p>
-                    </div>
-                  </div>
-                ))}
-                {/* Ads */}
-                {filteredAds.map((ad) => (
-                  <div key={`ad-${ad.id}`} className="glass-card overflow-hidden">
-                    <div className="aspect-video bg-gradient-to-br from-indigo-600/20 via-purple-600/20 to-pink-600/20 flex items-center justify-center relative">
-                      {ad.imageUrl ? (
-                        <img
-                          src={ad.imageUrl}
-                          alt={ad.productName}
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Image className="h-12 w-12 text-white/20" />
-                      )}
-                    </div>
-                    <div className="p-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-semibold text-white">{ad.productName}</h4>
-                        <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/30 text-xs capitalize">
-                          {ad.platform}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-white/40 mt-1">{formatDate(ad.createdAt)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+            );
+          })}
+        </div>
       )}
     </div>
   );

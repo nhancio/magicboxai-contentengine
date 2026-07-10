@@ -1,15 +1,8 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
-
-let genAI: GoogleGenerativeAI | null = null;
-
-if (apiKey) {
-  genAI = new GoogleGenerativeAI(apiKey);
-}
+import { httpsCallable } from "firebase/functions";
+import { functions } from "./firebase";
 
 // ─── System Prompts ───────────────────────────────────────────
-
+// Kept here for reference if needed, but mostly moved to Cloud Functions
 export const SYSTEM_PROMPTS = {
   scriptGenerator: `You are a viral video script writer for UGC (User-Generated Content) style short-form videos.
 
@@ -94,7 +87,136 @@ Rules for post captions:
 - End with a question or CTA to drive comments`,
 } as const;
 
-// ─── Gemini API Functions ─────────────────────────────────────
+// ─── Helper: Convert File to base64 string ────────────────────
+
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Could not get canvas context"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        // Compress as JPEG to ensure small payload size
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+        const base64 = dataUrl.split(",")[1];
+        resolve(base64);
+      };
+      img.onerror = reject;
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ─── Cloud Function Callers ───────────────────────────────────
+
+export async function analyzeProductPhoto(file: File): Promise<string> {
+  if (!functions) {
+    throw new Error("Firebase functions not initialized");
+  }
+
+  const base64 = await fileToBase64(file);
+  const analyzeImageFn = httpsCallable<{ imageBase64: string; prompt: string; mimeType: string }, { text: string }>(functions, "analyzeImage");
+
+  const result = await analyzeImageFn({
+    imageBase64: base64,
+    mimeType: file.type,
+    prompt: "Analyze this product photo in detail. Describe: 1) What the product is, 2) Its key visual features, 3) The quality and design, 4) Who the target audience might be, 5) Key selling points based on appearance. Be specific and detailed. This will be used to generate a UGC video script about this product.",
+  });
+
+  return result.data.text;
+}
+
+export async function analyzeAvatarPhotos(files: File[]): Promise<{ description: string; personality: string; voiceTone: string }> {
+  if (!functions) {
+    throw new Error("Firebase functions not initialized");
+  }
+
+  const analyzeAvatarPhotosFn = httpsCallable<
+    {
+      images: Array<{ imageBase64: string; mimeType: string }>;
+    },
+    { text: string }
+  >(functions, "analyzeAvatarPhotos");
+
+  const images = await Promise.all(
+    files.slice(0, 10).map(async (file) => ({
+      imageBase64: await fileToBase64(file),
+      mimeType: file.type,
+    }))
+  );
+
+  const result = await analyzeAvatarPhotosFn({
+    images,
+  });
+
+  const text = result.data.text;
+  const descMatch = text.match(/DESCRIPTION:\s*(.+?)(?=\nPERSONALITY:)/s);
+  const persMatch = text.match(/PERSONALITY:\s*(.+?)(?=\nVOICE_TONE:)/s);
+  const voiceMatch = text.match(/VOICE_TONE:\s*(.+?)$/s);
+
+  return {
+    description: descMatch?.[1]?.trim() || "A natural content creator with authentic presence.",
+    personality: persMatch?.[1]?.trim() || "Content Creator",
+    voiceTone: voiceMatch?.[1]?.trim() || "Warm and conversational",
+  };
+}
+
+export async function analyzeAvatarPhotosFromStorage(
+  storagePaths: string[]
+): Promise<{ description: string; personality: string; voiceTone: string }> {
+  if (!functions) {
+    throw new Error("Firebase functions not initialized");
+  }
+
+  const analyzeAvatarPhotosFn = httpsCallable<
+    {
+      storagePaths: string[];
+    },
+    { text: string }
+  >(functions, "analyzeAvatarPhotos");
+
+  const result = await analyzeAvatarPhotosFn({
+    storagePaths: storagePaths.slice(0, 10),
+  });
+
+  const text = result.data.text;
+  const descMatch = text.match(/DESCRIPTION:\s*(.+?)(?=\nPERSONALITY:)/s);
+  const persMatch = text.match(/PERSONALITY:\s*(.+?)(?=\nVOICE_TONE:)/s);
+  const voiceMatch = text.match(/VOICE_TONE:\s*(.+?)$/s);
+
+  return {
+    description: descMatch?.[1]?.trim() || "A natural content creator with authentic presence.",
+    personality: persMatch?.[1]?.trim() || "Content Creator",
+    voiceTone: voiceMatch?.[1]?.trim() || "Warm and conversational",
+  };
+}
 
 export async function generateScript(params: {
   productName: string;
@@ -103,23 +225,26 @@ export async function generateScript(params: {
   avatarPersonality: string;
   tone: string;
   platform: string;
+  productPhotoAnalysis?: string;
 }): Promise<{
   hook: string;
   script: string;
   cta: string;
   captions: string[];
 }> {
-  if (!genAI) {
-    return getMockScript(params);
+  if (!functions) {
+    throw new Error("Firebase functions not initialized");
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const generateScriptFn = httpsCallable<{ prompt: string; systemInstruction: string }, { text: string }>(functions, "generateScript");
 
-  const prompt = `${SYSTEM_PROMPTS.scriptGenerator}
+  const photoContext = params.productPhotoAnalysis
+    ? `\n- Product Photo Analysis: ${params.productPhotoAnalysis}`
+    : "";
 
-Generate a viral UGC video script with these details:
+  const prompt = `Generate a viral UGC video script with these details:
 - Product: ${params.productName}
-- Description: ${params.productDescription}
+- Description: ${params.productDescription}${photoContext}
 - Template Style: ${params.templateName}
 - Avatar Personality: ${params.avatarPersonality}
 - Tone: ${params.tone}
@@ -127,10 +252,12 @@ Generate a viral UGC video script with these details:
 
 Write the script now:`;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
+  const result = await generateScriptFn({
+    prompt,
+    systemInstruction: SYSTEM_PROMPTS.scriptGenerator,
+  });
 
-  return parseScriptResponse(text);
+  return parseScriptResponse(result.data.text);
 }
 
 export async function generateHooks(params: {
@@ -138,29 +265,24 @@ export async function generateHooks(params: {
   productDescription: string;
   tone: string;
 }): Promise<string[]> {
-  if (!genAI) {
-    return [
-      `Stop scrolling — ${params.productName} changed everything`,
-      `POV: You finally found the perfect ${params.productName}`,
-      `Nobody told me about ${params.productName} until now`,
-      `I was today years old when I discovered ${params.productName}`,
-      `The ${params.productName} hack that broke the internet`,
-    ];
+  if (!functions) {
+    throw new Error("Firebase functions not initialized");
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const generateScriptFn = httpsCallable<{ prompt: string; systemInstruction: string }, { text: string }>(functions, "generateScript");
 
-  const prompt = `${SYSTEM_PROMPTS.hookGenerator}
-
-Product: ${params.productName}
+  const prompt = `Product: ${params.productName}
 Description: ${params.productDescription}
 Tone: ${params.tone}
 
 Generate 5 hooks now:`;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
+  const result = await generateScriptFn({
+    prompt,
+    systemInstruction: SYSTEM_PROMPTS.hookGenerator,
+  });
 
+  const text = result.data.text;
   return text
     .split("\n")
     .filter((line) => line.match(/^\d/))
@@ -177,24 +299,13 @@ export async function generateCaptions(params: {
   postCaption: string;
   hashtags: string[];
 }> {
-  if (!genAI) {
-    return {
-      onScreenCaptions: [
-        "Wait for it...",
-        `This ${params.productName} is INSANE`,
-        "The results speak for themselves",
-        "Link in bio",
-      ],
-      postCaption: `Just discovered ${params.productName} and I'm obsessed. Have you tried it yet? 👇`,
-      hashtags: ["#ugc", "#viral", "#fyp", "#trending", "#review"],
-    };
+  if (!functions) {
+    throw new Error("Firebase functions not initialized");
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const generateScriptFn = httpsCallable<{ prompt: string; systemInstruction: string }, { text: string }>(functions, "generateScript");
 
-  const prompt = `${SYSTEM_PROMPTS.captionGenerator}
-
-Script: ${params.script}
+  const prompt = `Script: ${params.script}
 Platform: ${params.platform}
 Product: ${params.productName}
 
@@ -206,10 +317,12 @@ POST_CAPTION:
 HASHTAGS:
 [space-separated hashtags]`;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
+  const result = await generateScriptFn({
+    prompt,
+    systemInstruction: SYSTEM_PROMPTS.captionGenerator,
+  });
 
-  return parseCaptionResponse(text);
+  return parseCaptionResponse(result.data.text);
 }
 
 export async function rewriteAsUGC(params: {
@@ -217,15 +330,13 @@ export async function rewriteAsUGC(params: {
   avatarPersonality: string;
   tone: string;
 }): Promise<string> {
-  if (!genAI) {
-    return `Okay so I literally just tried this and I'm shook. ${params.text} — like seriously, where has this been all my life? You NEED to try this.`;
+  if (!functions) {
+    throw new Error("Firebase functions not initialized");
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const generateScriptFn = httpsCallable<{ prompt: string; systemInstruction: string }, { text: string }>(functions, "generateScript");
 
-  const prompt = `${SYSTEM_PROMPTS.ugcToneGenerator}
-
-Rewrite this in UGC style:
+  const prompt = `Rewrite this in UGC style:
 "${params.text}"
 
 Avatar personality: ${params.avatarPersonality}
@@ -233,8 +344,162 @@ Tone: ${params.tone}
 
 Rewrite now (just the rewritten text, no explanation):`;
 
-  const result = await model.generateContent(prompt);
-  return result.response.text().trim();
+  const result = await generateScriptFn({
+    prompt,
+    systemInstruction: SYSTEM_PROMPTS.ugcToneGenerator,
+  });
+
+  return result.data.text.trim();
+}
+
+export type MarketingAssetType = "image" | "video" | "carousel" | "campaign";
+
+export interface MarketingCampaignParams {
+  brandName: string;
+  productName: string;
+  audience: string;
+  offer: string;
+  goal: string;
+  platform: string;
+  tone: string;
+  assetType: MarketingAssetType;
+  templateName: string;
+  notes?: string;
+}
+
+export interface CarouselSlide {
+  title: string;
+  body: string;
+  visual: string;
+}
+
+export interface MarketingCampaignResult {
+  headline: string;
+  primaryCopy: string;
+  imagePrompt: string;
+  videoScript: string;
+  carouselSlides: CarouselSlide[];
+  captions: string[];
+  hashtags: string[];
+  creativeDirection: string;
+}
+
+const MARKETING_SYSTEM_PROMPT = `You are Magicbox AI, a senior performance creative strategist.
+
+Create practical marketing assets for founders, creators, and small teams. Output must be clear enough to paste into a designer, video editor, ad manager, or image generation tool.
+
+Rules:
+- Use concise, conversion-focused language.
+- Match the selected platform and tone.
+- Include image, video, and carousel guidance when relevant.
+- Avoid vague hype and generic filler.
+- Return only valid JSON with this exact shape:
+{
+  "headline": "string",
+  "primaryCopy": "string",
+  "imagePrompt": "string",
+  "videoScript": "string",
+  "carouselSlides": [{"title": "string", "body": "string", "visual": "string"}],
+  "captions": ["string"],
+  "hashtags": ["string"],
+  "creativeDirection": "string"
+}`;
+
+const fallbackMarketingResult = (params: MarketingCampaignParams): MarketingCampaignResult => ({
+  headline: `${params.productName} for ${params.audience}`,
+  primaryCopy: `${params.productName} helps ${params.audience} move faster with ${params.offer}. Built for ${params.goal.toLowerCase()}.`,
+  imagePrompt: `Create a clean ${params.platform} marketing visual for ${params.productName}. Show the product benefit clearly, use ${params.tone.toLowerCase()} styling, add space for a bold headline, and make the offer "${params.offer}" easy to understand.`,
+  videoScript: `HOOK: ${params.audience}, this is for you.\nSCENE: Show the problem and introduce ${params.productName}.\nDEMO: Highlight how it helps with ${params.goal.toLowerCase()}.\nCTA: Try ${params.productName} today and claim ${params.offer}.`,
+  carouselSlides: [
+    {
+      title: `Stop losing time on ${params.goal.toLowerCase()}`,
+      body: `${params.productName} gives ${params.audience} a simpler path forward.`,
+      visual: "Problem-focused opener with a clear before state.",
+    },
+    {
+      title: params.offer,
+      body: "Show the strongest benefit in one plain sentence.",
+      visual: "Product or workflow close-up with strong contrast.",
+    },
+    {
+      title: "Ready to start?",
+      body: "End with a direct CTA and one proof point.",
+      visual: "CTA slide with brand color, product shot, and URL area.",
+    },
+  ],
+  captions: [
+    `${params.productName} is built for ${params.audience}.`,
+    `A faster way to ${params.goal.toLowerCase()}.`,
+    `Claim ${params.offer}.`,
+  ],
+  hashtags: ["#marketing", "#contentcreation", "#aicreator", "#smallbusiness"],
+  creativeDirection: `Use the ${params.templateName} template with ${params.tone.toLowerCase()} messaging for ${params.platform}.`,
+});
+
+function parseMarketingJson(text: string, params: MarketingCampaignParams): MarketingCampaignResult {
+  const cleaned = text
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  try {
+    const parsed = JSON.parse(cleaned) as Partial<MarketingCampaignResult>;
+    return {
+      ...fallbackMarketingResult(params),
+      ...parsed,
+      carouselSlides: Array.isArray(parsed.carouselSlides) && parsed.carouselSlides.length
+        ? parsed.carouselSlides.map((slide) => ({
+            title: String(slide.title ?? ""),
+            body: String(slide.body ?? ""),
+            visual: String(slide.visual ?? ""),
+          }))
+        : fallbackMarketingResult(params).carouselSlides,
+      captions: Array.isArray(parsed.captions) ? parsed.captions.map(String) : fallbackMarketingResult(params).captions,
+      hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.map(String) : fallbackMarketingResult(params).hashtags,
+    };
+  } catch {
+    return {
+      ...fallbackMarketingResult(params),
+      primaryCopy: text.trim() || fallbackMarketingResult(params).primaryCopy,
+    };
+  }
+}
+
+export async function generateMarketingCampaign(
+  params: MarketingCampaignParams
+): Promise<MarketingCampaignResult> {
+  if (!functions) {
+    return fallbackMarketingResult(params);
+  }
+
+  const generateScriptFn = httpsCallable<{ prompt: string; systemInstruction: string }, { text: string }>(
+    functions,
+    "generateScript"
+  );
+
+  const prompt = `Create a Magicbox AI marketing package.
+
+Brand: ${params.brandName}
+Product or service: ${params.productName}
+Audience: ${params.audience}
+Offer: ${params.offer}
+Goal: ${params.goal}
+Platform: ${params.platform}
+Tone: ${params.tone}
+Requested asset type: ${params.assetType}
+Template: ${params.templateName}
+Extra notes: ${params.notes || "None"}
+
+Generate the asset package now.`;
+
+  const result = await generateScriptFn({
+    prompt,
+    systemInstruction: MARKETING_SYSTEM_PROMPT,
+  });
+
+  return parseMarketingJson(result.data.text, params);
 }
 
 // ─── Parsers ──────────────────────────────────────────────────
@@ -284,42 +549,5 @@ function parseCaptionResponse(text: string): {
       ?.trim()
       .split(/\s+/)
       .filter((h) => h.startsWith("#")) || ["#ugc", "#viral"],
-  };
-}
-
-function getMockScript(params: {
-  productName: string;
-  templateName: string;
-  tone: string;
-}): {
-  hook: string;
-  script: string;
-  cta: string;
-  captions: string[];
-} {
-  return {
-    hook: `Stop scrolling — you NEED to see this ${params.productName}`,
-    script: `[Avatar looks at camera with excitement]
-Okay so I've been using ${params.productName} for about a week now and honestly? I'm obsessed.
-
-[Avatar holds up product]
-Like I know everyone says that but this one actually delivers. The quality is insane and I can already see the difference.
-
-[Avatar gestures enthusiastically]
-What I love most is how easy it is to use. No complicated setup, no learning curve — just results.
-
-[Avatar leans in close]
-And the best part? It's way more affordable than I expected. I literally told all my friends about it.
-
-[Avatar points at camera]
-You need to try this. Trust me, your future self will thank you.`,
-    cta: "Link in bio — go grab yours before it sells out!",
-    captions: [
-      "Stop scrolling 🛑",
-      `${params.productName} changed EVERYTHING`,
-      "The results are INSANE",
-      "Way more affordable than expected 💰",
-      "Link in bio — GO! 🔗",
-    ],
   };
 }

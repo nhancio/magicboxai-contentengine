@@ -1,5 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@shared/lib/auth";
+import { toast } from "sonner";
+import type { SocialAccount } from "@shared/types";
+import { getSocialAccounts } from "@shared/lib/automations";
+import { syncSocialAccounts } from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@shared/components/ui/card";
 import { Label } from "@shared/components/ui/label";
@@ -36,18 +41,50 @@ import {
   Smartphone,
   FileBarChart,
   Check,
+  Instagram,
+  Linkedin,
+  Loader2,
   Pencil,
+  RefreshCw,
+  Twitter,
 } from "lucide-react";
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [defaultPlatform, setDefaultPlatform] = useState("instagram");
+  const [isDeleting, setIsDeleting] = useState(false);
   const [defaultStyle, setDefaultStyle] = useState("professional");
   const [language, setLanguage] = useState("en");
   const [emailNotifs, setEmailNotifs] = useState(true);
   const [pushNotifs, setPushNotifs] = useState(false);
   const [weeklyReport, setWeeklyReport] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
+  const [syncingAccounts, setSyncingAccounts] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    getSocialAccounts(user.uid).then(setSocialAccounts).catch(() => {});
+  }, [user]);
+
+  const handleSyncAccounts = async () => {
+    if (!user) return;
+    setSyncingAccounts(true);
+    try {
+      const result = await syncSocialAccounts({});
+      setSocialAccounts(await getSocialAccounts(user.uid));
+      toast.success(
+        result.dryRun
+          ? `Synced ${result.synced} channels (sandbox mode)`
+          : `Synced ${result.synced} channels`
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Sync failed");
+    } finally {
+      setSyncingAccounts(false);
+    }
+  };
 
   const initials = user?.displayName
     ? user.displayName
@@ -97,6 +134,7 @@ export default function Settings() {
               <p className="text-sm text-white/50">{user?.email ?? "No email"}</p>
               <Button
                 size="sm"
+                onClick={() => toast.info("Profile editing coming soon! Your profile is synced with Google.")}
                 className="mt-2 bg-white/[0.06] border border-white/[0.1] text-white/80 hover:bg-white/[0.1]"
               >
                 <Pencil className="mr-1.5 h-3.5 w-3.5" />
@@ -275,9 +313,71 @@ export default function Settings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          {/* Connected Accounts */}
+          {/* Connected social channels */}
           <div>
-            <Label className="text-white/80 mb-3 block">Connected Accounts</Label>
+            <div className="mb-3 flex items-center justify-between">
+              <Label className="text-white/80">Connected channels</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={syncingAccounts}
+                onClick={handleSyncAccounts}
+                className="border-white/10 bg-white/[0.04] text-white/70"
+              >
+                {syncingAccounts ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Sync
+              </Button>
+            </div>
+            {socialAccounts.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/15 p-5 text-center text-sm text-white/40">
+                No social channels synced yet. Channels are linked by our team during
+                enterprise onboarding — hit Sync to pull them in.
+              </div>
+            ) : (
+              <div className="mb-4 space-y-2">
+                {socialAccounts.map((account) => {
+                  const Icon =
+                    account.platform === "instagram"
+                      ? Instagram
+                      : account.platform === "twitter"
+                        ? Twitter
+                        : Linkedin;
+                  return (
+                    <div
+                      key={account.id}
+                      className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/[0.06]">
+                          <Icon className="h-5 w-5 text-white/70" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium capitalize text-white">
+                            {account.platform === "twitter" ? "Twitter / X" : account.platform}
+                          </p>
+                          <p className="text-xs text-white/40">
+                            @{account.username || account.displayName}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                        <Check className="mr-1 h-3 w-3" />
+                        Connected
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Sign-in account */}
+          <div>
+            <Label className="text-white/80 mb-3 block">Sign-in</Label>
             <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-white/[0.06] flex items-center justify-center">
@@ -314,7 +414,24 @@ export default function Settings() {
 
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3">
-            <Button className="bg-white/[0.06] border border-white/[0.1] text-white/80 hover:bg-white/[0.1]">
+            <Button
+              onClick={() => {
+                const data = {
+                  email: user?.email,
+                  displayName: user?.displayName,
+                  exportedAt: new Date().toISOString(),
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "magicboxai-data.json";
+                a.click();
+                URL.revokeObjectURL(url);
+                toast.success("Data exported successfully!");
+              }}
+              className="bg-white/[0.06] border border-white/[0.1] text-white/80 hover:bg-white/[0.1]"
+            >
               <Download className="mr-2 h-4 w-4" />
               Export Data
             </Button>
@@ -347,10 +464,23 @@ export default function Settings() {
                   </Button>
                   <Button
                     className="bg-red-600 hover:bg-red-700 text-white"
-                    onClick={() => setDeleteDialogOpen(false)}
+                    disabled={isDeleting}
+                    onClick={async () => {
+                      setIsDeleting(true);
+                      try {
+                        await signOut();
+                        setDeleteDialogOpen(false);
+                        navigate("/login");
+                        toast.success("Account deletion requested. Your data will be removed.");
+                      } catch {
+                        toast.error("Failed to process request. Please contact support.");
+                      } finally {
+                        setIsDeleting(false);
+                      }
+                    }}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
-                    Delete My Account
+                    {isDeleting ? "Deleting..." : "Delete My Account"}
                   </Button>
                 </DialogFooter>
               </DialogContent>

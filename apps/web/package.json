@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 5174",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -20,6 +20,9 @@
     "@radix-ui/react-slot": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.1.6",
+    "@remotion/cli": "^4.0.447",
+    "@remotion/player": "^4.0.447",
+    "@remotion/renderer": "^4.0.447",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "firebase": "^12.10.0",
@@ -29,8 +32,10 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.30.1",
     "recharts": "^2.15.4",
+    "remotion": "^4.0.447",
     "sonner": "^1.7.1",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

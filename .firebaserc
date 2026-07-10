@@ -1,0 +1,21 @@
+{
+  "projects": {
+    "default": "magicboxai-50927"
+  },
+  "targets": {
+    "magicboxai-50927": {
+      "hosting": {
+        "app": [
+          "magicboxai-app"
+        ],
+        "landing": [
+          "magicboxai-50927"
+        ],
+        "admin": [
+          "magicboxai-admin"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

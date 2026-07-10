@@ -1,273 +1,312 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
 import { useAuth } from "@shared/lib/auth";
-import { getInfluencers, getAds } from "@shared/lib/firestore";
-import { PREBUILT_AVATARS } from "@shared/lib/avatars";
-import { VIRAL_TEMPLATES } from "@shared/lib/templates";
-import { Card, CardContent } from "@shared/components/ui/card";
+import type { Automation, Post, PostStatus, SocialPlatform } from "@shared/types";
+import { getAutomations, getPosts } from "@shared/lib/automations";
+import { getQuota } from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
-import { Badge } from "@shared/components/ui/badge";
+import { cn } from "@shared/lib/utils";
 import {
-  Video,
-  Wand2,
-  Sparkles,
-  TrendingUp,
-  Clock,
   ArrowRight,
-  Play,
+  Bot,
+  CalendarClock,
+  CheckCircle2,
+  Instagram,
+  Linkedin,
+  Plus,
+  ShieldAlert,
+  Twitter,
   Zap,
-  Users,
-  Layout,
 } from "lucide-react";
 
-interface StatCard {
-  label: string;
-  value: number | string;
-  icon: React.ElementType;
-  color: string;
-  bg: string;
-}
+const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
+  instagram: Instagram,
+  twitter: Twitter,
+  linkedin: Linkedin,
+};
+
+const STATUS_DOT: Record<PostStatus, string> = {
+  draft: "bg-white/30",
+  pending_approval: "bg-amber-400",
+  scheduled: "bg-sky-400",
+  generating: "bg-violet-400",
+  ready: "bg-violet-300",
+  posting: "bg-violet-400",
+  posted: "bg-emerald-400",
+  failed: "bg-rose-400",
+  cancelled: "bg-white/20",
+};
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [avatarCount, setAvatarCount] = useState(0);
-  const [adCount, setAdCount] = useState(0);
+  const [automations, setAutomations] = useState<Automation[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [quota, setQuota] = useState<{ plan: string; used: number; limit: number } | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    getInfluencers(user.uid)
-      .then((list) => setAvatarCount(list.length))
-      .catch(() => setAvatarCount(0));
-    getAds(user.uid)
-      .then((list) => setAdCount(list.length))
-      .catch(() => setAdCount(0));
+    Promise.all([
+      getAutomations(user.uid),
+      getPosts(user.uid, 100),
+      getQuota({}).catch(() => null),
+    ])
+      .then(([a, p, q]) => {
+        setAutomations(a);
+        setPosts(p);
+        setQuota(q);
+      })
+      .finally(() => setLoading(false));
   }, [user]);
 
-  const stats: StatCard[] = [
-    {
-      label: "Videos Created",
-      value: adCount,
-      icon: Video,
-      color: "text-purple-400",
-      bg: "bg-purple-500/10",
-    },
-    {
-      label: "My Avatars",
-      value: avatarCount,
-      icon: Users,
-      color: "text-indigo-400",
-      bg: "bg-indigo-500/10",
-    },
-    {
-      label: "Templates Available",
-      value: VIRAL_TEMPLATES.length,
-      icon: Layout,
-      color: "text-violet-400",
-      bg: "bg-violet-500/10",
-    },
-    {
-      label: "Free Credits Left",
-      value: "10",
-      icon: TrendingUp,
-      color: "text-emerald-400",
-      bg: "bg-emerald-500/10",
-    },
+  const firstName = user?.displayName?.split(" ")[0] ?? "there";
+  const now = Date.now();
+  const activeAutomations = automations.filter((a) => a.status === "active");
+  const erroredAutomations = automations.filter((a) => a.status === "error");
+  const upcoming = posts
+    .filter(
+      (p) =>
+        p.scheduledFor.getTime() >= now - 60_000 &&
+        ["scheduled", "generating", "ready", "posting", "pending_approval"].includes(p.status)
+    )
+    .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime())
+    .slice(0, 5);
+  const recent = posts
+    .filter((p) => ["posted", "failed"].includes(p.status))
+    .sort((a, b) => b.scheduledFor.getTime() - a.scheduledFor.getTime())
+    .slice(0, 5);
+  const awaitingApproval = posts.filter((p) => p.status === "pending_approval").length;
+  const publishedThisMonth = posts.filter(
+    (p) =>
+      p.status === "posted" &&
+      p.scheduledFor.getMonth() === new Date().getMonth() &&
+      p.scheduledFor.getFullYear() === new Date().getFullYear()
+  ).length;
+
+  const stats = [
+    { label: "Active automations", value: activeAutomations.length, icon: Bot },
+    { label: "Queued posts", value: upcoming.length, icon: CalendarClock },
+    { label: "Awaiting approval", value: awaitingApproval, icon: ShieldAlert },
+    { label: "Published this month", value: publishedThisMonth, icon: CheckCircle2 },
   ];
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Welcome Banner + CTA */}
-      <div className="glass-card p-6 md:p-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/10 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/2" />
-        <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="space-y-2">
-            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 mb-2">
-              <Zap className="w-3 h-3 mr-1" />
-              FREE During Launch
-            </Badge>
-            <h1 className="text-2xl md:text-3xl font-bold font-display">
-              Welcome back,{" "}
-              <span className="text-gradient">
-                {user?.displayName ?? "Creator"}
-              </span>
-            </h1>
-            <p className="text-white/60 text-sm md:text-base max-w-lg">
-              Create viral UGC videos with AI avatars and proven templates. Select an avatar, pick a template, and generate scroll-stopping content in seconds.
-            </p>
-          </div>
-          <Link to="/create-video">
-            <Button className="h-12 px-8 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-semibold shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 transition-all whitespace-nowrap">
-              <Video className="h-5 w-5 mr-2" />
-              Create Video
-            </Button>
-          </Link>
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {firstName}
+          </h1>
+          <p className="mt-1 text-sm text-white/40">
+            {activeAutomations.length > 0
+              ? `${activeAutomations.length} automation${activeAutomations.length === 1 ? "" : "s"} working for you right now.`
+              : "Your marketing engine is ready when you are."}
+          </p>
         </div>
+        <Button asChild className="bg-violet-600 hover:bg-violet-500">
+          <Link to="/automations/new">
+            <Plus className="mr-1.5 h-4 w-4" /> New automation
+          </Link>
+        </Button>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => (
-          <Card key={stat.label} className="glass-card border-white/[0.06]">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm text-white/60">{stat.label}</p>
-                  <p className="text-2xl font-bold font-display text-white">
-                    {stat.value}
-                  </p>
-                </div>
-                <div
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl ${stat.bg}`}
-                >
-                  <stat.icon className={`h-5 w-5 ${stat.color}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      {erroredAutomations.length > 0 && (
+        <Link
+          to="/automations"
+          className="mb-6 flex items-center gap-3 rounded-xl border border-rose-500/25 bg-rose-500/[0.07] p-4 text-sm text-rose-200/90 transition-colors hover:bg-rose-500/10"
+        >
+          <ShieldAlert className="h-5 w-5 shrink-0 text-rose-300" />
+          {erroredAutomations.length === 1
+            ? `“${erroredAutomations[0].name}” stopped after repeated failures — review and resume it.`
+            : `${erroredAutomations.length} automations stopped after repeated failures.`}
+          <ArrowRight className="ml-auto h-4 w-4" />
+        </Link>
+      )}
+
+      {/* Stats */}
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {stats.map((stat, i) => (
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.05, duration: 0.2 }}
+            className="glass-card p-4"
+          >
+            <div className="flex items-center gap-2 text-white/35">
+              <stat.icon className="h-4 w-4" />
+              <span className="text-xs">{stat.label}</span>
+            </div>
+            <div className="mt-2 text-2xl font-bold tabular-nums">
+              {loading ? "—" : stat.value}
+            </div>
+          </motion.div>
         ))}
       </div>
 
-      {/* Quick Start - Create Video */}
-      <div>
-        <h2 className="text-lg font-semibold font-display text-white mb-4">
-          Quick Start
-        </h2>
-        <Link to="/create-video" className="block group">
-          <Card className="glass-card border-white/[0.06] transition-all duration-300 hover:bg-white/[0.06] hover:border-purple-500/30 overflow-hidden">
-            <CardContent className="p-6 md:p-8">
-              <div className="flex flex-col md:flex-row md:items-center gap-6">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/25 shrink-0 group-hover:scale-110 transition-transform">
-                  <Play className="h-8 w-8 text-white" />
-                </div>
-                <div className="flex-1 space-y-2">
-                  <h3 className="text-xl font-bold text-white group-hover:text-purple-300 transition-colors">
-                    Create Your First UGC Video
-                  </h3>
-                  <p className="text-white/50 text-sm max-w-xl">
-                    Pick an AI avatar, choose a viral template, add your product details, and let AI generate a scroll-stopping UGC video. It takes less than 60 seconds.
-                  </p>
-                  <div className="flex items-center gap-3 pt-1">
-                    <Badge variant="secondary" className="bg-white/5 text-white/40 border-white/10 text-xs">
-                      3 easy steps
-                    </Badge>
-                    <Badge variant="secondary" className="bg-white/5 text-white/40 border-white/10 text-xs">
-                      AI-powered scripts
-                    </Badge>
-                    <Badge variant="secondary" className="bg-white/5 text-white/40 border-white/10 text-xs">
-                      8 avatars
-                    </Badge>
-                  </div>
-                </div>
-                <ArrowRight className="h-6 w-6 text-white/30 group-hover:text-purple-400 transition-colors shrink-0 hidden md:block" />
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-
-      {/* Featured Avatars */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold font-display text-white">
-            AI Avatars
-          </h2>
-          <Link to="/create-video" className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1">
-            View all <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {PREBUILT_AVATARS.slice(0, 4).map((avatar) => (
-            <Link key={avatar.id} to="/create-video">
-              <Card className="glass-card border-white/[0.06] transition-all duration-300 hover:bg-white/[0.06] hover:border-white/[0.1] cursor-pointer group h-full">
-                <CardContent className="p-4 flex flex-col items-center text-center gap-3">
-                  <div
-                    className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${avatar.gradient} text-xl font-bold text-white shadow-lg group-hover:scale-110 transition-transform`}
-                  >
-                    {avatar.emoji}
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-semibold text-white">{avatar.name}</p>
-                    <p className="text-xs text-white/40">{avatar.personality}</p>
-                  </div>
-                </CardContent>
-              </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Upcoming */}
+        <div className="glass-card p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-semibold">Coming up</h2>
+            <Link to="/calendar" className="text-xs text-violet-300/80 hover:text-violet-300">
+              Calendar →
             </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* Popular Templates */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold font-display text-white">
-            Popular Templates
-          </h2>
-          <Link to="/create-video" className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1">
-            View all <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { name: "Problem → Solution", hook: "I was struggling with [X] until I found THIS", gradient: "from-purple-500 to-indigo-600", category: "Conversion" },
-            { name: "3 Reasons Why", hook: "3 reasons why [product] is going viral right now", gradient: "from-indigo-500 to-blue-600", category: "Educational" },
-            { name: "Before & After", hook: "Before vs. after using [product] for 30 days", gradient: "from-violet-500 to-purple-600", category: "Transformation" },
-          ].map((template) => (
-            <Link key={template.name} to="/create-video" className="group">
-              <Card className="glass-card border-white/[0.06] transition-all duration-300 hover:bg-white/[0.06] hover:border-white/[0.1] h-full">
-                <CardContent className="p-5 flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br ${template.gradient} shadow-lg`}>
-                      <Sparkles className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white text-sm group-hover:text-purple-300 transition-colors">
-                        {template.name}
-                      </h3>
-                      <Badge variant="secondary" className="bg-white/5 text-white/40 border-white/10 text-[10px] mt-0.5">
-                        {template.category}
-                      </Badge>
-                    </div>
-                  </div>
-                  <p className="text-xs text-white/40 italic">"{template.hook}"</p>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div>
-        <h2 className="text-lg font-semibold font-display text-white mb-4">
-          Recent Activity
-        </h2>
-        <Card className="glass-card border-white/[0.06]">
-          <CardContent className="p-8">
-            <div className="flex flex-col items-center justify-center text-center gap-3 py-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/5">
-                <Clock className="h-6 w-6 text-white/30" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-white/60">
-                  No videos created yet
-                </p>
-                <p className="text-xs text-white/40">
-                  Create your first viral UGC video to see your activity here
-                </p>
-              </div>
-              <Link to="/create-video">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2 text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
+          </div>
+          {loading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-14 animate-pulse rounded-xl bg-white/[0.04]" />
+              ))}
+            </div>
+          ) : upcoming.length === 0 ? (
+            <div className="py-8 text-center text-sm text-white/35">
+              No posts queued.{" "}
+              <Link to="/automations/new" className="text-violet-300 hover:underline">
+                Launch an automation
+              </Link>{" "}
+              to fill your calendar.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {upcoming.map((post) => (
+                <Link
+                  key={post.id}
+                  to="/posts"
+                  className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]"
                 >
-                  Create your first video
-                  <ArrowRight className="ml-1 h-4 w-4" />
-                </Button>
+                  <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
+                  <p className="min-w-0 flex-1 truncate text-sm text-white/80">
+                    {post.content?.caption ?? post.brief}
+                  </p>
+                  <span className="flex shrink-0 items-center gap-1 text-white/35">
+                    {post.platforms.slice(0, 3).map((p) => {
+                      const Icon = PLATFORM_ICONS[p];
+                      return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;
+                    })}
+                  </span>
+                  <span className="shrink-0 text-xs tabular-nums text-white/40">
+                    {post.scheduledFor.toLocaleString(undefined, {
+                      weekday: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent activity */}
+        <div className="glass-card p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-semibold">Recent activity</h2>
+            <Link to="/posts" className="text-xs text-violet-300/80 hover:text-violet-300">
+              All posts →
+            </Link>
+          </div>
+          {loading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-14 animate-pulse rounded-xl bg-white/[0.04]" />
+              ))}
+            </div>
+          ) : recent.length === 0 ? (
+            <div className="py-8 text-center text-sm text-white/35">
+              Published posts will show up here.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {recent.map((post) => (
+                <Link
+                  key={post.id}
+                  to="/posts"
+                  className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]"
+                >
+                  <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
+                  <p className="min-w-0 flex-1 truncate text-sm text-white/80">
+                    {post.content?.caption ?? post.brief}
+                  </p>
+                  <span className="shrink-0 text-xs text-white/40">
+                    {post.status === "posted" ? "Published" : "Failed"}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Usage + automations strip */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="glass-card p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">Your automations</h2>
+            <Link to="/automations" className="text-xs text-violet-300/80 hover:text-violet-300">
+              Manage →
+            </Link>
+          </div>
+          {loading ? (
+            <div className="h-14 animate-pulse rounded-xl bg-white/[0.04]" />
+          ) : automations.length === 0 ? (
+            <div className="flex items-center gap-3 rounded-xl border border-dashed border-white/15 p-4 text-sm text-white/40">
+              <Zap className="h-4 w-4 text-violet-300" />
+              One brief. Daily posts. Zero effort — that's an automation.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {automations.slice(0, 6).map((automation) => (
+                <Link
+                  key={automation.id}
+                  to={`/automations/${automation.id}`}
+                  className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] py-1.5 pl-3 pr-4 text-sm text-white/70 transition-colors hover:bg-white/[0.06]"
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      automation.status === "active"
+                        ? "bg-emerald-400"
+                        : automation.status === "error"
+                          ? "bg-rose-400"
+                          : "bg-amber-400"
+                    )}
+                  />
+                  {automation.name}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="glass-card p-5">
+          <h2 className="mb-3 font-semibold">Monthly usage</h2>
+          {quota && quota.limit > 0 ? (
+            <>
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-white/50">Posts published</span>
+                <span className="tabular-nums text-white/80">
+                  {quota.used} / {quota.limit}
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
+                  style={{ width: `${Math.min(100, (quota.used / quota.limit) * 100)}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs capitalize text-white/35">{quota.plan} plan</p>
+            </>
+          ) : (
+            <div className="text-sm text-white/40">
+              Publishing requires an active plan.{" "}
+              <Link to="/pricing" className="text-violet-300 hover:underline">
+                See pricing
               </Link>
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
       </div>
     </div>
   );
