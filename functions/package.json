@@ -4,6 +4,7 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "test": "npm run build && node --test test/*.test.cjs test/video/*.test.cjs",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
@@ -20,7 +21,7 @@
     "firebase-functions": "^6.0.0",
     "luxon": "^3.5.0",
     "node-fetch": "^3.3.2",
-    "uuid": "^9.0.0"
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@types/luxon": "^3.7.2",

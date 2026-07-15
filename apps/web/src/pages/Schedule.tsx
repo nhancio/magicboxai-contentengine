@@ -4,9 +4,9 @@ import { useAuth } from "@shared/lib/auth";
 import type { Post, PostStatus, SocialPlatform } from "@shared/types";
 import { getPostsInRange } from "@shared/lib/automations";
 import { Button } from "@shared/components/ui/button";
+import { LottiePlayer } from "@shared/components/ui/lottie";
 import { cn } from "@shared/lib/utils";
 import {
-  Bot,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -14,24 +14,26 @@ import {
   Linkedin,
   Plus,
   Twitter,
+  Youtube,
 } from "lucide-react";
 
 const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
   instagram: Instagram,
   twitter: Twitter,
   linkedin: Linkedin,
+  youtube: Youtube,
 };
 
 const STATUS_DOT: Record<PostStatus, string> = {
-  draft: "bg-white/30",
-  pending_approval: "bg-amber-400",
-  scheduled: "bg-sky-400",
-  generating: "bg-violet-400",
-  ready: "bg-violet-300",
-  posting: "bg-violet-400",
-  posted: "bg-emerald-400",
-  failed: "bg-rose-400",
-  cancelled: "bg-white/20",
+  draft: "bg-muted-foreground/40",
+  pending_approval: "bg-amber-500",
+  scheduled: "bg-sky-500",
+  generating: "bg-brand",
+  ready: "bg-brand/60",
+  posting: "bg-brand",
+  posted: "bg-emerald-500",
+  failed: "bg-rose-500",
+  cancelled: "bg-muted-foreground/30",
 };
 
 const STATUS_LABEL: Record<PostStatus, string> = {
@@ -101,12 +103,13 @@ export default function Schedule() {
     <div className="mx-auto max-w-6xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Calendar</h1>
-          <p className="mt-1 text-sm text-white/40">
+          <span className="eyebrow">Schedule</span>
+          <h1 className="mt-2 font-display text-3xl">Calendar</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Every scheduled and published post across your channels.
           </p>
         </div>
-        <Button asChild className="bg-violet-600 hover:bg-violet-500">
+        <Button asChild>
           <Link to="/automations/new">
             <Plus className="mr-1.5 h-4 w-4" /> New automation
           </Link>
@@ -116,12 +119,12 @@ export default function Schedule() {
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="glass-card p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-semibold">{monthLabel}</h2>
+            <h2 className="font-display text-xl">{monthLabel}</h2>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-white/50"
+                className="h-8 w-8 text-muted-foreground"
                 onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1))}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -129,7 +132,7 @@ export default function Schedule() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 text-xs text-white/50"
+                className="h-8 text-xs text-muted-foreground"
                 onClick={() => {
                   setAnchor(new Date());
                   setSelectedDay(new Date());
@@ -140,7 +143,7 @@ export default function Schedule() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-white/50"
+                className="h-8 w-8 text-muted-foreground"
                 onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1))}
               >
                 <ChevronRight className="h-4 w-4" />
@@ -150,7 +153,7 @@ export default function Schedule() {
 
           <div className="grid grid-cols-7 gap-1">
             {WEEKDAYS.map((d) => (
-              <div key={d} className="pb-2 text-center text-[11px] font-medium text-white/30">
+              <div key={d} className="pb-2 text-center text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
                 {d}
               </div>
             ))}
@@ -166,15 +169,15 @@ export default function Schedule() {
                   className={cn(
                     "flex aspect-square flex-col items-center justify-start rounded-lg border p-1 pt-1.5 transition-colors sm:aspect-[4/3]",
                     isSelected
-                      ? "border-violet-500/60 bg-violet-600/10"
-                      : "border-transparent hover:bg-white/[0.04]",
+                      ? "border-brand/40 bg-brand/10"
+                      : "border-transparent hover:bg-accent",
                     !inMonth && "opacity-30"
                   )}
                 >
                   <span
                     className={cn(
                       "flex h-6 w-6 items-center justify-center rounded-full text-xs",
-                      isToday ? "bg-violet-600 font-semibold text-white" : "text-white/60"
+                      isToday ? "bg-brand font-semibold text-brand-foreground" : "text-foreground"
                     )}
                   >
                     {day.getDate()}
@@ -188,7 +191,7 @@ export default function Schedule() {
                         />
                       ))}
                       {dayPosts.length > 4 && (
-                        <span className="text-[9px] text-white/40">+{dayPosts.length - 4}</span>
+                        <span className="text-[9px] text-muted-foreground">+{dayPosts.length - 4}</span>
                       )}
                     </div>
                   )}
@@ -197,7 +200,7 @@ export default function Schedule() {
             })}
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/[0.06] pt-3 text-[11px] text-white/40">
+          <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3 text-[11px] text-muted-foreground">
             {(["scheduled", "pending_approval", "posted", "failed"] as PostStatus[]).map((s) => (
               <span key={s} className="flex items-center gap-1.5">
                 <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[s])} />
@@ -210,7 +213,7 @@ export default function Schedule() {
         {/* Day detail */}
         <div className="glass-card p-5">
           <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-            <CalendarDays className="h-4 w-4 text-violet-300" />
+            <CalendarDays className="h-4 w-4 text-brand" />
             {selectedDay.toLocaleDateString(undefined, {
               weekday: "long",
               month: "short",
@@ -220,13 +223,13 @@ export default function Schedule() {
           {loading ? (
             <div className="space-y-2">
               {[0, 1].map((i) => (
-                <div key={i} className="h-16 animate-pulse rounded-xl bg-white/[0.04]" />
+                <div key={i} className="h-16 animate-pulse rounded-lg bg-muted" />
               ))}
             </div>
           ) : selectedPosts.length === 0 ? (
-            <div className="py-10 text-center">
-              <Bot className="mx-auto mb-2 h-6 w-6 text-white/20" />
-              <p className="text-sm text-white/35">Nothing scheduled this day.</p>
+            <div className="py-8 text-center">
+              <LottiePlayer size={96} className="mx-auto" />
+              <p className="mt-1 text-sm text-muted-foreground">Nothing scheduled this day.</p>
             </div>
           ) : (
             <div className="space-y-2.5">
@@ -236,9 +239,9 @@ export default function Schedule() {
                   <Link
                     key={post.id}
                     to="/posts"
-                    className="block rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]"
+                    className="block rounded-lg border border-border bg-secondary p-3 transition-colors hover:bg-accent"
                   >
-                    <div className="flex items-center gap-2 text-xs text-white/40">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[post.status])} />
                       {STATUS_LABEL[post.status]}
                       <span className="ml-auto">
@@ -248,10 +251,10 @@ export default function Schedule() {
                         })}
                       </span>
                     </div>
-                    <p className="mt-1.5 line-clamp-2 text-sm text-white/80">
+                    <p className="mt-1.5 line-clamp-2 text-sm text-foreground/80">
                       {post.content?.caption ?? post.brief}
                     </p>
-                    <div className="mt-2 flex items-center gap-1.5 text-white/40">
+                    <div className="mt-2 flex items-center gap-1.5 text-muted-foreground">
                       {post.platforms.map((p) => {
                         const Icon = PLATFORM_ICONS[p];
                         return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;

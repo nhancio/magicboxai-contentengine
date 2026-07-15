@@ -55,6 +55,14 @@ export const PLATFORM_PROMPTS: Record<SocialPlatform, string> = {
 - Emojis: 0–3, only as section markers if at all.
 - Hashtags: 0–3 at the very end, broad professional tags.
 - Never sound like a corporate memo; sound like a leader at the company sharing something real.`,
+
+  youtube: `Platform: YouTube (Shorts / video description).
+- Open with a punchy title-style hook (the first line becomes the video's draw).
+- Then a short description: 1–3 sentences of value, what the viewer will get, and a soft CTA (subscribe / watch next).
+- Length: 100–200 words; front-load the important text (only the first ~2 lines show before "more").
+- Tone: energetic and direct for Shorts; clear and informative for longer videos.
+- Hashtags: 2–4 relevant tags at the end (YouTube surfaces the first 3 above the title).
+- Never keyword-stuff; write for a human deciding whether to watch.`,
 };
 
 export const PRESET_PROMPTS: Record<string, string> = {

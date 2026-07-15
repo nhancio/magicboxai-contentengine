@@ -1,25 +1,32 @@
-import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/button";
 import { Card, CardContent } from "@shared/components/ui/card";
 import { useAuth } from "@shared/lib/auth";
-import { Image, Layers3, Loader2, PlaySquare, Sparkles } from "lucide-react";
+import { Image, Layers3, Loader2, PlaySquare } from "lucide-react";
 
 export default function Login() {
   const { user, loading, signInWithGoogle } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
+  const [searchParams] = useSearchParams();
+  const redirectRaw = searchParams.get("redirect");
+  // Only honor same-app relative paths to avoid open-redirects.
+  const redirectTo =
+    redirectRaw && /^\/(?!\/)[A-Za-z0-9/?&=_.%-]*$/.test(redirectRaw)
+      ? redirectRaw
+      : "/";
 
   if (loading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-zinc-950">
-        <Loader2 className="h-8 w-8 animate-spin text-cyan-300" />
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-brand" />
       </div>
     );
   }
 
   if (user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={redirectTo} replace />;
   }
 
   const handleSignIn = async () => {
@@ -34,44 +41,48 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-8 text-white">
+    <div className="min-h-screen bg-background px-4 py-8 text-foreground">
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
-        <section>
-          <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-lg bg-cyan-400 text-zinc-950">
-            <Sparkles className="h-6 w-6" />
+        <section className="animate-fade-in">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground text-background font-display text-xl leading-none">
+              M
+            </div>
+            <span className="eyebrow">MagicBox</span>
           </div>
-          <h1 className="max-w-3xl text-4xl font-semibold md:text-6xl">
-            Magicbox AI is your marketing creation desk.
+          <h1 className="max-w-3xl font-display text-5xl leading-[1.05] tracking-tight md:text-6xl">
+            Your marketing creation desk.
           </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-white/65 md:text-lg">
+          <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">
             Sign in with Google and create campaign copy, image prompts, video scripts, and carousel slides from one brief.
           </p>
           <div className="mt-8 grid max-w-3xl gap-3 sm:grid-cols-3">
             {[
-              { label: "Image pieces", icon: Image, color: "text-cyan-200" },
-              { label: "Video scripts", icon: PlaySquare, color: "text-amber-200" },
-              { label: "Carousels", icon: Layers3, color: "text-rose-200" },
+              { label: "Image pieces", icon: Image },
+              { label: "Video scripts", icon: PlaySquare },
+              { label: "Carousels", icon: Layers3 },
             ].map((item) => (
-              <div key={item.label} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
-                <item.icon className={`mb-3 h-5 w-5 ${item.color}`} />
+              <div key={item.label} className="rounded-lg border border-border bg-card p-4">
+                <item.icon className="mb-3 h-5 w-5 text-brand" />
                 <div className="text-sm font-medium">{item.label}</div>
               </div>
             ))}
           </div>
         </section>
 
-        <Card className="rounded-lg border-white/10 bg-zinc-900/80">
+        <Card className="animate-slide-up rounded-lg border-border bg-card shadow-sm">
           <CardContent className="p-6">
             <div className="mb-6">
-              <div className="text-xl font-semibold">Continue to Magicbox</div>
-              <p className="mt-2 text-sm leading-6 text-white/55">
+              <span className="eyebrow">Sign in</span>
+              <div className="mt-3 font-display text-2xl">Continue to MagicBox</div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 Google login keeps every generated brief tied to your workspace.
               </p>
             </div>
             <Button
               onClick={handleSignIn}
               disabled={signingIn}
-              className="h-12 w-full bg-white text-zinc-950 shadow-none hover:bg-cyan-100"
+              className="h-12 w-full"
             >
               {signingIn ? (
                 <>
@@ -102,9 +113,27 @@ export default function Login() {
                 </>
               )}
             </Button>
-            <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs leading-6 text-white/50">
-              Gemini handles generation through Firebase Cloud Functions. Add Firebase config and enable Google auth before production use.
-            </div>
+            <p className="mt-6 text-center text-xs leading-6 text-muted-foreground">
+              By continuing, you agree to our{" "}
+              <a
+                href="https://magicboxai.in/terms.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand underline underline-offset-2 hover:text-brand/80"
+              >
+                Terms of Service
+              </a>{" "}
+              and{" "}
+              <a
+                href="https://magicboxai.in/privacy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand underline underline-offset-2 hover:text-brand/80"
+              >
+                Privacy Policy
+              </a>
+              .
+            </p>
           </CardContent>
         </Card>
       </div>

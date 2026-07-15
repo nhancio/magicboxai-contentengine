@@ -9,6 +9,7 @@ node_modules/
 
 # Build output
 dist/
+dist-ssr/
 /lib/
 *.tsbuildinfo
 
@@ -41,3 +42,6 @@ coverage/
 # Optional
 *.tgz
 .cache/
+
+# Local Netlify folder
+.netlify

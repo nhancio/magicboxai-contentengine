@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build:hosting
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - run: pip install -r tests/e2e/requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: npm run build:hosting
+      - name: Run production previews and browser smoke tests
+        shell: bash
+        run: |
+          npm run preview --workspace=apps/landing -- --host 127.0.0.1 --port 5173 &
+          npm run preview --workspace=apps/web -- --host 127.0.0.1 --port 5174 &
+          npm run preview --workspace=apps/admin -- --host 127.0.0.1 --port 5175 &
+          python - <<'PY'
+          import socket, time
+          for port in (5173, 5174, 5175):
+              deadline = time.time() + 30
+              while time.time() < deadline:
+                  try:
+                      socket.create_connection(("127.0.0.1", port), 1).close()
+                      break
+                  except OSError:
+                      time.sleep(0.25)
+              else:
+                  raise RuntimeError(f"preview on {port} did not start")
+          PY
+          python tests/e2e/smoke.py

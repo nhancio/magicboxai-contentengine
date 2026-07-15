@@ -1,6 +1,18 @@
+import { setGlobalOptions } from "firebase-functions/v2";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
+
+// core.ts is the first module in the import graph (callables.ts imports it),
+// so this runs before any function is defined and applies to all of them.
+// Region is pinned to match the deployed webhook URL + Vertex location.
+// maxInstances caps runaway cost. NOTE: to kill cold starts on the hot
+// interactive callables at launch, add `minInstances: 1` here (paid warm
+// instance — leave at 0 pre-launch while traffic is ~zero).
+setGlobalOptions({
+  region: "us-central1",
+  maxInstances: 10,
+});
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -29,6 +41,53 @@ export const getBucket = () => admin.storage().bucket();
 export const getPublicUrl = (filePath: string) =>
   `https://storage.googleapis.com/${getBucket().name}/${filePath}`;
 
+/** Veo is opt-in so an incomplete deployment cannot incur generation spend. */
+export const isVeoGenerationEnabled = (): boolean =>
+  process.env.ENABLE_VEO_GENERATION === "true";
+
+export const assertVeoGenerationEnabled = (): void => {
+  if (!isVeoGenerationEnabled()) {
+    throw new HttpsError(
+      "failed-precondition",
+      "AI video generation is temporarily disabled by the server configuration"
+    );
+  }
+};
+
+/** Parse an operator override without accepting zero, fractions, or unsafe values. */
+export function parsePositiveBoundedInteger(
+  rawValue: string | undefined,
+  fallback: number,
+  maximum: number
+): number {
+  if (
+    !Number.isSafeInteger(fallback) ||
+    fallback < 1 ||
+    !Number.isSafeInteger(maximum) ||
+    maximum < fallback
+  ) {
+    throw new Error("Invalid bounded integer configuration");
+  }
+
+  const value = rawValue?.trim();
+  if (!value || !/^\d+$/.test(value)) return fallback;
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= maximum
+    ? parsed
+    : fallback;
+}
+
+/**
+ * Paid-plan video quotas. Defaults are deliberately conservative; explicit
+ * operator overrides remain capped to contain accidental provider spend.
+ */
+export type PlanId = "pro" | "max";
+export const PLAN_VIDEO_LIMIT: Record<PlanId, number> = {
+  pro: parsePositiveBoundedInteger(process.env.VIDEO_LIMIT_PRO, 2, 10),
+  max: parsePositiveBoundedInteger(process.env.VIDEO_LIMIT_MAX, 10, 50),
+};
+
 export const stringifyError = (error: unknown): string => {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
@@ -41,7 +100,35 @@ export const stringifyError = (error: unknown): string => {
 
 // --- Server-side models for the marketing automation suite ---
 
-export type SocialPlatform = "instagram" | "twitter" | "linkedin";
+export type SocialPlatform = "instagram" | "twitter" | "linkedin" | "youtube";
+export type SocialProvider = "instagram" | "linkedin" | "youtube";
+
+/** Public-ish account record (client-readable, no secrets). */
+export interface SocialAccountDoc {
+  userId: string;
+  provider: SocialProvider;
+  platform: SocialPlatform;
+  externalId: string;
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+  status: "active" | "disconnected" | "expired";
+}
+
+/** Secret token record, stored in `socialTokens/{accountId}` — never client-readable. */
+export interface SocialTokenDoc {
+  userId: string;
+  provider: SocialProvider;
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: admin.firestore.Timestamp;
+  /** Instagram: the IG business account id used for publishing. */
+  igUserId?: string;
+  /** Instagram: the Facebook Page id that owns the IG account. */
+  pageId?: string;
+  /** YouTube: the channel id videos are uploaded to. */
+  channelId?: string;
+}
 
 export interface AutomationScheduleDoc {
   type: "recurring" | "once";
@@ -78,7 +165,6 @@ export interface PostMediaDoc {
   type: "image" | "video";
   storagePath?: string;
   url: string;
-  pbMediaId?: string;
   source: "imagen" | "veo" | "remotion" | "upload";
 }
 
@@ -111,10 +197,9 @@ export interface PostDoc {
   tone?: string;
   platforms: SocialPlatform[];
   socialAccountIds: string[];
-  pb?: { postId?: string; dryRun: boolean; submittedAt?: admin.firestore.Timestamp };
   results?: Array<{
     platform: SocialPlatform;
-    pbAccountId?: string;
+    accountId?: string;
     status: "pending" | "posted" | "failed";
     permalink?: string;
     error?: string;

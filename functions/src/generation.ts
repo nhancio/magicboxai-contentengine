@@ -1,11 +1,18 @@
 // Content generation pipeline for automation posts: Gemini captions per
-// platform, Imagen images. Video posts reuse the existing Veo pipeline via
-// the avatar/UGC flow and attach media before scheduling (manual source).
+// platform, Imagen images, Veo text-to-video clips (for YouTube / Reels).
 
 import { v4 as uuidv4 } from "uuid";
-import { db, getAI, getBucket, getPublicUrl, stringifyError } from "./core";
+import {
+  assertVeoGenerationEnabled,
+  db,
+  getAI,
+  getBucket,
+  getPublicUrl,
+  stringifyError,
+} from "./core";
 import type { BrandProfileDoc, PostDoc, SocialPlatform } from "./core";
 import { buildContentPrompt, buildImagePrompt } from "./prompts/marketingPrompts";
+import { generateVeoVideo } from "./video/googleVeo";
 
 function parseJsonBlock(text: string): { caption: string; hashtags: string[] } {
   const cleaned = text
@@ -38,7 +45,7 @@ export async function generateCaptionForPlatform(args: {
     platform: args.platform,
   });
   const result = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.0-flash-001",
     contents: prompt,
     config: { systemInstruction },
   });
@@ -79,14 +86,57 @@ export async function generatePostImage(args: {
   return { url: getPublicUrl(storagePath), storagePath };
 }
 
+export async function generatePostVideo(args: {
+  postId: string;
+  brand: BrandProfileDoc | null;
+  brief: string;
+  caption?: string;
+}): Promise<{ url: string; storagePath: string }> {
+  assertVeoGenerationEnabled();
+  const ai = getAI();
+  const bucket = getBucket();
+  const outputStoragePrefix = `posts/${args.postId}/${uuidv4()}/`;
+
+  const prompt = [
+    "Create a short, scroll-stopping vertical social media video clip.",
+    "One clear subject, cinematic lighting, smooth camera movement, no on-screen text.",
+    args.brand ? `Brand: ${args.brand.name} (${args.brand.industry}).` : "",
+    "The clip accompanies this social post:",
+    (args.caption ?? args.brief).slice(0, 800),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const generated = await generateVeoVideo({
+    ai,
+    prompt,
+    aspectRatio: "9:16",
+    durationSeconds: 8,
+    outputGcsUri: `gs://${bucket.name}/${outputStoragePrefix}`,
+  });
+
+  const file = bucket.file(generated.storagePath);
+  const [exists] = await file.exists();
+  if (!exists) throw new Error("Generated video file not found in storage");
+  await file.makePublic();
+  return {
+    url: getPublicUrl(generated.storagePath),
+    storagePath: generated.storagePath,
+  };
+}
+
 /**
- * Generate all content for a post (captions per platform + optional image)
- * and return the fields to merge onto the post doc.
+ * Generate all content for a post (captions per platform + optional
+ * image/video) and return the fields to merge onto the post doc.
  */
 export async function generatePostAssets(
   postId: string,
   post: PostDoc
 ): Promise<Partial<PostDoc>> {
+  // Fail the whole video job before caption/image/provider work instead of
+  // silently degrading a video request into a different asset type.
+  if (post.contentTypes?.video) assertVeoGenerationEnabled();
+
   const brand = await getBrand(post.brandProfileId);
   const preset = post.preset ?? "custom";
   const tone = post.tone ?? "";
@@ -121,6 +171,27 @@ export async function generatePostAssets(
     },
   };
 
+  const media = [...(post.media ?? [])];
+
+  // Video first: platforms like YouTube require it, and publishing picks the
+  // first usable media item.
+  if (post.contentTypes?.video && !media.some((m) => m.type === "video")) {
+    try {
+      const video = await generatePostVideo({
+        postId,
+        brand,
+        brief: post.brief,
+        caption: primary.caption,
+      });
+      media.push({ type: "video", url: video.url, storagePath: video.storagePath, source: "veo" });
+    } catch (error) {
+      const needsVideo = platforms.includes("youtube");
+      console.error(`[generatePostAssets] video generation failed for ${postId}:`, stringifyError(error));
+      // YouTube can't post without a video — fail the post so it retries.
+      if (needsVideo && !post.contentTypes?.image) throw error;
+    }
+  }
+
   if (post.contentTypes?.image) {
     try {
       const image = await generatePostImage({
@@ -130,15 +201,14 @@ export async function generatePostAssets(
         brief: post.brief,
         caption: primary.caption,
       });
-      update.media = [
-        ...(post.media ?? []),
-        { type: "image", url: image.url, storagePath: image.storagePath, source: "imagen" },
-      ];
+      media.push({ type: "image", url: image.url, storagePath: image.storagePath, source: "imagen" });
     } catch (error) {
       // Image failure shouldn't kill the post — caption-only is still postable.
       console.error(`[generatePostAssets] image generation failed for ${postId}:`, stringifyError(error));
     }
   }
+
+  if (media.length) update.media = media;
 
   return update;
 }

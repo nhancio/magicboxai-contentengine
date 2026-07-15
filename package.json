@@ -2,13 +2,18 @@
   "name": "magicboxai",
   "private": true,
   "scripts": {
+    "build": "npm run build:hosting && npm run build --workspace=functions",
     "build:landing": "npm run build --workspace=apps/landing",
     "build:web": "npm run build --workspace=apps/web",
     "build:admin": "npm run build --workspace=apps/admin",
-    "build:hosting": "npm run build:landing && npm run build:web && npm run build:admin"
+    "build:hosting": "npm run build:landing && npm run build:web && npm run build:admin",
+    "typecheck": "npx tsc -p apps/landing/tsconfig.json --noEmit && npx tsc -p apps/web/tsconfig.json --noEmit && npx tsc -p apps/admin/tsconfig.json --noEmit && npx tsc -p functions/tsconfig.json --noEmit",
+    "test": "npm test --workspace=functions",
+    "test:e2e": "python3 tests/e2e/smoke.py"
   },
   "workspaces": [
     "apps/*",
-    "functions"
+    "functions",
+    "packages/*"
   ]
 }

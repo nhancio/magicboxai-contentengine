@@ -171,7 +171,7 @@ export async function deleteVideo(id: string) {
 
 // --- Subscriptions & Usage ---
 export interface SubscriptionRecord {
-  plan: "free" | "starter" | "pro";
+  plan: "free" | "pro" | "max";
   videosUsed: number;
   videosLimit: number;
   status?: "inactive" | "active" | "past_due" | "cancelled";
@@ -179,6 +179,10 @@ export interface SubscriptionRecord {
   razorpaySubscriptionId?: string;
   razorpayCustomerId?: string;
   currentPeriodEnd?: Timestamp;
+  provider?: "dodo";
+  providerCustomerId?: string;
+  providerSubscriptionId?: string;
+  providerProductId?: string;
 }
 
 export async function getUserSubscription(userId: string): Promise<SubscriptionRecord> {

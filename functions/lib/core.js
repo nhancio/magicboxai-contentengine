@@ -33,10 +33,22 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.stringifyError = exports.getPublicUrl = exports.getBucket = exports.requireAuth = exports.getAI = exports.db = void 0;
+exports.stringifyError = exports.PLAN_VIDEO_LIMIT = exports.assertVeoGenerationEnabled = exports.isVeoGenerationEnabled = exports.getPublicUrl = exports.getBucket = exports.requireAuth = exports.getAI = exports.db = void 0;
+exports.parsePositiveBoundedInteger = parsePositiveBoundedInteger;
+const v2_1 = require("firebase-functions/v2");
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const genai_1 = require("@google/genai");
+// core.ts is the first module in the import graph (callables.ts imports it),
+// so this runs before any function is defined and applies to all of them.
+// Region is pinned to match the deployed webhook URL + Vertex location.
+// maxInstances caps runaway cost. NOTE: to kill cold starts on the hot
+// interactive callables at launch, add `minInstances: 1` here (paid warm
+// instance — leave at 0 pre-launch while traffic is ~zero).
+(0, v2_1.setGlobalOptions)({
+    region: "us-central1",
+    maxInstances: 10,
+});
 if (!admin.apps.length) {
     admin.initializeApp();
 }
@@ -61,6 +73,35 @@ const getBucket = () => admin.storage().bucket();
 exports.getBucket = getBucket;
 const getPublicUrl = (filePath) => `https://storage.googleapis.com/${(0, exports.getBucket)().name}/${filePath}`;
 exports.getPublicUrl = getPublicUrl;
+/** Veo is opt-in so an incomplete deployment cannot incur generation spend. */
+const isVeoGenerationEnabled = () => process.env.ENABLE_VEO_GENERATION === "true";
+exports.isVeoGenerationEnabled = isVeoGenerationEnabled;
+const assertVeoGenerationEnabled = () => {
+    if (!(0, exports.isVeoGenerationEnabled)()) {
+        throw new https_1.HttpsError("failed-precondition", "AI video generation is temporarily disabled by the server configuration");
+    }
+};
+exports.assertVeoGenerationEnabled = assertVeoGenerationEnabled;
+/** Parse an operator override without accepting zero, fractions, or unsafe values. */
+function parsePositiveBoundedInteger(rawValue, fallback, maximum) {
+    if (!Number.isSafeInteger(fallback) ||
+        fallback < 1 ||
+        !Number.isSafeInteger(maximum) ||
+        maximum < fallback) {
+        throw new Error("Invalid bounded integer configuration");
+    }
+    const value = rawValue === null || rawValue === void 0 ? void 0 : rawValue.trim();
+    if (!value || !/^\d+$/.test(value))
+        return fallback;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= maximum
+        ? parsed
+        : fallback;
+}
+exports.PLAN_VIDEO_LIMIT = {
+    pro: parsePositiveBoundedInteger(process.env.VIDEO_LIMIT_PRO, 2, 10),
+    max: parsePositiveBoundedInteger(process.env.VIDEO_LIMIT_MAX, 10, 50),
+};
 const stringifyError = (error) => {
     if (error instanceof Error)
         return error.message;

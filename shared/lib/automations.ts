@@ -10,18 +10,19 @@ import {
   orderBy,
   limit,
   serverTimestamp,
-  setDoc,
   updateDoc,
   onSnapshot,
   Timestamp,
   type Unsubscribe,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "./firebase";
 import type {
   SocialAccount,
   BrandProfile,
   Automation,
   Post,
+  PostMedia,
   PostStatus,
   SocialPlatform,
 } from "../types";
@@ -140,8 +141,12 @@ export async function getAutomation(id: string): Promise<Automation | null> {
 }
 
 export async function setAutomationStatus(id: string, status: "active" | "paused") {
-  if (!db) throw new Error("Firestore not initialized");
-  await updateDoc(doc(db, "automations", id), { status, updatedAt: serverTimestamp() });
+  if (!functions) throw new Error("Firebase Functions not initialized");
+  const setStatus = httpsCallable<
+    { id: string; status: "active" | "paused" },
+    { success: boolean }
+  >(functions, "setAutomationStatus");
+  await setStatus({ id, status });
 }
 
 export async function deleteAutomation(id: string) {
@@ -215,32 +220,36 @@ export function watchPost(id: string, cb: (post: Post | null) => void): Unsubscr
   });
 }
 
-/** Manual post creation (from ContentStudio / VideoCreator "Schedule this"). */
+/** Manual posts are validated, quota-reserved, and created by the backend. */
 export async function createManualPost(data: {
-  userId: string;
   scheduledFor: Date;
   timezone: string;
   brief: string;
   platforms: SocialPlatform[];
   socialAccountIds: string[];
   content?: Post["content"];
-  media?: Post["media"];
+  media?: Array<Pick<PostMedia, "type" | "storagePath" | "url">>;
   brandProfileId?: string;
 }): Promise<string> {
-  if (!db) throw new Error("Firestore not initialized");
-  const ref = doc(collection(db, "posts"));
-  await setDoc(
-    ref,
+  if (!functions) throw new Error("Firebase Functions not initialized");
+  const create = httpsCallable<
+    {
+      scheduledFor: string;
+      timezone: string;
+      brief: string;
+      platforms: SocialPlatform[];
+      socialAccountIds: string[];
+      content?: Post["content"];
+      media?: Array<Pick<PostMedia, "type" | "storagePath" | "url">>;
+      brandProfileId?: string;
+    },
+    { id: string; status: PostStatus }
+  >(functions, "createManualPost");
+  const result = await create(
     stripUndefined({
       ...data,
-      source: "manual",
-      scheduledFor: Timestamp.fromDate(data.scheduledFor),
-      // manual posts with content already attached skip generation
-      status: data.content ? "ready" : "scheduled",
-      attempts: 0,
-      maxAttempts: 3,
-      createdAt: serverTimestamp(),
+      scheduledFor: data.scheduledFor.toISOString(),
     })
   );
-  return ref.id;
+  return result.data.id;
 }

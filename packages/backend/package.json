@@ -1,0 +1,19 @@
+{
+  "name": "@magicbox/backend",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Convex backend for MagicBox (Firebase -> Convex migration, Month 2 foundation).",
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "convex": "^1.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^5.5.0"
+  }
+}

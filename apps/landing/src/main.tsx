@@ -2,9 +2,19 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { initAnalytics } from "@shared/lib/analytics";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+initAnalytics();
+
+const root = document.getElementById("root")!;
+const app = (
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );
+
+if (root.hasChildNodes()) {
+  ReactDOM.hydrateRoot(root, app);
+} else {
+  ReactDOM.createRoot(root).render(app);
+}

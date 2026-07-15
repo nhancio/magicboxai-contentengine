@@ -12,10 +12,10 @@ import {
 } from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@shared/components/ui/tabs";
+import { LottiePlayer } from "@shared/components/ui/lottie";
 import { cn } from "@shared/lib/utils";
 import PlatformPreview from "../components/previews/PlatformPreview";
 import {
-  Bot,
   Check,
   ExternalLink,
   Instagram,
@@ -24,6 +24,7 @@ import {
   RefreshCw,
   RotateCcw,
   Twitter,
+  Youtube,
   X,
 } from "lucide-react";
 
@@ -31,18 +32,19 @@ const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
   instagram: Instagram,
   twitter: Twitter,
   linkedin: Linkedin,
+  youtube: Youtube,
 };
 
 const STATUS_META: Record<PostStatus, { label: string; dot: string }> = {
-  draft: { label: "Draft", dot: "bg-white/30" },
-  pending_approval: { label: "Awaiting approval", dot: "bg-amber-400" },
-  scheduled: { label: "Scheduled", dot: "bg-sky-400" },
-  generating: { label: "Generating", dot: "bg-violet-400" },
-  ready: { label: "Ready to publish", dot: "bg-violet-300" },
-  posting: { label: "Publishing", dot: "bg-violet-400" },
-  posted: { label: "Published", dot: "bg-emerald-400" },
-  failed: { label: "Failed", dot: "bg-rose-400" },
-  cancelled: { label: "Cancelled", dot: "bg-white/20" },
+  draft: { label: "Draft", dot: "bg-muted-foreground/40" },
+  pending_approval: { label: "Awaiting approval", dot: "bg-amber-500" },
+  scheduled: { label: "Scheduled", dot: "bg-sky-500" },
+  generating: { label: "Generating", dot: "bg-brand" },
+  ready: { label: "Ready to publish", dot: "bg-brand/60" },
+  posting: { label: "Publishing", dot: "bg-brand" },
+  posted: { label: "Published", dot: "bg-emerald-500" },
+  failed: { label: "Failed", dot: "bg-rose-500" },
+  cancelled: { label: "Cancelled", dot: "bg-muted-foreground/30" },
 };
 
 type Tab = "all" | "queue" | "approval" | "published" | "failed";
@@ -99,8 +101,9 @@ export default function Library() {
     <div className="mx-auto max-w-4xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Posts</h1>
-          <p className="mt-1 text-sm text-white/40">
+          <span className="eyebrow">Library</span>
+          <h1 className="mt-2 font-display text-3xl">Posts</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Everything your automations have written, are writing, and have published.
           </p>
         </div>
@@ -108,20 +111,19 @@ export default function Library() {
           variant="outline"
           size="sm"
           onClick={() => refresh()}
-          className="border-white/10 bg-white/[0.04]"
         >
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Refresh
         </Button>
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="mb-5">
-        <TabsList className="bg-white/[0.04]">
+        <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="approval">
             Approval
             {approvalCount > 0 && (
-              <span className="ml-1.5 rounded-full bg-amber-500/20 px-1.5 text-[10px] text-amber-300">
+              <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 text-[10px] text-amber-700">
                 {approvalCount}
               </span>
             )}
@@ -138,15 +140,15 @@ export default function Library() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="glass-card flex flex-col items-center gap-3 py-16 text-center">
-          <Bot className="h-8 w-8 text-white/20" />
-          <p className="text-sm text-white/40">
+        <div className="glass-card flex flex-col items-center gap-3 py-14 text-center">
+          <LottiePlayer size={128} />
+          <p className="text-sm text-muted-foreground">
             {tab === "all"
               ? "No posts yet — launch an automation and they'll appear here."
               : "Nothing here right now."}
           </p>
           {tab === "all" && (
-            <Button asChild size="sm" className="bg-violet-600 hover:bg-violet-500">
+            <Button asChild size="sm">
               <Link to="/automations/new">Create automation</Link>
             </Button>
           )}
@@ -161,7 +163,7 @@ export default function Library() {
               <div key={post.id} className="glass-card p-5">
                 <div className="flex items-start gap-4">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-xs text-white/40">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span className={cn("h-1.5 w-1.5 rounded-full", status.dot)} />
                       {status.label}
                       <span>·</span>
@@ -182,7 +184,7 @@ export default function Library() {
                       {post.source === "automation" && post.automationId && (
                         <Link
                           to={`/automations/${post.automationId}`}
-                          className="text-violet-300/70 hover:text-violet-300"
+                          className="text-brand/80 hover:text-brand"
                         >
                           automation
                         </Link>
@@ -194,7 +196,7 @@ export default function Library() {
                     >
                       <p
                         className={cn(
-                          "whitespace-pre-line text-sm text-white/85",
+                          "whitespace-pre-line text-sm text-foreground/85",
                           !isExpanded && "line-clamp-2"
                         )}
                       >
@@ -202,7 +204,7 @@ export default function Library() {
                       </p>
                     </button>
                     {post.status === "failed" && post.error && (
-                      <p className="mt-2 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300/90">
+                      <p className="mt-2 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-red-600">
                         {post.error}
                       </p>
                     )}
@@ -211,13 +213,13 @@ export default function Library() {
                     <img
                       src={post.media[0].url}
                       alt=""
-                      className="h-16 w-16 shrink-0 rounded-lg border border-white/10 object-cover"
+                      className="h-16 w-16 shrink-0 rounded-lg border border-border object-cover"
                     />
                   )}
                 </div>
 
                 {isExpanded && post.content?.caption && (
-                  <div className="mt-4 flex justify-center border-t border-white/[0.06] pt-4">
+                  <div className="mt-4 flex justify-center border-t border-border pt-4">
                     <PlatformPreview
                       platform={post.platforms[0] ?? "instagram"}
                       content={{
@@ -253,7 +255,6 @@ export default function Library() {
                         size="sm"
                         disabled={busy === post.id}
                         onClick={() => act(post.id, regeneratePostContent, "Rewritten — take a look")}
-                        className="border-white/10 bg-white/[0.04]"
                       >
                         <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Rewrite
                       </Button>
@@ -265,7 +266,6 @@ export default function Library() {
                       size="sm"
                       disabled={busy === post.id}
                       onClick={() => act(post.id, retryPost, "Retrying")}
-                      className="border-white/10 bg-white/[0.04]"
                     >
                       <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Retry
                     </Button>
@@ -278,7 +278,7 @@ export default function Library() {
                       size="sm"
                       disabled={busy === post.id}
                       onClick={() => act(post.id, cancelPost, "Post cancelled")}
-                      className="text-white/40 hover:text-rose-300"
+                      className="text-muted-foreground hover:text-red-600"
                     >
                       <X className="mr-1 h-3.5 w-3.5" /> Cancel
                     </Button>
@@ -288,7 +288,7 @@ export default function Library() {
                       href={permalink}
                       target="_blank"
                       rel="noreferrer"
-                      className="ml-auto flex items-center gap-1 text-xs text-violet-300/80 hover:text-violet-300"
+                      className="ml-auto flex items-center gap-1 text-xs text-brand/80 hover:text-brand"
                     >
                       View live <ExternalLink className="h-3 w-3" />
                     </a>

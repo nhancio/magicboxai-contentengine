@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@shared/lib/auth";
 import { toast } from "sonner";
 import type { SocialAccount } from "@shared/types";
 import { getSocialAccounts } from "@shared/lib/automations";
-import { syncSocialAccounts } from "@shared/lib/suite";
+import { connectSocial, disconnectSocialAccount } from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@shared/components/ui/card";
 import { Label } from "@shared/components/ui/label";
@@ -45,15 +44,13 @@ import {
   Linkedin,
   Loader2,
   Pencil,
-  RefreshCw,
   Twitter,
+  Youtube,
 } from "lucide-react";
 
 export default function Settings() {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [defaultPlatform, setDefaultPlatform] = useState("instagram");
-  const [isDeleting, setIsDeleting] = useState(false);
   const [defaultStyle, setDefaultStyle] = useState("professional");
   const [language, setLanguage] = useState("en");
   const [emailNotifs, setEmailNotifs] = useState(true);
@@ -61,28 +58,44 @@ export default function Settings() {
   const [weeklyReport, setWeeklyReport] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
-  const [syncingAccounts, setSyncingAccounts] = useState(false);
+  const [connecting, setConnecting] = useState<"instagram" | "linkedin" | "youtube" | null>(null);
 
   useEffect(() => {
     if (!user) return;
     getSocialAccounts(user.uid).then(setSocialAccounts).catch(() => {});
   }, [user]);
 
-  const handleSyncAccounts = async () => {
-    if (!user) return;
-    setSyncingAccounts(true);
+  // Surface the OAuth round-trip result and clean the URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const social = params.get("social");
+    if (!social) return;
+    if (social === "connected") {
+      toast.success(`${params.get("provider") ?? "Channel"} connected`);
+    } else if (social === "error") {
+      toast.error(params.get("reason") || "Could not connect channel");
+    }
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
+  const handleConnect = async (provider: "instagram" | "linkedin" | "youtube") => {
+    setConnecting(provider);
     try {
-      const result = await syncSocialAccounts({});
-      setSocialAccounts(await getSocialAccounts(user.uid));
-      toast.success(
-        result.dryRun
-          ? `Synced ${result.synced} channels (sandbox mode)`
-          : `Synced ${result.synced} channels`
-      );
+      await connectSocial(provider); // redirects the tab
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Sync failed");
-    } finally {
-      setSyncingAccounts(false);
+      toast.error(error instanceof Error ? error.message : "Could not start connection");
+      setConnecting(null);
+    }
+  };
+
+  const handleDisconnect = async (accountId: string) => {
+    if (!user) return;
+    try {
+      await disconnectSocialAccount({ accountId });
+      setSocialAccounts(await getSocialAccounts(user.uid));
+      toast.success("Channel disconnected");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not disconnect");
     }
   };
 
@@ -99,43 +112,45 @@ export default function Settings() {
     <div className="space-y-6 animate-fade-in max-w-3xl">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/25">
-            <SettingsIcon className="h-5 w-5 text-white" />
+        <span className="eyebrow">Account</span>
+        <h2 className="mt-2 text-3xl md:text-4xl font-display text-foreground flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground text-background">
+            <SettingsIcon className="h-5 w-5" />
           </div>
-          <span className="text-gradient">Settings</span>
+          Settings
         </h2>
-        <p className="mt-2 text-white/60">Manage your account, preferences, and notifications.</p>
+        <p className="mt-2 text-muted-foreground">Manage your account, preferences, and notifications.</p>
       </div>
 
       {/* Profile Section */}
-      <Card className="glass-card border-white/[0.06] bg-transparent">
+      <Card className="glass-card">
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <User className="h-5 w-5 text-purple-400" />
+          <CardTitle className="text-foreground flex items-center gap-2">
+            <User className="h-5 w-5 text-brand" />
             Profile
           </CardTitle>
-          <CardDescription className="text-white/50">
+          <CardDescription className="text-muted-foreground">
             Your personal information and account details.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-5">
-            <Avatar className="h-20 w-20 border-2 border-purple-500/30">
+            <Avatar className="h-20 w-20 border border-border">
               <AvatarImage src={user?.photoURL ?? undefined} />
-              <AvatarFallback className="text-xl bg-purple-600/20 text-purple-300">
+              <AvatarFallback className="text-xl bg-brand/10 text-brand">
                 {initials}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 space-y-1">
-              <h3 className="text-lg font-semibold text-white">
+              <h3 className="text-lg font-semibold text-foreground">
                 {user?.displayName ?? "User"}
               </h3>
-              <p className="text-sm text-white/50">{user?.email ?? "No email"}</p>
+              <p className="text-sm text-muted-foreground">{user?.email ?? "No email"}</p>
               <Button
                 size="sm"
+                variant="outline"
                 onClick={() => toast.info("Profile editing coming soon! Your profile is synced with Google.")}
-                className="mt-2 bg-white/[0.06] border border-white/[0.1] text-white/80 hover:bg-white/[0.1]"
+                className="mt-2"
               >
                 <Pencil className="mr-1.5 h-3.5 w-3.5" />
                 Edit Profile
@@ -145,25 +160,25 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Separator className="bg-white/[0.06]" />
+      <Separator className="bg-border" />
 
       {/* Preferences Section */}
-      <Card className="glass-card border-white/[0.06] bg-transparent">
+      <Card className="glass-card">
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <Palette className="h-5 w-5 text-purple-400" />
+          <CardTitle className="text-foreground flex items-center gap-2">
+            <Palette className="h-5 w-5 text-brand" />
             Preferences
           </CardTitle>
-          <CardDescription className="text-white/50">
+          <CardDescription className="text-muted-foreground">
             Customize your default settings and appearance.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div className="space-y-2">
-              <Label className="text-white/80">Default Platform</Label>
+              <Label className="text-foreground/80">Default Platform</Label>
               <Select value={defaultPlatform} onValueChange={setDefaultPlatform}>
-                <SelectTrigger className="bg-white/[0.03] border-white/[0.06]">
+                <SelectTrigger className="bg-secondary border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -177,9 +192,9 @@ export default function Settings() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-white/80">Default Style</Label>
+              <Label className="text-foreground/80">Default Style</Label>
               <Select value={defaultStyle} onValueChange={setDefaultStyle}>
-                <SelectTrigger className="bg-white/[0.03] border-white/[0.06]">
+                <SelectTrigger className="bg-secondary border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -193,27 +208,27 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-xl bg-white/[0.02] border border-white/[0.06] p-4">
+          <div className="flex items-center justify-between rounded-lg bg-secondary border border-border p-4">
             <div className="flex items-center gap-3">
-              <Moon className="h-5 w-5 text-purple-400" />
+              <Moon className="h-5 w-5 text-brand" />
               <div>
-                <p className="text-sm font-medium text-white">Theme</p>
-                <p className="text-xs text-white/40">Dark mode is currently the only option</p>
+                <p className="text-sm font-medium text-foreground">Theme</p>
+                <p className="text-xs text-muted-foreground">Light mode is currently the only option</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 rounded-full bg-purple-600/20 px-3 py-1.5 text-xs font-medium text-purple-300 border border-purple-500/30">
-              <Moon className="h-3.5 w-3.5" />
-              Dark
+            <div className="flex items-center gap-2 rounded-full bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand border border-brand/20">
+              <Palette className="h-3.5 w-3.5" />
+              Light
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label className="text-white/80 flex items-center gap-2">
+            <Label className="text-foreground/80 flex items-center gap-2">
               <Globe className="h-4 w-4" />
               Language
             </Label>
             <Select value={language} onValueChange={setLanguage}>
-              <SelectTrigger className="bg-white/[0.03] border-white/[0.06] sm:w-1/2">
+              <SelectTrigger className="bg-secondary border-border sm:w-1/2">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -228,16 +243,16 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Separator className="bg-white/[0.06]" />
+      <Separator className="bg-border" />
 
       {/* Notifications Section */}
-      <Card className="glass-card border-white/[0.06] bg-transparent">
+      <Card className="glass-card">
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <Bell className="h-5 w-5 text-purple-400" />
+          <CardTitle className="text-foreground flex items-center gap-2">
+            <Bell className="h-5 w-5 text-brand" />
             Notifications
           </CardTitle>
-          <CardDescription className="text-white/50">
+          <CardDescription className="text-muted-foreground">
             Choose what notifications you want to receive.
           </CardDescription>
         </CardHeader>
@@ -270,13 +285,13 @@ export default function Settings() {
           ].map((item) => (
             <div
               key={item.id}
-              className="flex items-center justify-between rounded-xl bg-white/[0.02] border border-white/[0.06] p-4"
+              className="flex items-center justify-between rounded-lg bg-secondary border border-border p-4"
             >
               <div className="flex items-center gap-3">
-                <item.icon className="h-5 w-5 text-white/40" />
+                <item.icon className="h-5 w-5 text-muted-foreground" />
                 <div>
-                  <p className="text-sm font-medium text-white">{item.label}</p>
-                  <p className="text-xs text-white/40">{item.description}</p>
+                  <p className="text-sm font-medium text-foreground">{item.label}</p>
+                  <p className="text-xs text-muted-foreground">{item.description}</p>
                 </div>
               </div>
               <button
@@ -285,11 +300,11 @@ export default function Settings() {
                 aria-checked={item.checked}
                 onClick={() => item.onChange(!item.checked)}
                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
-                  item.checked ? "bg-purple-600" : "bg-white/10"
+                  item.checked ? "bg-brand" : "bg-accent"
                 }`}
               >
                 <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ${
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-sm ring-0 transition duration-200 ${
                     item.checked ? "translate-x-5" : "translate-x-0"
                   }`}
                 />
@@ -299,45 +314,25 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      <Separator className="bg-white/[0.06]" />
+      <Separator className="bg-border" />
 
       {/* Account Section */}
-      <Card className="glass-card border-white/[0.06] bg-transparent">
+      <Card className="glass-card">
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <Shield className="h-5 w-5 text-purple-400" />
+          <CardTitle className="text-foreground flex items-center gap-2">
+            <Shield className="h-5 w-5 text-brand" />
             Account
           </CardTitle>
-          <CardDescription className="text-white/50">
+          <CardDescription className="text-muted-foreground">
             Manage connected accounts and account actions.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Connected social channels */}
           <div>
-            <div className="mb-3 flex items-center justify-between">
-              <Label className="text-white/80">Connected channels</Label>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={syncingAccounts}
-                onClick={handleSyncAccounts}
-                className="border-white/10 bg-white/[0.04] text-white/70"
-              >
-                {syncingAccounts ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                Sync
-              </Button>
-            </div>
-            {socialAccounts.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/15 p-5 text-center text-sm text-white/40">
-                No social channels synced yet. Channels are linked by our team during
-                enterprise onboarding — hit Sync to pull them in.
-              </div>
-            ) : (
+            <Label className="text-foreground/80 mb-3 block">Connected channels</Label>
+
+            {socialAccounts.length > 0 && (
               <div className="mb-4 space-y-2">
                 {socialAccounts.map((account) => {
                   const Icon =
@@ -345,42 +340,101 @@ export default function Settings() {
                       ? Instagram
                       : account.platform === "twitter"
                         ? Twitter
-                        : Linkedin;
+                        : account.platform === "youtube"
+                          ? Youtube
+                          : Linkedin;
                   return (
                     <div
                       key={account.id}
-                      className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] p-4"
+                      className="flex items-center justify-between rounded-lg border border-border bg-secondary p-4"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/[0.06]">
-                          <Icon className="h-5 w-5 text-white/70" />
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent">
+                          <Icon className="h-5 w-5 text-foreground/70" />
                         </div>
                         <div>
-                          <p className="text-sm font-medium capitalize text-white">
+                          <p className="text-sm font-medium capitalize text-foreground">
                             {account.platform === "twitter" ? "Twitter / X" : account.platform}
                           </p>
-                          <p className="text-xs text-white/40">
+                          <p className="text-xs text-muted-foreground">
                             @{account.username || account.displayName}
                           </p>
                         </div>
                       </div>
-                      <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                        <Check className="mr-1 h-3 w-3" />
-                        Connected
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">
+                          <Check className="mr-1 h-3 w-3" />
+                          Connected
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDisconnect(account.id)}
+                        >
+                          Disconnect
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
               </div>
             )}
+
+            {/* Connect new channels */}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                className="justify-start"
+                disabled={connecting !== null}
+                onClick={() => handleConnect("instagram")}
+              >
+                {connecting === "instagram" ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Instagram className="mr-2 h-4 w-4" />
+                )}
+                Connect Instagram
+              </Button>
+              <Button
+                variant="outline"
+                className="justify-start"
+                disabled={connecting !== null}
+                onClick={() => handleConnect("linkedin")}
+              >
+                {connecting === "linkedin" ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Linkedin className="mr-2 h-4 w-4" />
+                )}
+                Connect LinkedIn
+              </Button>
+              <Button
+                variant="outline"
+                className="justify-start"
+                disabled={connecting !== null}
+                onClick={() => handleConnect("youtube")}
+              >
+                {connecting === "youtube" ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Youtube className="mr-2 h-4 w-4" />
+                )}
+                Connect YouTube
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Instagram requires a Business or Creator account linked to a Facebook Page. YouTube
+              connects via your Google account. X / Twitter is coming soon.
+            </p>
           </div>
 
           {/* Sign-in account */}
           <div>
-            <Label className="text-white/80 mb-3 block">Sign-in</Label>
-            <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 flex items-center justify-between">
+            <Label className="text-foreground/80 mb-3 block">Sign-in</Label>
+            <div className="rounded-lg bg-secondary border border-border p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-white/[0.06] flex items-center justify-center">
+                <div className="h-10 w-10 rounded-lg bg-accent flex items-center justify-center">
                   <svg className="h-5 w-5" viewBox="0 0 24 24">
                     <path
                       d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -401,11 +455,11 @@ export default function Settings() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-white">Google</p>
-                  <p className="text-xs text-white/40">{user?.email ?? "Connected"}</p>
+                  <p className="text-sm font-medium text-foreground">Google</p>
+                  <p className="text-xs text-muted-foreground">{user?.email ?? "Connected"}</p>
                 </div>
               </div>
-              <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+              <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">
                 <Check className="mr-1 h-3 w-3" />
                 Connected
               </Badge>
@@ -425,62 +479,58 @@ export default function Settings() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = "magicboxai-data.json";
+                a.download = "magicbox-account-summary.json";
                 a.click();
                 URL.revokeObjectURL(url);
-                toast.success("Data exported successfully!");
+                toast.success("Account summary downloaded");
               }}
-              className="bg-white/[0.06] border border-white/[0.1] text-white/80 hover:bg-white/[0.1]"
+              variant="outline"
             >
               <Download className="mr-2 h-4 w-4" />
-              Export Data
+              Download account summary
             </Button>
 
             <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
               <DialogTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="border border-red-500/20 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                  className="border border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Delete Account
+                  Request account deletion
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-zinc-900 border-white/[0.06]">
+              <DialogContent className="bg-card border-border">
                 <DialogHeader>
-                  <DialogTitle className="text-white">Delete Account</DialogTitle>
-                  <DialogDescription className="text-white/50">
-                    This action is permanent and cannot be undone. All your data, including avatars,
-                    ads, and settings will be permanently deleted.
+                  <DialogTitle className="text-foreground">Request account deletion</DialogTitle>
+                  <DialogDescription className="text-muted-foreground">
+                    Deletion is handled by support while the automated deletion workflow is being
+                    completed. We will verify your identity, help resolve any active subscription,
+                    and confirm the data covered before deletion. This button does not delete or
+                    sign you out immediately.
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter className="gap-2 sm:gap-0">
                   <Button
                     variant="ghost"
                     onClick={() => setDeleteDialogOpen(false)}
-                    className="text-white/60"
+                    className="text-muted-foreground"
                   >
                     Cancel
                   </Button>
                   <Button
-                    className="bg-red-600 hover:bg-red-700 text-white"
-                    disabled={isDeleting}
-                    onClick={async () => {
-                      setIsDeleting(true);
-                      try {
-                        await signOut();
-                        setDeleteDialogOpen(false);
-                        navigate("/login");
-                        toast.success("Account deletion requested. Your data will be removed.");
-                      } catch {
-                        toast.error("Failed to process request. Please contact support.");
-                      } finally {
-                        setIsDeleting(false);
-                      }
+                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                    onClick={() => {
+                      const subject = encodeURIComponent("MagicBox account deletion request");
+                      const body = encodeURIComponent(
+                        `Please start an account deletion request for ${user?.email ?? "my account"}.`
+                      );
+                      window.location.href = `mailto:support@magicboxai.in?subject=${subject}&body=${body}`;
+                      setDeleteDialogOpen(false);
                     }}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
-                    {isDeleting ? "Deleting..." : "Delete My Account"}
+                    Contact support
                   </Button>
                 </DialogFooter>
               </DialogContent>

@@ -218,6 +218,75 @@ export async function analyzeAvatarPhotosFromStorage(
   };
 }
 
+/**
+ * Build a rich, photographic prompt for an AI avatar/influencer from the
+ * structured Avatar Builder settings plus an optional free-text description.
+ */
+export function buildAvatarPrompt(params: {
+  name?: string;
+  description?: string;
+  settings: Record<string, string>;
+}): string {
+  const s = params.settings;
+  const pick = (k: string) => (s[k] && s[k].trim() ? s[k].trim() : "");
+
+  const subject = [
+    pick("ageRange") && `${pick("ageRange")} year old`,
+    pick("ethnicity"),
+    pick("gender") || "person",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const features: string[] = [];
+  if (pick("faceShape")) features.push(`${pick("faceShape").toLowerCase()} face`);
+  if (pick("skinTone")) features.push(`${pick("skinTone").toLowerCase()} skin tone`);
+  if (pick("hairStyle") || pick("hairColor"))
+    features.push(`${pick("hairColor").toLowerCase()} ${pick("hairStyle").toLowerCase()} hair`.trim());
+  if (pick("eyeColor")) features.push(`${pick("eyeColor").toLowerCase()} eyes`);
+
+  const scene: string[] = [];
+  if (pick("outfit")) scene.push(`wearing ${pick("outfit").toLowerCase()} attire`);
+  if (pick("expression")) scene.push(`${pick("expression").toLowerCase()} expression`);
+  if (pick("pose")) scene.push(`${pick("pose").toLowerCase()} pose`);
+  if (pick("background")) scene.push(`${pick("background").toLowerCase()} background`);
+  if (pick("lighting")) scene.push(`${pick("lighting").toLowerCase()} lighting`);
+
+  const style = pick("style") || "Photorealistic";
+
+  const parts = [
+    `${style} portrait of a ${subject || "person"}`,
+    features.length ? `with ${features.join(", ")}` : "",
+    scene.join(", "),
+    params.description?.trim() ? params.description.trim() : "",
+    "High detail, sharp focus, professional social-media creator headshot, clean composition, natural skin texture, 4k.",
+  ].filter(Boolean);
+
+  return parts.join(". ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Generate an AI avatar image from Avatar Builder settings. Prompt assembly
+ * happens here; the actual image is produced server-side (no API key ever
+ * touches the client) via the deployed `generateImage` callable.
+ */
+export async function generateAvatarImage(params: {
+  name?: string;
+  description?: string;
+  settings: Record<string, string>;
+}): Promise<{ imageUrl: string; prompt: string }> {
+  if (!functions) {
+    throw new Error("Firebase functions not initialized");
+  }
+  const prompt = buildAvatarPrompt(params);
+  const generateImageFn = httpsCallable<
+    { prompt: string; type: "influencer" | "ad" },
+    { imageUrl: string }
+  >(functions, "generateImage");
+  const result = await generateImageFn({ prompt, type: "influencer" });
+  return { imageUrl: result.data.imageUrl, prompt };
+}
+
 export async function generateScript(params: {
   productName: string;
   productDescription: string;

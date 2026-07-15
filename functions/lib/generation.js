@@ -1,14 +1,15 @@
 "use strict";
 // Content generation pipeline for automation posts: Gemini captions per
-// platform, Imagen images. Video posts reuse the existing Veo pipeline via
-// the avatar/UGC flow and attach media before scheduling (manual source).
+// platform, Imagen images, Veo text-to-video clips (for YouTube / Reels).
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateCaptionForPlatform = generateCaptionForPlatform;
 exports.generatePostImage = generatePostImage;
+exports.generatePostVideo = generatePostVideo;
 exports.generatePostAssets = generatePostAssets;
 const uuid_1 = require("uuid");
 const core_1 = require("./core");
 const marketingPrompts_1 = require("./prompts/marketingPrompts");
+const googleVeo_1 = require("./video/googleVeo");
 function parseJsonBlock(text) {
     var _a;
     const cleaned = text
@@ -36,7 +37,7 @@ async function generateCaptionForPlatform(args) {
         platform: args.platform,
     });
     const result = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.0-flash-001",
         contents: prompt,
         config: { systemInstruction },
     });
@@ -70,15 +71,51 @@ async function generatePostImage(args) {
     await file.makePublic();
     return { url: (0, core_1.getPublicUrl)(storagePath), storagePath };
 }
+async function generatePostVideo(args) {
+    var _a;
+    (0, core_1.assertVeoGenerationEnabled)();
+    const ai = (0, core_1.getAI)();
+    const bucket = (0, core_1.getBucket)();
+    const outputStoragePrefix = `posts/${args.postId}/${(0, uuid_1.v4)()}/`;
+    const prompt = [
+        "Create a short, scroll-stopping vertical social media video clip.",
+        "One clear subject, cinematic lighting, smooth camera movement, no on-screen text.",
+        args.brand ? `Brand: ${args.brand.name} (${args.brand.industry}).` : "",
+        "The clip accompanies this social post:",
+        ((_a = args.caption) !== null && _a !== void 0 ? _a : args.brief).slice(0, 800),
+    ]
+        .filter(Boolean)
+        .join("\n");
+    const generated = await (0, googleVeo_1.generateVeoVideo)({
+        ai,
+        prompt,
+        aspectRatio: "9:16",
+        durationSeconds: 8,
+        outputGcsUri: `gs://${bucket.name}/${outputStoragePrefix}`,
+    });
+    const file = bucket.file(generated.storagePath);
+    const [exists] = await file.exists();
+    if (!exists)
+        throw new Error("Generated video file not found in storage");
+    await file.makePublic();
+    return {
+        url: (0, core_1.getPublicUrl)(generated.storagePath),
+        storagePath: generated.storagePath,
+    };
+}
 /**
- * Generate all content for a post (captions per platform + optional image)
- * and return the fields to merge onto the post doc.
+ * Generate all content for a post (captions per platform + optional
+ * image/video) and return the fields to merge onto the post doc.
  */
 async function generatePostAssets(postId, post) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f, _g;
+    // Fail the whole video job before caption/image/provider work instead of
+    // silently degrading a video request into a different asset type.
+    if ((_a = post.contentTypes) === null || _a === void 0 ? void 0 : _a.video)
+        (0, core_1.assertVeoGenerationEnabled)();
     const brand = await getBrand(post.brandProfileId);
-    const preset = (_a = post.preset) !== null && _a !== void 0 ? _a : "custom";
-    const tone = (_b = post.tone) !== null && _b !== void 0 ? _b : "";
+    const preset = (_b = post.preset) !== null && _b !== void 0 ? _b : "custom";
+    const tone = (_c = post.tone) !== null && _c !== void 0 ? _c : "";
     const platforms = post.platforms.length ? post.platforms : ["instagram"];
     // Primary caption from the first platform; per-platform variants for the rest.
     const captions = await Promise.all(platforms.map(async (platform) => ({
@@ -103,7 +140,28 @@ async function generatePostAssets(postId, post) {
             perPlatform,
         },
     };
-    if ((_c = post.contentTypes) === null || _c === void 0 ? void 0 : _c.image) {
+    const media = [...((_d = post.media) !== null && _d !== void 0 ? _d : [])];
+    // Video first: platforms like YouTube require it, and publishing picks the
+    // first usable media item.
+    if (((_e = post.contentTypes) === null || _e === void 0 ? void 0 : _e.video) && !media.some((m) => m.type === "video")) {
+        try {
+            const video = await generatePostVideo({
+                postId,
+                brand,
+                brief: post.brief,
+                caption: primary.caption,
+            });
+            media.push({ type: "video", url: video.url, storagePath: video.storagePath, source: "veo" });
+        }
+        catch (error) {
+            const needsVideo = platforms.includes("youtube");
+            console.error(`[generatePostAssets] video generation failed for ${postId}:`, (0, core_1.stringifyError)(error));
+            // YouTube can't post without a video — fail the post so it retries.
+            if (needsVideo && !((_f = post.contentTypes) === null || _f === void 0 ? void 0 : _f.image))
+                throw error;
+        }
+    }
+    if ((_g = post.contentTypes) === null || _g === void 0 ? void 0 : _g.image) {
         try {
             const image = await generatePostImage({
                 userId: post.userId,
@@ -112,16 +170,15 @@ async function generatePostAssets(postId, post) {
                 brief: post.brief,
                 caption: primary.caption,
             });
-            update.media = [
-                ...((_d = post.media) !== null && _d !== void 0 ? _d : []),
-                { type: "image", url: image.url, storagePath: image.storagePath, source: "imagen" },
-            ];
+            media.push({ type: "image", url: image.url, storagePath: image.storagePath, source: "imagen" });
         }
         catch (error) {
             // Image failure shouldn't kill the post — caption-only is still postable.
             console.error(`[generatePostAssets] image generation failed for ${postId}:`, (0, core_1.stringifyError)(error));
         }
     }
+    if (media.length)
+        update.media = media;
     return update;
 }
 //# sourceMappingURL=generation.js.map

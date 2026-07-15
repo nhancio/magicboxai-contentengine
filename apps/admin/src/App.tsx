@@ -1,13 +1,23 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AdminAuthProvider } from "./contexts/AdminAuthContext";
 import AdminGuard from "./components/layout/AdminGuard";
-import AdminLogin from "./pages/AdminLogin";
-import Dashboard from "./pages/Dashboard";
-import Users from "./pages/Users";
-import Avatars from "./pages/Avatars";
-import ApiLogs from "./pages/ApiLogs";
-import AdminSettings from "./pages/AdminSettings";
+
+const AdminLogin = lazy(() => import("./pages/AdminLogin"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Users = lazy(() => import("./pages/Users"));
+const Avatars = lazy(() => import("./pages/Avatars"));
+const ApiLogs = lazy(() => import("./pages/ApiLogs"));
+const AdminSettings = lazy(() => import("./pages/AdminSettings"));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-sm text-zinc-400">
+      Loading MagicBox admin…
+    </div>
+  );
+}
 
 export default function App() {
   return (
@@ -23,6 +33,7 @@ export default function App() {
           },
         }}
       />
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<AdminLogin />} />
         <Route
@@ -67,6 +78,7 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </AdminAuthProvider>
   );
 }

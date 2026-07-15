@@ -33,36 +33,47 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateUGCVideo = exports.generateAvatarVideo = exports.analyzeAvatarPhotos = exports.analyzeImage = exports.generateScript = exports.generateImage = exports.renderRemotionVideo = exports.verifyRazorpayPayment = exports.createRazorpayOrder = exports.verifyAdminStatus = exports.setAdminRole = exports.postingTick = exports.generationTick = exports.automationTick = exports.getQuota = exports.regeneratePostContent = exports.cancelPost = exports.retryPost = exports.approvePost = exports.generatePreviewContent = exports.runAutomationNow = exports.updateAutomation = exports.createAutomation = exports.syncSocialAccounts = void 0;
+exports.generateUGCVideo = exports.generateAvatarVideo = exports.analyzeAvatarPhotos = exports.analyzeImage = exports.generateScript = exports.generateImage = exports.renderRemotionVideo = exports.verifyAdminStatus = exports.setAdminRole = exports.createGuestCheckout = exports.dodoWebhook = exports.createDodoPortal = exports.createDodoCheckout = exports.onUserCreatedSendWelcome = exports.extractBrandFromWebsite = exports.postingTick = exports.generationTick = exports.automationTick = exports.socialOAuthCallback = exports.disconnectSocialAccount = exports.getSocialConnectUrl = exports.getQuota = exports.regeneratePostContent = exports.cancelPost = exports.retryPost = exports.approvePost = exports.generatePreviewContent = exports.createManualPost = exports.runAutomationNow = exports.setAutomationStatus = exports.updateAutomation = exports.createAutomation = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const genai_1 = require("@google/genai");
 const uuid_1 = require("uuid");
-const node_crypto_1 = require("node:crypto");
+const core_1 = require("./core");
+const googleVeo_1 = require("./video/googleVeo");
 if (!admin.apps.length) {
     admin.initializeApp();
 }
 const db = admin.firestore();
 // Marketing automation suite
 var callables_1 = require("./callables");
-Object.defineProperty(exports, "syncSocialAccounts", { enumerable: true, get: function () { return callables_1.syncSocialAccounts; } });
 Object.defineProperty(exports, "createAutomation", { enumerable: true, get: function () { return callables_1.createAutomation; } });
 Object.defineProperty(exports, "updateAutomation", { enumerable: true, get: function () { return callables_1.updateAutomation; } });
+Object.defineProperty(exports, "setAutomationStatus", { enumerable: true, get: function () { return callables_1.setAutomationStatus; } });
 Object.defineProperty(exports, "runAutomationNow", { enumerable: true, get: function () { return callables_1.runAutomationNow; } });
+Object.defineProperty(exports, "createManualPost", { enumerable: true, get: function () { return callables_1.createManualPost; } });
 Object.defineProperty(exports, "generatePreviewContent", { enumerable: true, get: function () { return callables_1.generatePreviewContent; } });
 Object.defineProperty(exports, "approvePost", { enumerable: true, get: function () { return callables_1.approvePost; } });
 Object.defineProperty(exports, "retryPost", { enumerable: true, get: function () { return callables_1.retryPost; } });
 Object.defineProperty(exports, "cancelPost", { enumerable: true, get: function () { return callables_1.cancelPost; } });
 Object.defineProperty(exports, "regeneratePostContent", { enumerable: true, get: function () { return callables_1.regeneratePostContent; } });
 Object.defineProperty(exports, "getQuota", { enumerable: true, get: function () { return callables_1.getQuota; } });
+var social_1 = require("./social");
+Object.defineProperty(exports, "getSocialConnectUrl", { enumerable: true, get: function () { return social_1.getSocialConnectUrl; } });
+Object.defineProperty(exports, "disconnectSocialAccount", { enumerable: true, get: function () { return social_1.disconnectSocialAccount; } });
+Object.defineProperty(exports, "socialOAuthCallback", { enumerable: true, get: function () { return social_1.socialOAuthCallback; } });
 var scheduler_1 = require("./scheduler");
 Object.defineProperty(exports, "automationTick", { enumerable: true, get: function () { return scheduler_1.automationTick; } });
 Object.defineProperty(exports, "generationTick", { enumerable: true, get: function () { return scheduler_1.generationTick; } });
 Object.defineProperty(exports, "postingTick", { enumerable: true, get: function () { return scheduler_1.postingTick; } });
-const SUBSCRIPTION_PLANS = {
-    starter: { amount: 100000, currency: "INR", videoLimit: 50, periodDays: 30 },
-    pro: { amount: 500000, currency: "INR", videoLimit: 1000, periodDays: 30 },
-};
+var brand_1 = require("./brand");
+Object.defineProperty(exports, "extractBrandFromWebsite", { enumerable: true, get: function () { return brand_1.extractBrandFromWebsite; } });
+var welcome_1 = require("./welcome");
+Object.defineProperty(exports, "onUserCreatedSendWelcome", { enumerable: true, get: function () { return welcome_1.onUserCreatedSendWelcome; } });
+var dodo_1 = require("./dodo");
+Object.defineProperty(exports, "createDodoCheckout", { enumerable: true, get: function () { return dodo_1.createDodoCheckout; } });
+Object.defineProperty(exports, "createDodoPortal", { enumerable: true, get: function () { return dodo_1.createDodoPortal; } });
+Object.defineProperty(exports, "dodoWebhook", { enumerable: true, get: function () { return dodo_1.dodoWebhook; } });
+Object.defineProperty(exports, "createGuestCheckout", { enumerable: true, get: function () { return dodo_1.createGuestCheckout; } });
 const VEO_SYSTEM_PROMPTS = {
     avatarPreview: `You are MagicBox AI's avatar preview director for Veo.
 
@@ -224,13 +235,6 @@ const requireAuth = (request) => {
     }
     return request.auth.uid;
 };
-const requireEnv = (key) => {
-    const value = process.env[key];
-    if (!value) {
-        throw new https_1.HttpsError("failed-precondition", `${key} is not configured`);
-    }
-    return value;
-};
 const getBucket = () => admin.storage().bucket();
 const getPublicUrl = (filePath) => `https://storage.googleapis.com/${getBucket().name}/${filePath}`;
 const getSubscription = async (uid) => {
@@ -240,10 +244,18 @@ const getSubscription = async (uid) => {
         return { plan: "free", videosUsed: 0, videosLimit: 0, status: "inactive" };
     }
     const data = snap.data();
+    const plan = (_a = data === null || data === void 0 ? void 0 : data.plan) !== null && _a !== void 0 ? _a : "free";
+    const configuredLimit = plan === "free" ? 0 : core_1.PLAN_VIDEO_LIMIT[plan];
+    const storedLimit = (_b = data === null || data === void 0 ? void 0 : data.videosLimit) !== null && _b !== void 0 ? _b : 0;
+    const videosLimit = Number.isSafeInteger(storedLimit) && storedLimit > 0
+        ? Math.min(storedLimit, configuredLimit)
+        : 0;
     return {
-        plan: (_a = data === null || data === void 0 ? void 0 : data.plan) !== null && _a !== void 0 ? _a : "free",
-        videosUsed: (_b = data === null || data === void 0 ? void 0 : data.videosUsed) !== null && _b !== void 0 ? _b : 0,
-        videosLimit: (_c = data === null || data === void 0 ? void 0 : data.videosLimit) !== null && _c !== void 0 ? _c : 0,
+        plan,
+        videosUsed: (_c = data === null || data === void 0 ? void 0 : data.videosUsed) !== null && _c !== void 0 ? _c : 0,
+        // Cap legacy subscription documents that may still contain the old,
+        // financially unsafe 50/1000 allowances.
+        videosLimit,
         status: (_d = data === null || data === void 0 ? void 0 : data.status) !== null && _d !== void 0 ? _d : ((data === null || data === void 0 ? void 0 : data.plan) && data.plan !== "free" ? "active" : "inactive"),
         currentPeriodEnd: data === null || data === void 0 ? void 0 : data.currentPeriodEnd,
     };
@@ -288,23 +300,6 @@ const formatAIServiceError = (rawMessage) => {
     return message || "Unexpected error";
 };
 const parseError = (error) => formatAIServiceError(stringifyError(error));
-const fetchJson = async (input, init) => {
-    const response = await fetch(input, init);
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `Request failed with status ${response.status}`);
-    }
-    return (await response.json());
-};
-const getRazorpayAuthHeader = () => {
-    const keyId = requireEnv("RAZORPAY_KEY_ID");
-    const keySecret = requireEnv("RAZORPAY_KEY_SECRET");
-    return {
-        keyId,
-        keySecret,
-        authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`,
-    };
-};
 const updateVideoDocument = async (uid, videoId, data) => {
     var _a;
     if (!videoId)
@@ -319,81 +314,43 @@ const updateVideoDocument = async (uid, videoId, data) => {
     }
     await ref.set(data, { merge: true });
 };
-const generateVideoFromImage = async ({ prompt, inputImagePath, outputFilePath, durationSeconds, }) => {
-    console.log("[generateVideoFromImage] STARTING with params:", { inputImagePath, outputFilePath, durationSeconds });
-    console.log("[generateVideoFromImage] PROMPT:", prompt);
+const generateVideoFromImage = async ({ prompt, inputImagePath, outputStoragePrefix, durationSeconds, }) => {
+    (0, core_1.assertVeoGenerationEnabled)();
     const ai = getAI();
     const bucket = getBucket();
     const inputGcsUri = `gs://${bucket.name}/${inputImagePath}`;
-    const outputGcsUri = `gs://${bucket.name}/${outputFilePath}`;
-    console.log("[generateVideoFromImage] URIs:", { inputGcsUri, outputGcsUri });
-    console.log("[generateVideoFromImage] Calling ai.models.generateVideos...");
-    let operation;
-    try {
-        operation = await ai.models.generateVideos({
-            model: "veo-3.1-generate-001",
-            prompt,
-            source: {
-                image: {
-                    gcsUri: inputGcsUri,
-                },
-            },
-            config: {
-                aspectRatio: "9:16",
-                durationSeconds,
-                outputUri: outputGcsUri,
-            },
-        });
+    const outputGcsUri = `gs://${bucket.name}/${outputStoragePrefix}`;
+    const inputFile = bucket.file(inputImagePath);
+    const [inputExists] = await inputFile.exists();
+    if (!inputExists)
+        throw new Error("Veo source image was not found in storage");
+    const [inputMetadata] = await inputFile.getMetadata();
+    const inputMimeType = inputMetadata.contentType;
+    if (!(inputMimeType === null || inputMimeType === void 0 ? void 0 : inputMimeType.startsWith("image/"))) {
+        throw new Error("Veo source image is missing a valid image MIME type");
     }
-    catch (genError) {
-        console.error("[generateVideoFromImage] ai.models.generateVideos FAILED:", genError);
-        throw genError;
-    }
-    console.log("[generateVideoFromImage] operation result:", JSON.stringify(operation));
-    if (!(operation === null || operation === void 0 ? void 0 : operation.name)) {
-        console.error("[generateVideoFromImage] No operation name returned");
-        throw new Error("No operation name returned from Veo");
-    }
-    let result = operation;
-    let attempts = 0;
-    console.log("[generateVideoFromImage] Starting poll loop for operation:", operation.name);
-    while (!result.done && attempts < 30) {
-        attempts += 1;
-        console.log(`[generateVideoFromImage] Polling attempt ${attempts}...`);
-        await new Promise((resolve) => setTimeout(resolve, 15000));
-        try {
-            result = (await ai.operations.get({
-                operationId: operation.name,
-            }));
-            console.log(`[generateVideoFromImage] Polling result (attempt ${attempts}):`, JSON.stringify(result));
-        }
-        catch (pollError) {
-            console.error(`[generateVideoFromImage] Error during polling (attempt ${attempts}):`, pollError);
-            throw pollError;
-        }
-    }
-    if (!result.done) {
-        console.error("[generateVideoFromImage] Generation timed out after 30 attempts");
-        throw new Error("Video generation timed out");
-    }
-    if (result.error) {
-        console.error("[generateVideoFromImage] Operation finished with error:", result.error);
-        throw new Error(JSON.stringify(result.error));
-    }
-    console.log("[generateVideoFromImage] Operation done. Checking file existence...");
-    const file = bucket.file(outputFilePath);
+    const generated = await (0, googleVeo_1.generateVeoVideo)({
+        ai,
+        prompt,
+        sourceImage: { gcsUri: inputGcsUri, mimeType: inputMimeType },
+        aspectRatio: "9:16",
+        durationSeconds,
+        outputGcsUri,
+    });
+    const file = bucket.file(generated.storagePath);
     const [exists] = await file.exists();
-    if (!exists) {
-        console.error(`[generateVideoFromImage] File ${outputFilePath} does not exist in bucket`);
+    if (!exists)
         throw new Error("Generated video file not found in storage");
-    }
-    console.log(`[generateVideoFromImage] File exists. Making public...`);
     await file.makePublic();
-    const finalUrl = getPublicUrl(outputFilePath);
-    console.log(`[generateVideoFromImage] SUCCESS. final video url:`, finalUrl);
+    const finalUrl = getPublicUrl(generated.storagePath);
+    console.log("[generateVideoFromImage] Veo generation completed", {
+        operationName: generated.operationName,
+        storagePath: generated.storagePath,
+        pollAttempts: generated.pollAttempts,
+    });
     return {
         videoUrl: finalUrl,
-        outputFilePath,
+        outputFilePath: generated.storagePath,
     };
 };
 exports.setAdminRole = (0, https_1.onCall)({ cors: true }, async (request) => {
@@ -436,97 +393,8 @@ exports.verifyAdminStatus = (0, https_1.onCall)({ cors: true }, async (request) 
     }
     return { isAdmin };
 });
-exports.createRazorpayOrder = (0, https_1.onCall)({ cors: true }, async (request) => {
-    const uid = requireAuth(request);
-    const { planId } = request.data;
-    if (!planId || !(planId in SUBSCRIPTION_PLANS)) {
-        throw new https_1.HttpsError("invalid-argument", "A valid paid planId is required");
-    }
-    const paidPlanId = planId;
-    const plan = SUBSCRIPTION_PLANS[paidPlanId];
-    const { keyId, authorization } = getRazorpayAuthHeader();
-    try {
-        const order = await fetchJson("https://api.razorpay.com/v1/orders", {
-            method: "POST",
-            headers: {
-                Authorization: authorization,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                amount: plan.amount,
-                currency: plan.currency,
-                receipt: `magicbox_${uid}_${Date.now()}`,
-                notes: {
-                    uid,
-                    planId: paidPlanId,
-                },
-            }),
-        });
-        return {
-            orderId: order.id,
-            amount: order.amount,
-            currency: order.currency,
-            keyId,
-        };
-    }
-    catch (error) {
-        throw new https_1.HttpsError("internal", parseError(error));
-    }
-});
-exports.verifyRazorpayPayment = (0, https_1.onCall)({ cors: true }, async (request) => {
-    const uid = requireAuth(request);
-    const { planId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = request.data;
-    if (!planId || !(planId in SUBSCRIPTION_PLANS)) {
-        throw new https_1.HttpsError("invalid-argument", "A valid paid planId is required");
-    }
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-        throw new https_1.HttpsError("invalid-argument", "Payment verification data is incomplete");
-    }
-    const paidPlanId = planId;
-    const plan = SUBSCRIPTION_PLANS[paidPlanId];
-    const { authorization, keySecret } = getRazorpayAuthHeader();
-    const expectedSignature = (0, node_crypto_1.createHmac)("sha256", keySecret)
-        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-        .digest("hex");
-    if (expectedSignature !== razorpay_signature) {
-        throw new https_1.HttpsError("permission-denied", "Invalid payment signature");
-    }
-    try {
-        const payment = await fetchJson(`https://api.razorpay.com/v1/payments/${razorpay_payment_id}`, {
-            method: "GET",
-            headers: { Authorization: authorization },
-        });
-        if (payment.order_id !== razorpay_order_id || payment.status !== "captured") {
-            throw new Error("Payment is not captured for the provided order");
-        }
-        const periodEnd = admin.firestore.Timestamp.fromDate(new Date(Date.now() + plan.periodDays * 24 * 60 * 60 * 1000));
-        await db.collection("subscriptions").doc(uid).set({
-            plan: paidPlanId,
-            videosUsed: 0,
-            videosLimit: plan.videoLimit,
-            status: "active",
-            razorpayOrderId: razorpay_order_id,
-            razorpayCustomerId: razorpay_payment_id,
-            currentPeriodEnd: periodEnd,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-        return {
-            success: true,
-            subscription: {
-                plan: paidPlanId,
-                videosUsed: 0,
-                videosLimit: plan.videoLimit,
-                status: "active",
-                razorpayOrderId: razorpay_order_id,
-                razorpayCustomerId: razorpay_payment_id,
-                currentPeriodEnd: periodEnd,
-            },
-        };
-    }
-    catch (error) {
-        throw new https_1.HttpsError("internal", parseError(error));
-    }
-});
+// Billing is handled by Polar.sh — see functions/src/polar.ts
+// (createPolarCheckout + polarWebhook), exported at the top of this file.
 exports.renderRemotionVideo = (0, https_1.onCall)({ timeoutSeconds: 540, memory: "2GiB", cors: true }, async (request) => {
     const uid = requireAuth(request);
     const { templateId, props, videoId } = request.data;
@@ -625,7 +493,7 @@ exports.generateScript = (0, https_1.onCall)({ timeoutSeconds: 60, memory: "512M
     try {
         const ai = getAI();
         const result = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
+            model: "gemini-2.0-flash-001",
             contents: prompt,
             config: {
                 systemInstruction: systemInstruction || undefined,
@@ -643,7 +511,7 @@ exports.analyzeImage = (0, https_1.onCall)({ timeoutSeconds: 60, memory: "512MiB
     try {
         const ai = getAI();
         const result = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
+            model: "gemini-2.0-flash-001",
             contents: [
                 prompt,
                 {
@@ -687,7 +555,7 @@ exports.analyzeAvatarPhotos = (0, https_1.onCall)({ timeoutSeconds: 120, memory:
                 },
             }));
         const result = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
+            model: "gemini-2.0-flash-001",
             contents: [
                 prompt ||
                     `You are analyzing multiple photos of the same person for a reusable talking-head avatar.
@@ -712,6 +580,7 @@ Requirements:
 exports.generateAvatarVideo = (0, https_1.onCall)({ timeoutSeconds: 540, memory: "1GiB", cors: true }, async (request) => {
     console.log("[generateAvatarVideo] ONCALL INVOKED");
     const uid = requireAuth(request);
+    (0, core_1.assertVeoGenerationEnabled)();
     console.log(`[generateAvatarVideo] UID: ${uid}`);
     const { photoStoragePath, avatarName, personality } = request.data;
     console.log(`[generateAvatarVideo] Input data:`, { photoStoragePath, avatarName, personality });
@@ -720,8 +589,8 @@ exports.generateAvatarVideo = (0, https_1.onCall)({ timeoutSeconds: 540, memory:
         throw new https_1.HttpsError("invalid-argument", "photoStoragePath and avatarName are required");
     }
     try {
-        const outputFilePath = `users/${uid}/avatar-previews/${(0, uuid_1.v4)()}.mp4`;
-        console.log(`[generateAvatarVideo] outputFilePath: ${outputFilePath}`);
+        const outputStoragePrefix = `users/${uid}/avatar-previews/${(0, uuid_1.v4)()}/`;
+        console.log(`[generateAvatarVideo] outputStoragePrefix: ${outputStoragePrefix}`);
         const previewPrompt = buildAvatarPreviewPrompt({
             avatarName,
             personality,
@@ -730,8 +599,8 @@ exports.generateAvatarVideo = (0, https_1.onCall)({ timeoutSeconds: 540, memory:
         const res = await generateVideoFromImage({
             prompt: previewPrompt,
             inputImagePath: photoStoragePath,
-            outputFilePath,
-            durationSeconds: 5,
+            outputStoragePrefix,
+            durationSeconds: 8,
         });
         console.log(`[generateAvatarVideo] FINISHED SUCCESSFULLY`, res);
         return res;
@@ -744,6 +613,7 @@ exports.generateAvatarVideo = (0, https_1.onCall)({ timeoutSeconds: 540, memory:
 exports.generateUGCVideo = (0, https_1.onCall)({ timeoutSeconds: 540, memory: "1GiB", cors: true }, async (request) => {
     console.log("[generateUGCVideo] ONCALL INVOKED");
     const uid = requireAuth(request);
+    (0, core_1.assertVeoGenerationEnabled)();
     console.log(`[generateUGCVideo] UID: ${uid}`);
     const { videoId, photoStoragePath, script, templateId, templateName, avatarName, characterSummary, productName, productDescription, productImageAnalysis, } = request.data;
     console.log(`[generateUGCVideo] Input data:`, request.data);
@@ -761,8 +631,8 @@ exports.generateUGCVideo = (0, https_1.onCall)({ timeoutSeconds: 540, memory: "1
             status: "generating",
             renderProvider: "veo",
         });
-        const outputFilePath = `users/${uid}/videos/ugc_${(0, uuid_1.v4)()}.mp4`;
-        console.log(`[generateUGCVideo] outputFilePath: ${outputFilePath}`);
+        const outputStoragePrefix = `users/${uid}/videos/ugc_${(0, uuid_1.v4)()}/`;
+        console.log(`[generateUGCVideo] outputStoragePrefix: ${outputStoragePrefix}`);
         const prompt = buildUGCVideoPrompt({
             avatarName,
             characterSummary,
@@ -778,7 +648,7 @@ exports.generateUGCVideo = (0, https_1.onCall)({ timeoutSeconds: 540, memory: "1
         const result = await generateVideoFromImage({
             prompt,
             inputImagePath: photoStoragePath,
-            outputFilePath,
+            outputStoragePrefix,
             durationSeconds: 8,
         });
         console.log("[generateUGCVideo] generateVideoFromImage SUCCESS:", result);

@@ -1,8 +1,22 @@
-# MagicBox AI
+# MagicBox
 
-AI-powered content creation platform for building digital avatars, generating social media content, and managing multi-platform publishing.
+MagicBox is an AI marketing automation platform for brand-aware content generation, approval, scheduling, and direct publishing.
 
-**Production checklist:** See **[nxtsteps.md](./nxtsteps.md)** — update it whenever you make production-related changes.
+- Canonical architecture, setup, product, SEO, payments, video, and Convex migration context: [`Context.MD`](./Context.MD)
+- Canonical production backlog, release gates, six-month plan, and redundant-file inventory: [`NEXTSTEPS.md`](./NEXTSTEPS.md)
+
+Quick verification:
+
+```bash
+npm install
+npm run typecheck
+npm test
+npm run build
+```
+
+Historical project Markdown files are retained for review but are superseded by the two canonical documents above. Operational `marketing-agent/**/*.md` files and canonical `legal/*.md` policies remain standalone by design.
+
+<!-- Historical content below is retained temporarily for provenance. -->
 
 ## Architecture
 
@@ -25,12 +39,12 @@ magicboxai/
 |-----------|-----|------------|-------------|
 | magicboxai.in | landing | 5173 | Public landing page |
 | app.magicboxai.in | web | 5174 | Main app (Google login) |
-| admin.magicboxai.in | admin | 5175 | Admin panel (admin123/admin123) |
+| admin.magicboxai.in | admin | 5175 | Admin panel (Firebase admin auth) |
 
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 20+
 - Firebase project (for auth & data)
 
 ### Setup
@@ -68,10 +82,10 @@ cd apps/admin && npm run dev
 
 - **Frontend**: React 18, TypeScript, Vite
 - **Styling**: Tailwind CSS, shadcn/ui components
-- **Auth**: Firebase Google OAuth (app), hardcoded credentials (admin)
+- **Auth**: Firebase Google OAuth for app and admin; admin access is checked with custom claims / verified admin records
 - **Database**: Firebase Firestore
-- **Image Gen**: Firebase Cloud Functions + DALL-E 3
-- **Charts**: Recharts
+- **AI generation**: Firebase Cloud Functions with Gemini, Imagen, and gated Veo support
+- **Charts**: Recharts remains installed in app packages but is listed for dependency cleanup if no import remains
 - **Animations**: Framer Motion
 
 ## Authentication
@@ -81,9 +95,9 @@ cd apps/admin && npm run dev
 - User data stored in Firestore `users` collection
 
 ### Admin Panel (admin.magicboxai.in)
-- Username: `admin123`
-- Password: `admin123`
-- Stored in localStorage for session persistence
+- Google sign-in via Firebase Authentication.
+- Admin authorization is checked through server-set custom claims, the `verifyAdminStatus` callable when deployed, and the configured admin record fallback.
+- There are no hardcoded admin credentials in the current admin source.
 
 ## Deployment
 

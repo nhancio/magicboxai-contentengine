@@ -114,13 +114,13 @@ export default function AdGenerator() {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/25">
-            <Megaphone className="h-5 w-5 text-white" />
+        <h2 className="text-2xl font-display text-foreground flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-brand-foreground">
+            <Megaphone className="h-5 w-5" />
           </div>
           <span className="text-gradient">Ad Generator</span>
         </h2>
-        <p className="mt-2 text-white/60 max-w-2xl">
+        <p className="mt-2 text-muted-foreground max-w-2xl">
           Create high-converting ads for any platform. Choose your product, style, and avatar to
           generate scroll-stopping content in seconds.
         </p>
@@ -132,10 +132,10 @@ export default function AdGenerator() {
         <div className="space-y-6">
           {/* Product Info */}
           <div className="glass-card p-6 space-y-4">
-            <h3 className="text-lg font-semibold text-white">Product Details</h3>
+            <h3 className="text-lg font-display text-foreground">Product Details</h3>
 
             <div className="space-y-2">
-              <Label htmlFor="product-name" className="text-white/80">
+              <Label htmlFor="product-name" className="text-foreground">
                 Product Name
               </Label>
               <Input
@@ -143,12 +143,12 @@ export default function AdGenerator() {
                 placeholder="e.g. Summer Glow Serum"
                 value={productName}
                 onChange={(e) => setProductName(e.target.value)}
-                className="bg-white/[0.03] border-white/[0.06]"
+                className="bg-secondary border-border"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="product-desc" className="text-white/80">
+              <Label htmlFor="product-desc" className="text-foreground">
                 Product Description
               </Label>
               <Textarea
@@ -157,14 +157,14 @@ export default function AdGenerator() {
                 value={productDescription}
                 onChange={(e) => setProductDescription(e.target.value)}
                 rows={4}
-                className="bg-white/[0.03] border-white/[0.06] resize-none"
+                className="bg-secondary border-border resize-none"
               />
             </div>
           </div>
 
           {/* Platform Selection */}
           <div className="glass-card p-6 space-y-4">
-            <h3 className="text-lg font-semibold text-white">Platform</h3>
+            <h3 className="text-lg font-display text-foreground">Platform</h3>
             <div className="flex flex-wrap gap-2">
               {PLATFORMS.map((p) => (
                 <button
@@ -173,8 +173,8 @@ export default function AdGenerator() {
                   className={cn(
                     "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200",
                     platform === p.value
-                      ? "bg-purple-600/30 text-purple-300 border border-purple-500/40 shadow-sm shadow-purple-500/20"
-                      : "bg-white/[0.03] text-white/60 border border-white/[0.06] hover:bg-white/[0.06] hover:text-white/80"
+                      ? "bg-brand/10 text-brand border border-brand/20"
+                      : "bg-secondary text-muted-foreground border border-border hover:bg-accent hover:text-foreground"
                   )}
                 >
                   <p.icon className="h-4 w-4" />
@@ -186,7 +186,7 @@ export default function AdGenerator() {
 
           {/* Ad Format */}
           <div className="glass-card p-6 space-y-4">
-            <h3 className="text-lg font-semibold text-white">Ad Format</h3>
+            <h3 className="text-lg font-display text-foreground">Ad Format</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {AD_FORMATS.map((f) => (
                 <button
@@ -195,8 +195,8 @@ export default function AdGenerator() {
                   className={cn(
                     "flex flex-col items-center gap-2 rounded-xl p-4 text-sm font-medium transition-all duration-200",
                     adFormat === f.value
-                      ? "bg-purple-600/20 text-purple-300 border border-purple-500/30"
-                      : "bg-white/[0.03] text-white/60 border border-white/[0.06] hover:bg-white/[0.06]"
+                      ? "bg-brand/10 text-brand border border-brand/20"
+                      : "bg-secondary text-muted-foreground border border-border hover:bg-accent"
                   )}
                 >
                   <f.icon className="h-5 w-5" />
@@ -208,7 +208,7 @@ export default function AdGenerator() {
 
           {/* Tone */}
           <div className="glass-card p-6 space-y-4">
-            <h3 className="text-lg font-semibold text-white">Tone</h3>
+            <h3 className="text-lg font-display text-foreground">Tone</h3>
             <div className="flex flex-wrap gap-2">
               {TONES.map((t) => (
                 <button
@@ -217,8 +217,8 @@ export default function AdGenerator() {
                   className={cn(
                     "rounded-full px-4 py-2 text-sm font-medium transition-all duration-200",
                     tone === t
-                      ? "bg-indigo-600/30 text-indigo-300 border border-indigo-500/40"
-                      : "bg-white/[0.03] text-white/60 border border-white/[0.06] hover:bg-white/[0.06]"
+                      ? "bg-brand/10 text-brand border border-brand/20"
+                      : "bg-secondary text-muted-foreground border border-border hover:bg-accent"
                   )}
                 >
                   {t}
@@ -229,12 +229,12 @@ export default function AdGenerator() {
 
           {/* Avatar & CTA */}
           <div className="glass-card p-6 space-y-4">
-            <h3 className="text-lg font-semibold text-white">Additional Settings</h3>
+            <h3 className="text-lg font-display text-foreground">Additional Settings</h3>
 
             <div className="space-y-2">
-              <Label className="text-white/80">Select Avatar to Feature</Label>
+              <Label className="text-foreground">Select Avatar to Feature</Label>
               <Select value={selectedAvatar} onValueChange={setSelectedAvatar}>
-                <SelectTrigger className="bg-white/[0.03] border-white/[0.06]">
+                <SelectTrigger className="bg-secondary border-border">
                   <SelectValue placeholder="Choose an avatar (optional)" />
                 </SelectTrigger>
                 <SelectContent>
@@ -254,7 +254,7 @@ export default function AdGenerator() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="cta" className="text-white/80">
+              <Label htmlFor="cta" className="text-foreground">
                 Call to Action
               </Label>
               <Input
@@ -262,7 +262,7 @@ export default function AdGenerator() {
                 placeholder="Shop Now"
                 value={ctaText}
                 onChange={(e) => setCtaText(e.target.value)}
-                className="bg-white/[0.03] border-white/[0.06]"
+                className="bg-secondary border-border"
               />
             </div>
           </div>
@@ -271,7 +271,7 @@ export default function AdGenerator() {
           <Button
             onClick={handleGenerate}
             disabled={generating || !productName.trim()}
-            className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white shadow-lg shadow-purple-500/25 h-12 text-base font-semibold"
+            className="w-full h-12 text-base font-semibold"
           >
             {generating ? (
               <>
@@ -291,50 +291,50 @@ export default function AdGenerator() {
         <div className="space-y-4">
           <div className="glass-card p-6 sticky top-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Eye className="h-5 w-5 text-purple-400" />
+              <h3 className="text-lg font-display text-foreground flex items-center gap-2">
+                <Eye className="h-5 w-5 text-brand" />
                 Ad Preview
               </h3>
               {generated && (
-                <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20">
                   Generated
                 </Badge>
               )}
             </div>
 
             {/* Mock Preview Card */}
-            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+            <div className="rounded-xl border border-border bg-secondary overflow-hidden">
               {/* Preview Header */}
-              <div className="flex items-center gap-3 p-4 border-b border-white/[0.06]">
-                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600" />
+              <div className="flex items-center gap-3 p-4 border-b border-border">
+                <div className="h-10 w-10 rounded-full bg-brand" />
                 <div>
-                  <p className="text-sm font-medium text-white">
+                  <p className="text-sm font-medium text-foreground">
                     {productName || "Your Brand"}
                   </p>
-                  <p className="text-xs text-white/40">
+                  <p className="text-xs text-muted-foreground">
                     Sponsored &middot; {activePlatform?.label ?? "Instagram"}
                   </p>
                 </div>
               </div>
 
               {/* Preview Image Area */}
-              <div className="relative aspect-square bg-gradient-to-br from-zinc-800 to-zinc-900 flex items-center justify-center">
+              <div className="relative aspect-square bg-muted flex items-center justify-center">
                 {generated ? (
                   <div className="text-center p-8 space-y-3">
-                    <div className="mx-auto h-20 w-20 rounded-2xl bg-gradient-to-br from-purple-500/30 to-indigo-600/30 flex items-center justify-center">
-                      <Image className="h-10 w-10 text-purple-400" />
+                    <div className="mx-auto h-20 w-20 rounded-2xl bg-brand/10 flex items-center justify-center">
+                      <Image className="h-10 w-10 text-brand" />
                     </div>
-                    <p className="text-sm text-white/60">AI-generated creative</p>
-                    <Badge variant="outline" className="border-purple-500/30 text-purple-300">
+                    <p className="text-sm text-muted-foreground">AI-generated creative</p>
+                    <Badge variant="outline" className="border-brand/20 text-brand">
                       {activeFormat?.label ?? "Single Image"}
                     </Badge>
                   </div>
                 ) : (
                   <div className="text-center p-8 space-y-3">
-                    <div className="mx-auto h-16 w-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
-                      <Image className="h-8 w-8 text-white/20" />
+                    <div className="mx-auto h-16 w-16 rounded-2xl bg-card border border-border flex items-center justify-center">
+                      <Image className="h-8 w-8 text-muted-foreground/50" />
                     </div>
-                    <p className="text-sm text-white/30">
+                    <p className="text-sm text-muted-foreground">
                       Configure settings and generate to preview
                     </p>
                   </div>
@@ -343,7 +343,7 @@ export default function AdGenerator() {
                 {/* Format overlay badge */}
                 {adFormat && (
                   <div className="absolute top-3 right-3">
-                    <Badge className="bg-black/60 text-white/80 backdrop-blur-sm border-white/10">
+                    <Badge className="bg-foreground/80 text-background backdrop-blur-sm border-transparent">
                       {activeFormat?.label}
                     </Badge>
                   </div>
@@ -353,22 +353,22 @@ export default function AdGenerator() {
               {/* Preview Content */}
               <div className="p-4 space-y-3">
                 {productDescription ? (
-                  <p className="text-sm text-white/70 line-clamp-3">{productDescription}</p>
+                  <p className="text-sm text-foreground/70 line-clamp-3">{productDescription}</p>
                 ) : (
                   <div className="space-y-2">
-                    <div className="h-3 w-full rounded-full bg-white/[0.06]" />
-                    <div className="h-3 w-3/4 rounded-full bg-white/[0.06]" />
-                    <div className="h-3 w-1/2 rounded-full bg-white/[0.06]" />
+                    <div className="h-3 w-full rounded-full bg-accent" />
+                    <div className="h-3 w-3/4 rounded-full bg-accent" />
+                    <div className="h-3 w-1/2 rounded-full bg-accent" />
                   </div>
                 )}
 
                 {/* CTA Button Preview */}
-                <button className="w-full rounded-lg bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white">
+                <button className="w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-brand-foreground">
                   {ctaText || "Shop Now"}
                 </button>
 
                 {/* Metadata */}
-                <div className="flex items-center gap-3 pt-2 text-xs text-white/40">
+                <div className="flex items-center gap-3 pt-2 text-xs text-muted-foreground">
                   <span>Platform: {activePlatform?.label}</span>
                   <span>&middot;</span>
                   <span>Tone: {tone}</span>
@@ -379,9 +379,10 @@ export default function AdGenerator() {
             {/* Save Button */}
             {generated && (
               <Button
+                variant="outline"
                 onClick={handleSave}
                 disabled={loading}
-                className="w-full mt-4 bg-white/[0.06] border border-white/[0.1] text-white hover:bg-white/[0.1]"
+                className="w-full mt-4 bg-secondary border border-border text-foreground hover:bg-accent"
               >
                 <Save className="mr-2 h-4 w-4" />
                 {loading ? "Saving..." : "Save Ad to Library"}

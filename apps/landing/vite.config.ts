@@ -11,4 +11,18 @@ export default defineConfig({
     },
   },
   server: { port: 5173, host: true },
+  build: {
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("framer-motion")) return "motion";
+            if (/[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id))
+              return "react";
+          }
+        },
+      },
+    },
+  },
 });

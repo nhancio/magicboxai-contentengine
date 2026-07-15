@@ -2,7 +2,8 @@ import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/
 import * as admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
 import { v4 as uuidv4 } from "uuid";
-import { createHmac } from "node:crypto";
+import { assertVeoGenerationEnabled, PLAN_VIDEO_LIMIT } from "./core";
+import { generateVeoVideo, type VeoDurationSeconds } from "./video/googleVeo";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -12,10 +13,11 @@ const db = admin.firestore();
 
 // Marketing automation suite
 export {
-  syncSocialAccounts,
   createAutomation,
   updateAutomation,
+  setAutomationStatus,
   runAutomationNow,
+  createManualPost,
   generatePreviewContent,
   approvePost,
   retryPost,
@@ -23,9 +25,17 @@ export {
   regeneratePostContent,
   getQuota,
 } from "./callables";
+export {
+  getSocialConnectUrl,
+  disconnectSocialAccount,
+  socialOAuthCallback,
+} from "./social";
 export { automationTick, generationTick, postingTick } from "./scheduler";
+export { extractBrandFromWebsite } from "./brand";
+export { onUserCreatedSendWelcome } from "./welcome";
+export { createDodoCheckout, createDodoPortal, dodoWebhook, createGuestCheckout } from "./dodo";
 
-type SubscriptionPlan = "free" | "starter" | "pro";
+type SubscriptionPlan = "free" | "pro" | "max";
 
 type SubscriptionState = {
   plan: SubscriptionPlan;
@@ -33,14 +43,6 @@ type SubscriptionState = {
   videosLimit: number;
   status?: "inactive" | "active" | "past_due" | "cancelled";
   currentPeriodEnd?: admin.firestore.Timestamp;
-};
-
-const SUBSCRIPTION_PLANS: Record<
-  Exclude<SubscriptionPlan, "free">,
-  { amount: number; currency: "INR"; videoLimit: number; periodDays: number }
-> = {
-  starter: { amount: 100000, currency: "INR", videoLimit: 50, periodDays: 30 },
-  pro: { amount: 500000, currency: "INR", videoLimit: 1000, periodDays: 30 },
 };
 
 const VEO_SYSTEM_PROMPTS = {
@@ -237,13 +239,6 @@ const requireAuth = <T>(request: CallableRequest<T>): string => {
   return request.auth.uid;
 };
 
-const requireEnv = (key: string): string => {
-  const value = process.env[key];
-  if (!value) {
-    throw new HttpsError("failed-precondition", `${key} is not configured`);
-  }
-  return value;
-};
 
 const getBucket = () => admin.storage().bucket();
 
@@ -257,10 +252,19 @@ const getSubscription = async (uid: string): Promise<SubscriptionState> => {
   }
 
   const data = snap.data() as Partial<SubscriptionState> | undefined;
+  const plan = data?.plan ?? "free";
+  const configuredLimit = plan === "free" ? 0 : PLAN_VIDEO_LIMIT[plan];
+  const storedLimit = data?.videosLimit ?? 0;
+  const videosLimit =
+    Number.isSafeInteger(storedLimit) && storedLimit > 0
+      ? Math.min(storedLimit, configuredLimit)
+      : 0;
   return {
-    plan: data?.plan ?? "free",
+    plan,
     videosUsed: data?.videosUsed ?? 0,
-    videosLimit: data?.videosLimit ?? 0,
+    // Cap legacy subscription documents that may still contain the old,
+    // financially unsafe 50/1000 allowances.
+    videosLimit,
     status: data?.status ?? (data?.plan && data.plan !== "free" ? "active" : "inactive"),
     currentPeriodEnd: data?.currentPeriodEnd,
   };
@@ -317,25 +321,6 @@ const formatAIServiceError = (rawMessage: string): string => {
 
 const parseError = (error: unknown) => formatAIServiceError(stringifyError(error));
 
-const fetchJson = async <T>(input: string, init: RequestInit): Promise<T> => {
-  const response = await fetch(input, init);
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Request failed with status ${response.status}`);
-  }
-  return (await response.json()) as T;
-};
-
-const getRazorpayAuthHeader = () => {
-  const keyId = requireEnv("RAZORPAY_KEY_ID");
-  const keySecret = requireEnv("RAZORPAY_KEY_SECRET");
-  return {
-    keyId,
-    keySecret,
-    authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`,
-  };
-};
-
 const updateVideoDocument = async (
   uid: string,
   videoId: string | undefined,
@@ -359,98 +344,53 @@ const updateVideoDocument = async (
 const generateVideoFromImage = async ({
   prompt,
   inputImagePath,
-  outputFilePath,
+  outputStoragePrefix,
   durationSeconds,
 }: {
   prompt: string;
   inputImagePath: string;
-  outputFilePath: string;
-  durationSeconds: number;
+  outputStoragePrefix: string;
+  durationSeconds: VeoDurationSeconds;
 }) => {
-  console.log("[generateVideoFromImage] STARTING with params:", { inputImagePath, outputFilePath, durationSeconds });
-  console.log("[generateVideoFromImage] PROMPT:", prompt);
-  
+  assertVeoGenerationEnabled();
   const ai = getAI();
   const bucket = getBucket();
   const inputGcsUri = `gs://${bucket.name}/${inputImagePath}`;
-  const outputGcsUri = `gs://${bucket.name}/${outputFilePath}`;
-  
-  console.log("[generateVideoFromImage] URIs:", { inputGcsUri, outputGcsUri });
+  const outputGcsUri = `gs://${bucket.name}/${outputStoragePrefix}`;
 
-  console.log("[generateVideoFromImage] Calling ai.models.generateVideos...");
-  let operation;
-  try {
-    operation = await ai.models.generateVideos({
-      model: "veo-3.1-generate-001",
-      prompt,
-      source: {
-        image: {
-          gcsUri: inputGcsUri,
-        },
-      } as never,
-      config: {
-        aspectRatio: "9:16",
-        durationSeconds,
-        outputUri: outputGcsUri,
-      } as never,
-    });
-  } catch (genError) {
-    console.error("[generateVideoFromImage] ai.models.generateVideos FAILED:", genError);
-    throw genError;
-  }
-  
-  console.log("[generateVideoFromImage] operation result:", JSON.stringify(operation));
-
-  if (!operation?.name) {
-    console.error("[generateVideoFromImage] No operation name returned");
-    throw new Error("No operation name returned from Veo");
+  const inputFile = bucket.file(inputImagePath);
+  const [inputExists] = await inputFile.exists();
+  if (!inputExists) throw new Error("Veo source image was not found in storage");
+  const [inputMetadata] = await inputFile.getMetadata();
+  const inputMimeType = inputMetadata.contentType;
+  if (!inputMimeType?.startsWith("image/")) {
+    throw new Error("Veo source image is missing a valid image MIME type");
   }
 
-  let result = operation as { done?: boolean; error?: unknown; name: string };
-  let attempts = 0;
+  const generated = await generateVeoVideo({
+    ai,
+    prompt,
+    sourceImage: { gcsUri: inputGcsUri, mimeType: inputMimeType },
+    aspectRatio: "9:16",
+    durationSeconds,
+    outputGcsUri,
+  });
 
-  console.log("[generateVideoFromImage] Starting poll loop for operation:", operation.name);
-  while (!result.done && attempts < 30) {
-    attempts += 1;
-    console.log(`[generateVideoFromImage] Polling attempt ${attempts}...`);
-    await new Promise((resolve) => setTimeout(resolve, 15000));
-    try {
-      result = (await ai.operations.get({
-        operationId: operation.name,
-      } as never)) as typeof result;
-      console.log(`[generateVideoFromImage] Polling result (attempt ${attempts}):`, JSON.stringify(result));
-    } catch (pollError) {
-      console.error(`[generateVideoFromImage] Error during polling (attempt ${attempts}):`, pollError);
-      throw pollError;
-    }
-  }
-
-  if (!result.done) {
-    console.error("[generateVideoFromImage] Generation timed out after 30 attempts");
-    throw new Error("Video generation timed out");
-  }
-
-  if (result.error) {
-    console.error("[generateVideoFromImage] Operation finished with error:", result.error);
-    throw new Error(JSON.stringify(result.error));
-  }
-
-  console.log("[generateVideoFromImage] Operation done. Checking file existence...");
-  const file = bucket.file(outputFilePath);
+  const file = bucket.file(generated.storagePath);
   const [exists] = await file.exists();
-  if (!exists) {
-    console.error(`[generateVideoFromImage] File ${outputFilePath} does not exist in bucket`);
-    throw new Error("Generated video file not found in storage");
-  }
+  if (!exists) throw new Error("Generated video file not found in storage");
 
-  console.log(`[generateVideoFromImage] File exists. Making public...`);
   await file.makePublic();
-  const finalUrl = getPublicUrl(outputFilePath);
-  console.log(`[generateVideoFromImage] SUCCESS. final video url:`, finalUrl);
-  
+  const finalUrl = getPublicUrl(generated.storagePath);
+  console.log("[generateVideoFromImage] Veo generation completed", {
+    operationName: generated.operationName,
+    storagePath: generated.storagePath,
+    pollAttempts: generated.pollAttempts,
+  });
+
   return {
     videoUrl: finalUrl,
-    outputFilePath,
+    outputFilePath: generated.storagePath,
   };
 };
 
@@ -495,30 +435,6 @@ type GenerateUGCVideoData = {
   productName: string;
   productDescription?: string;
   productImageAnalysis?: string;
-};
-type CreateRazorpayOrderData = {
-  planId: Exclude<SubscriptionPlan, "free">;
-};
-type VerifyRazorpayPaymentData = {
-  planId: Exclude<SubscriptionPlan, "free">;
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-};
-
-type RazorpayOrderResponse = {
-  id: string;
-  amount: number;
-  currency: string;
-  status: string;
-};
-
-type RazorpayPaymentResponse = {
-  id: string;
-  order_id: string;
-  status: string;
-  amount: number;
-  currency: string;
 };
 
 export const setAdminRole = onCall(
@@ -571,124 +487,8 @@ export const verifyAdminStatus = onCall(
   }
 );
 
-export const createRazorpayOrder = onCall(
-  { cors: true },
-  async (request: CallableRequest<CreateRazorpayOrderData>) => {
-    const uid = requireAuth(request);
-    const { planId } = request.data;
-
-    if (!planId || !(planId in SUBSCRIPTION_PLANS)) {
-      throw new HttpsError("invalid-argument", "A valid paid planId is required");
-    }
-
-    const paidPlanId = planId as keyof typeof SUBSCRIPTION_PLANS;
-    const plan = SUBSCRIPTION_PLANS[paidPlanId];
-    const { keyId, authorization } = getRazorpayAuthHeader();
-
-    try {
-      const order = await fetchJson<RazorpayOrderResponse>("https://api.razorpay.com/v1/orders", {
-        method: "POST",
-        headers: {
-          Authorization: authorization,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          amount: plan.amount,
-          currency: plan.currency,
-          receipt: `magicbox_${uid}_${Date.now()}`,
-          notes: {
-            uid,
-            planId: paidPlanId,
-          },
-        }),
-      });
-
-      return {
-        orderId: order.id,
-        amount: order.amount,
-        currency: order.currency,
-        keyId,
-      };
-    } catch (error: unknown) {
-      throw new HttpsError("internal", parseError(error));
-    }
-  }
-);
-
-export const verifyRazorpayPayment = onCall(
-  { cors: true },
-  async (request: CallableRequest<VerifyRazorpayPaymentData>) => {
-    const uid = requireAuth(request);
-    const { planId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = request.data;
-
-    if (!planId || !(planId in SUBSCRIPTION_PLANS)) {
-      throw new HttpsError("invalid-argument", "A valid paid planId is required");
-    }
-
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      throw new HttpsError("invalid-argument", "Payment verification data is incomplete");
-    }
-
-    const paidPlanId = planId as keyof typeof SUBSCRIPTION_PLANS;
-    const plan = SUBSCRIPTION_PLANS[paidPlanId];
-    const { authorization, keySecret } = getRazorpayAuthHeader();
-
-    const expectedSignature = createHmac("sha256", keySecret)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest("hex");
-
-    if (expectedSignature !== razorpay_signature) {
-      throw new HttpsError("permission-denied", "Invalid payment signature");
-    }
-
-    try {
-      const payment = await fetchJson<RazorpayPaymentResponse>(
-        `https://api.razorpay.com/v1/payments/${razorpay_payment_id}`,
-        {
-          method: "GET",
-          headers: { Authorization: authorization },
-        }
-      );
-
-      if (payment.order_id !== razorpay_order_id || payment.status !== "captured") {
-        throw new Error("Payment is not captured for the provided order");
-      }
-
-      const periodEnd = admin.firestore.Timestamp.fromDate(
-        new Date(Date.now() + plan.periodDays * 24 * 60 * 60 * 1000)
-      );
-
-      await db.collection("subscriptions").doc(uid).set(
-        {
-          plan: paidPlanId,
-          videosUsed: 0,
-          videosLimit: plan.videoLimit,
-          status: "active",
-          razorpayOrderId: razorpay_order_id,
-          razorpayCustomerId: razorpay_payment_id,
-          currentPeriodEnd: periodEnd,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      return {
-        success: true,
-        subscription: {
-          plan: paidPlanId,
-          videosUsed: 0,
-          videosLimit: plan.videoLimit,
-          status: "active",
-          razorpayOrderId: razorpay_order_id,
-          razorpayCustomerId: razorpay_payment_id,
-          currentPeriodEnd: periodEnd,
-        },
-      };
-    } catch (error: unknown) {
-      throw new HttpsError("internal", parseError(error));
-    }
-  }
-);
+// Billing is handled by Polar.sh — see functions/src/polar.ts
+// (createPolarCheckout + polarWebhook), exported at the top of this file.
 
 export const renderRemotionVideo = onCall(
   { timeoutSeconds: 540, memory: "2GiB", cors: true },
@@ -813,7 +613,7 @@ export const generateScript = onCall(
     try {
       const ai = getAI();
       const result = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.0-flash-001",
         contents: prompt,
         config: {
           systemInstruction: systemInstruction || undefined,
@@ -836,7 +636,7 @@ export const analyzeImage = onCall(
     try {
       const ai = getAI();
       const result = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.0-flash-001",
         contents: [
           prompt,
           {
@@ -889,7 +689,7 @@ export const analyzeAvatarPhotos = onCall(
           }));
 
       const result = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.0-flash-001",
         contents: [
           prompt ||
             `You are analyzing multiple photos of the same person for a reusable talking-head avatar.
@@ -918,6 +718,7 @@ export const generateAvatarVideo = onCall(
   async (request: CallableRequest<GenerateAvatarVideoData>) => {
     console.log("[generateAvatarVideo] ONCALL INVOKED");
     const uid = requireAuth(request);
+    assertVeoGenerationEnabled();
     console.log(`[generateAvatarVideo] UID: ${uid}`);
     const { photoStoragePath, avatarName, personality } = request.data;
     console.log(`[generateAvatarVideo] Input data:`, { photoStoragePath, avatarName, personality });
@@ -928,8 +729,8 @@ export const generateAvatarVideo = onCall(
     }
 
     try {
-      const outputFilePath = `users/${uid}/avatar-previews/${uuidv4()}.mp4`;
-      console.log(`[generateAvatarVideo] outputFilePath: ${outputFilePath}`);
+      const outputStoragePrefix = `users/${uid}/avatar-previews/${uuidv4()}/`;
+      console.log(`[generateAvatarVideo] outputStoragePrefix: ${outputStoragePrefix}`);
       const previewPrompt = buildAvatarPreviewPrompt({
         avatarName,
         personality,
@@ -939,8 +740,8 @@ export const generateAvatarVideo = onCall(
       const res = await generateVideoFromImage({
         prompt: previewPrompt,
         inputImagePath: photoStoragePath,
-        outputFilePath,
-        durationSeconds: 5,
+        outputStoragePrefix,
+        durationSeconds: 8,
       });
       console.log(`[generateAvatarVideo] FINISHED SUCCESSFULLY`, res);
       return res;
@@ -956,6 +757,7 @@ export const generateUGCVideo = onCall(
   async (request: CallableRequest<GenerateUGCVideoData>) => {
     console.log("[generateUGCVideo] ONCALL INVOKED");
     const uid = requireAuth(request);
+    assertVeoGenerationEnabled();
     console.log(`[generateUGCVideo] UID: ${uid}`);
     const {
       videoId,
@@ -992,8 +794,8 @@ export const generateUGCVideo = onCall(
         renderProvider: "veo",
       });
 
-      const outputFilePath = `users/${uid}/videos/ugc_${uuidv4()}.mp4`;
-      console.log(`[generateUGCVideo] outputFilePath: ${outputFilePath}`);
+      const outputStoragePrefix = `users/${uid}/videos/ugc_${uuidv4()}/`;
+      console.log(`[generateUGCVideo] outputStoragePrefix: ${outputStoragePrefix}`);
       const prompt = buildUGCVideoPrompt({
         avatarName,
         characterSummary,
@@ -1010,7 +812,7 @@ export const generateUGCVideo = onCall(
       const result = await generateVideoFromImage({
         prompt,
         inputImagePath: photoStoragePath,
-        outputFilePath,
+        outputStoragePrefix,
         durationSeconds: 8,
       });
       console.log("[generateUGCVideo] generateVideoFromImage SUCCESS:", result);

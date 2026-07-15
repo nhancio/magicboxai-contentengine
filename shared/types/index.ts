@@ -49,7 +49,7 @@ export interface GeneratedAvatar {
   createdAt: Date;
 }
 
-export type SubscriptionPlan = "free" | "starter" | "pro";
+export type SubscriptionPlan = "free" | "pro" | "max";
 
 export interface UserSubscription {
   plan: SubscriptionPlan;
@@ -97,18 +97,21 @@ export interface GeneratedVideo {
 
 // --- Marketing Automation Suite ---
 
-export type SocialPlatform = "instagram" | "twitter" | "linkedin";
+export type SocialPlatform = "instagram" | "twitter" | "linkedin" | "youtube";
+/** Providers we connect directly via OAuth. Twitter/X is intentionally deferred. */
+export type SocialProvider = "instagram" | "linkedin" | "youtube";
 
 export interface SocialAccount {
   id: string;
   userId: string;
-  provider: "postbridge";
-  pbAccountId: string;
+  provider: SocialProvider;
   platform: SocialPlatform;
+  /** Provider-native id: IG business account id, or `urn:li:person:{sub}`. */
+  externalId: string;
   username: string;
   displayName: string;
   avatarUrl?: string;
-  status: "active" | "disconnected";
+  status: "active" | "disconnected" | "expired";
   linkedAt: Date;
   lastSyncedAt?: Date;
 }
@@ -189,13 +192,12 @@ export interface PostMedia {
   type: "image" | "video";
   storagePath?: string;
   url: string;
-  pbMediaId?: string;
   source: "imagen" | "veo" | "remotion" | "upload";
 }
 
 export interface PostPlatformResult {
   platform: SocialPlatform;
-  pbAccountId?: string;
+  accountId?: string;
   status: "pending" | "posted" | "failed";
   permalink?: string;
   error?: string;
@@ -219,7 +221,6 @@ export interface Post {
   media?: PostMedia[];
   platforms: SocialPlatform[];
   socialAccountIds: string[];
-  pb?: { postId?: string; dryRun: boolean; submittedAt?: Date };
   results?: PostPlatformResult[];
   attempts: number;
   maxAttempts: number;

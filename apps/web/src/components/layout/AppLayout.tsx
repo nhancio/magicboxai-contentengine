@@ -3,8 +3,8 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@shared/lib/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/components/ui/avatar";
 import { Button } from "@shared/components/ui/button";
-import { Badge } from "@shared/components/ui/badge";
 import { cn } from "@shared/lib/utils";
+import { LEGACY_TOOLS_ENABLED } from "@/lib/flags";
 import {
   BarChart3,
   Bot,
@@ -19,7 +19,6 @@ import {
   Palette,
   PenTool,
   Settings,
-  Sparkles,
   User,
   Video,
   X,
@@ -37,16 +36,20 @@ const NAV_SECTIONS = [
       { label: "Analytics", path: "/analytics", icon: BarChart3 },
     ],
   },
-  {
-    heading: "Create",
-    items: [
-      { label: "Content Studio", path: "/content-studio", icon: PenTool },
-      { label: "Video Creator", path: "/create-video", icon: Video },
-      { label: "Ad Generator", path: "/ad-generator", icon: Megaphone },
-      { label: "Avatar Builder", path: "/avatar-builder", icon: User },
-      { label: "Avatar Creator", path: "/avatar-creator", icon: Film },
-    ],
-  },
+  ...(LEGACY_TOOLS_ENABLED
+    ? [
+        {
+          heading: "Create",
+          items: [
+            { label: "Content Studio", path: "/content-studio", icon: PenTool },
+            { label: "Video Creator", path: "/create-video", icon: Video },
+            { label: "Ad Generator", path: "/ad-generator", icon: Megaphone },
+            { label: "Avatar Builder", path: "/avatar-builder", icon: User },
+            { label: "Avatar Creator", path: "/avatar-creator", icon: Film },
+          ],
+        },
+      ]
+    : []),
 ] as const;
 
 const BOTTOM_NAV = [
@@ -54,10 +57,20 @@ const BOTTOM_NAV = [
   { label: "Settings", path: "/settings", icon: Settings },
 ] as const;
 
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  cn(
+    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+    isActive
+      ? "bg-brand/10 text-brand border border-brand/20"
+      : "text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent"
+  );
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  void location;
 
   const initials = user?.displayName
     ? user.displayName
@@ -70,16 +83,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const sidebarContent = (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 items-center gap-3 px-5 border-b border-white/[0.06]">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 shadow-lg shadow-purple-500/20">
-          <Sparkles className="h-5 w-5 text-white" />
-        </div>
+      <div className="flex h-16 items-center gap-3 px-5 border-b border-border">
+        <img src="/logo.png" alt="MagicBox" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold text-white">MagicBox Suite</div>
-          <div className="text-[10px] text-white/40">Marketing Automation</div>
+          <div className="truncate text-sm font-display text-foreground">MagicBox</div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Automation</div>
         </div>
         <button
-          className="ml-auto lg:hidden p-1.5 rounded-lg hover:bg-white/[0.06] text-white/50"
+          className="ml-auto lg:hidden p-1.5 rounded-lg hover:bg-accent text-muted-foreground"
           onClick={() => setSidebarOpen(false)}
         >
           <X className="h-5 w-5" />
@@ -90,7 +101,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {NAV_SECTIONS.map((section) => (
           <div key={section.heading ?? "main"}>
             {section.heading && (
-              <div className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+              <div className="px-3 pb-1 pt-4 text-[10px] font-mono font-semibold uppercase tracking-widest text-muted-foreground/70">
                 {section.heading}
               </div>
             )}
@@ -100,14 +111,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 to={item.path}
                 end={item.path === "/"}
                 onClick={() => setSidebarOpen(false)}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                    isActive
-                      ? "bg-purple-600/20 text-purple-300 border border-purple-500/20"
-                      : "text-white/50 hover:bg-white/[0.06] hover:text-white/80"
-                  )
-                }
+                className={navLinkClass}
               >
                 <item.icon className="h-4 w-4 shrink-0" />
                 {item.label}
@@ -117,46 +121,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         ))}
       </nav>
 
-      <div className="border-t border-white/[0.06] px-3 py-3 space-y-1">
+      <div className="border-t border-border px-3 py-3 space-y-1">
         {BOTTOM_NAV.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            onClick={() => setSidebarOpen(false)}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                isActive
-                  ? "bg-purple-600/20 text-purple-300 border border-purple-500/20"
-                  : "text-white/50 hover:bg-white/[0.06] hover:text-white/80"
-              )
-            }
-          >
+          <NavLink key={item.path} to={item.path} onClick={() => setSidebarOpen(false)} className={navLinkClass}>
             <item.icon className="h-4 w-4 shrink-0" />
             {item.label}
           </NavLink>
         ))}
       </div>
 
-      <div className="border-t border-white/[0.06] p-4">
+      <div className="border-t border-border p-4">
         <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9 border border-white/10">
+          <Avatar className="h-9 w-9 border border-border">
             <AvatarImage src={user?.photoURL ?? undefined} />
-            <AvatarFallback className="text-xs bg-purple-600/20 text-purple-300">
-              {initials}
-            </AvatarFallback>
+            <AvatarFallback className="text-xs bg-brand/10 text-brand">{initials}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">
-              {user?.displayName ?? "User"}
-            </p>
-            <p className="text-[10px] text-white/40 truncate">{user?.email}</p>
+            <p className="text-sm font-medium text-foreground truncate">{user?.displayName ?? "User"}</p>
+            <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
           </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => signOut()}
-            className="shrink-0 h-8 w-8 text-white/40 hover:text-white hover:bg-white/[0.06]"
+            className="shrink-0 h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
           >
             <LogOut className="h-4 w-4" />
           </Button>
@@ -166,17 +154,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen bg-background text-foreground">
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       <aside
         className={cn(
-          "fixed top-0 left-0 z-50 h-full w-64 border-r border-white/[0.06] bg-zinc-950/95 backdrop-blur-xl transition-transform duration-300 lg:translate-x-0",
+          "fixed top-0 left-0 z-50 h-full w-64 border-r border-border bg-card transition-transform duration-300 lg:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -184,23 +169,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-zinc-950/90 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur lg:hidden">
           <div className="flex h-14 items-center justify-between px-4">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-2 rounded-lg hover:bg-white/[0.06] text-white/60"
-            >
+            <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-accent text-muted-foreground">
               <Menu className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600">
-                <Sparkles className="h-4 w-4 text-white" />
-              </div>
-              <span className="text-sm font-bold text-white">MagicBox Suite</span>
+              <img src="/logo.png" alt="MagicBox" className="h-8 w-8 rounded-lg object-contain" />
+              <span className="text-sm font-display text-foreground">MagicBox</span>
             </div>
             <Avatar className="h-8 w-8">
               <AvatarImage src={user?.photoURL ?? undefined} />
-              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+              <AvatarFallback className="text-xs bg-brand/10 text-brand">{initials}</AvatarFallback>
             </Avatar>
           </div>
         </header>

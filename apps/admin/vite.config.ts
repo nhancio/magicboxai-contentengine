@@ -22,5 +22,24 @@ export default defineConfig({
       "@shared": path.resolve(__dirname, "../../shared"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("@firebase") || id.includes("/firebase/")) return "firebase";
+          if (
+            id.includes("/react-router") ||
+            id.includes("/react-dom/") ||
+            id.includes("/react/") ||
+            id.includes("/scheduler/")
+          ) {
+            return "react-vendor";
+          }
+          return undefined;
+        },
+      },
+    },
+  },
   server: { port: 5175, host: true },
 });

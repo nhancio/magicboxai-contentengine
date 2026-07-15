@@ -41,21 +41,68 @@ const admin = __importStar(require("firebase-admin"));
 const core_1 = require("./core");
 const schedule_math_1 = require("./schedule-math");
 const generation_1 = require("./generation");
-const postbridge_1 = require("./postbridge");
-const quota_1 = require("./quota");
-const core_2 = require("./core");
+const publishing_1 = require("./publishing");
+const brevo_1 = require("./brevo");
+const social_1 = require("./social");
+const callables_1 = require("./callables");
 const Timestamp = admin.firestore.Timestamp;
 const FieldValue = admin.firestore.FieldValue;
-const RETRY_DELAYS_MINUTES = [2, 10, 30];
+const RETRY_DELAYS_MINUTES = [2, 10];
 const MAX_CONSECUTIVE_AUTOMATION_FAILURES = 3;
+const MAX_POST_ATTEMPTS = 3;
 function minutesFromNow(minutes) {
     return Timestamp.fromMillis(Date.now() + minutes * 60000);
+}
+function boundedAttempts(value) {
+    return typeof value === "number" && Number.isFinite(value)
+        ? Math.max(0, Math.min(MAX_POST_ATTEMPTS, Math.floor(value)))
+        : 0;
+}
+/** Atomically claim one bounded attempt and return the fresh post snapshot. */
+async function claimPostAttempt(ref, expectedStatus, claimedStatus) {
+    const result = await core_1.db.runTransaction(async (tx) => {
+        var _a;
+        const fresh = await tx.get(ref);
+        if (!fresh.exists || ((_a = fresh.data()) === null || _a === void 0 ? void 0 : _a.status) !== expectedStatus)
+            return null;
+        const post = fresh.data();
+        if (post.nextAttemptAt && post.nextAttemptAt.toMillis() > Date.now())
+            return null;
+        const attempts = boundedAttempts(post.attempts);
+        if (attempts >= MAX_POST_ATTEMPTS) {
+            tx.update(ref, {
+                status: "failed",
+                attempts: MAX_POST_ATTEMPTS,
+                maxAttempts: MAX_POST_ATTEMPTS,
+                error: `Post exceeded the ${MAX_POST_ATTEMPTS}-attempt retry limit`,
+                nextAttemptAt: FieldValue.delete(),
+                updatedAt: FieldValue.serverTimestamp(),
+            });
+            return { exhausted: true, post: Object.assign(Object.assign({}, post), { attempts: MAX_POST_ATTEMPTS }) };
+        }
+        const claimedPost = Object.assign(Object.assign({}, post), { attempts: attempts + 1, maxAttempts: MAX_POST_ATTEMPTS, status: claimedStatus });
+        tx.update(ref, {
+            status: claimedStatus,
+            attempts: claimedPost.attempts,
+            maxAttempts: MAX_POST_ATTEMPTS,
+            nextAttemptAt: FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+        return { exhausted: false, post: claimedPost };
+    });
+    if (!result)
+        return null;
+    if (result.exhausted) {
+        await handlePostFailure(ref, result.post, `Post exceeded the ${MAX_POST_ATTEMPTS}-attempt retry limit`, expectedStatus);
+        return null;
+    }
+    return result.post;
 }
 /**
  * Create post docs for automations whose next slot is inside the generation
  * lead window, and advance their nextRunAt.
  */
-exports.automationTick = (0, scheduler_1.onSchedule)({ schedule: "every 5 minutes", timeoutSeconds: 300, memory: "512MiB" }, async () => {
+exports.automationTick = (0, scheduler_1.onSchedule)({ schedule: "every 5 minutes", timeoutSeconds: 300, memory: "512MiB", secrets: [brevo_1.brevoApiKey] }, async () => {
     var _a;
     // Look ahead by the largest lead window (video = 120 min)
     const horizon = minutesFromNow(120);
@@ -73,47 +120,27 @@ exports.automationTick = (0, scheduler_1.onSchedule)({ schedule: "every 5 minute
         if (slot.getTime() - Date.now() > lead * 60000)
             continue;
         try {
-            const quota = await (0, quota_1.getPostQuota)(automation.userId);
-            if (quota.remaining <= 0) {
-                await docSnap.ref.update({
-                    status: "paused",
-                    lastError: quota.plan === "free"
-                        ? "Publishing requires a paid subscription"
-                        : "Monthly post limit reached — automation paused",
-                    updatedAt: FieldValue.serverTimestamp(),
-                });
-                continue;
-            }
+            // Revalidate legacy/stored automations before copying tenant-scoped
+            // brand and account ids into a post.
+            const resources = await (0, callables_1.assertOwnedPublishingResources)(automation.userId, automation);
             const slotISO = slot.toISOString().replace(/[:.]/g, "-");
             const idempotencyKey = `${docSnap.id}_${slotISO}`;
             const postRef = core_1.db.collection("posts").doc(idempotencyKey);
-            const post = {
-                userId: automation.userId,
-                automationId: docSnap.id,
-                brandProfileId: automation.brandProfileId,
-                source: "automation",
-                scheduledFor: Timestamp.fromDate(slot),
-                timezone: automation.schedule.timezone,
-                status: automation.requiresApproval ? "pending_approval" : "scheduled",
-                brief: automation.brief,
-                contentTypes: automation.contentTypes,
-                preset: automation.preset,
-                tone: automation.tone,
-                platforms: automation.platforms,
-                socialAccountIds: automation.socialAccountIds,
-                attempts: 0,
-                maxAttempts: 3,
-                idempotencyKey,
-            };
+            const post = Object.assign(Object.assign({ userId: automation.userId, automationId: docSnap.id }, (automation.brandProfileId ? { brandProfileId: automation.brandProfileId } : {})), { source: "automation", scheduledFor: Timestamp.fromDate(slot), timezone: automation.schedule.timezone, status: automation.requiresApproval ? "pending_approval" : "scheduled", brief: automation.brief, contentTypes: automation.contentTypes, preset: automation.preset, tone: automation.tone, platforms: resources.platforms, socialAccountIds: resources.socialAccountIds, attempts: 0, maxAttempts: MAX_POST_ATTEMPTS, idempotencyKey });
             try {
-                // create() throws if the doc exists -> idempotent across ticks
-                await postRef.create(Object.assign(Object.assign({}, post), { createdAt: FieldValue.serverTimestamp() }));
-                await (0, quota_1.incrementPostUsage)(automation.userId);
+                await (0, callables_1.createPostWithQuotaReservation)(automation.userId, postRef, post);
             }
-            catch (createError) {
-                const message = (0, core_1.stringifyError)(createError);
-                if (!/already exists/i.test(message))
-                    throw createError;
+            catch (reservationError) {
+                const code = reservationError === null || reservationError === void 0 ? void 0 : reservationError.code;
+                if (code === "permission-denied" || code === "resource-exhausted") {
+                    await docSnap.ref.update({
+                        status: "paused",
+                        lastError: (0, core_1.stringifyError)(reservationError),
+                        updatedAt: FieldValue.serverTimestamp(),
+                    });
+                    continue;
+                }
+                throw reservationError;
             }
             const next = automation.schedule.type === "once"
                 ? null
@@ -149,155 +176,96 @@ exports.generationTick = (0, scheduler_1.onSchedule)({ schedule: "every 5 minute
             continue;
         // Skip manual posts that already carry content
         if ((_a = post.content) === null || _a === void 0 ? void 0 : _a.caption) {
-            await docSnap.ref.update({ status: "ready", updatedAt: FieldValue.serverTimestamp() });
-            continue;
-        }
-        // Transaction-claim so overlapping runs never double-generate
-        const claimed = await core_1.db.runTransaction(async (tx) => {
-            var _a;
-            const fresh = await tx.get(docSnap.ref);
-            if (((_a = fresh.data()) === null || _a === void 0 ? void 0 : _a.status) !== "scheduled")
-                return false;
-            tx.update(docSnap.ref, {
-                status: "generating",
+            await docSnap.ref.update({
+                status: "ready",
+                attempts: 0,
+                maxAttempts: MAX_POST_ATTEMPTS,
+                error: FieldValue.delete(),
+                nextAttemptAt: FieldValue.delete(),
                 updatedAt: FieldValue.serverTimestamp(),
             });
-            return true;
-        });
-        if (!claimed)
+            continue;
+        }
+        const claimedPost = await claimPostAttempt(docSnap.ref, "scheduled", "generating");
+        if (!claimedPost)
             continue;
         try {
-            const update = await (0, generation_1.generatePostAssets)(docSnap.id, post);
-            await docSnap.ref.update(Object.assign(Object.assign({}, update), { status: "ready", updatedAt: FieldValue.serverTimestamp() }));
+            await (0, callables_1.assertOwnedPublishingResources)(claimedPost.userId, claimedPost);
+            const update = await (0, generation_1.generatePostAssets)(docSnap.id, claimedPost);
+            // Publishing begins with its own bounded three-attempt budget.
+            await docSnap.ref.update(Object.assign(Object.assign({}, update), { status: "ready", attempts: 0, maxAttempts: MAX_POST_ATTEMPTS, error: FieldValue.delete(), nextAttemptAt: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }));
         }
         catch (error) {
             console.error(`[generationTick] ${docSnap.id} failed:`, (0, core_1.stringifyError)(error));
-            await handlePostFailure(docSnap.ref, post, (0, core_1.stringifyError)(error), "scheduled");
+            await handlePostFailure(docSnap.ref, claimedPost, (0, core_1.stringifyError)(error), "scheduled");
         }
     }
 });
-/** Publish ready posts that are due, and poll in-flight Post Bridge posts. */
+/** Publish ready posts that are due, straight to Instagram / LinkedIn / YouTube. */
 exports.postingTick = (0, scheduler_1.onSchedule)({
     schedule: "every 1 minutes",
-    timeoutSeconds: 300,
-    memory: "512MiB",
-    secrets: [postbridge_1.postBridgeApiKey],
+    timeoutSeconds: 540,
+    // YouTube uploads buffer the whole video in memory
+    memory: "1GiB",
+    secrets: [social_1.googleOAuthClientId, social_1.googleOAuthClientSecret],
 }, async () => {
-    var _a, _b, _c, _d, _e, _f;
     const now = Timestamp.now();
-    // 1) Ready + due -> submit to Post Bridge
     const readySnap = await core_1.db
         .collection("posts")
         .where("status", "==", "ready")
         .where("scheduledFor", "<=", now)
-        .limit(20)
+        .limit(10)
         .get();
     for (const docSnap of readySnap.docs) {
         const post = docSnap.data();
         // Honor retry backoff
         if (post.nextAttemptAt && post.nextAttemptAt.toMillis() > Date.now())
             continue;
-        const claimed = await core_1.db.runTransaction(async (tx) => {
-            var _a;
-            const fresh = await tx.get(docSnap.ref);
-            if (((_a = fresh.data()) === null || _a === void 0 ? void 0 : _a.status) !== "ready")
-                return false;
-            tx.update(docSnap.ref, {
-                status: "posting",
-                attempts: FieldValue.increment(1),
-                updatedAt: FieldValue.serverTimestamp(),
-            });
-            return true;
-        });
-        if (!claimed)
+        const claimedPost = await claimPostAttempt(docSnap.ref, "ready", "posting");
+        if (!claimedPost)
             continue;
         try {
-            // Upload media to Post Bridge
-            const mediaIds = [];
-            for (const media of (_a = post.media) !== null && _a !== void 0 ? _a : []) {
-                if (media.pbMediaId) {
-                    mediaIds.push(media.pbMediaId);
-                    continue;
-                }
-                if (!media.storagePath)
-                    continue;
-                const [buffer] = await (0, core_2.getBucket)().file(media.storagePath).download();
-                const mime = media.type === "video" ? "video/mp4" : "image/png";
-                const pbMediaId = await (0, postbridge_1.pbUploadMediaFromBuffer)(buffer, mime, (_b = media.storagePath.split("/").pop()) !== null && _b !== void 0 ? _b : "media");
-                mediaIds.push(pbMediaId);
+            const results = await (0, publishing_1.publishPost)(claimedPost);
+            const anyPosted = results.some((r) => r.status === "posted");
+            if (!anyPosted) {
+                const reason = results.map((r) => r.error).filter(Boolean).join("; ") ||
+                    "Publishing failed on all connected accounts";
+                await handlePostFailure(docSnap.ref, claimedPost, reason, "ready");
+                continue;
             }
-            const { id: pbPostId, dryRun } = await (0, postbridge_1.pbCreatePost)({
-                caption: (_d = (_c = post.content) === null || _c === void 0 ? void 0 : _c.caption) !== null && _d !== void 0 ? _d : post.brief,
-                socialAccountIds: post.socialAccountIds,
-                mediaIds,
-            });
             await docSnap.ref.update({
-                "pb.postId": pbPostId,
-                "pb.dryRun": dryRun,
-                "pb.submittedAt": FieldValue.serverTimestamp(),
+                status: "posted",
+                results,
+                error: FieldValue.delete(),
                 updatedAt: FieldValue.serverTimestamp(),
             });
+            if (claimedPost.automationId) {
+                await core_1.db
+                    .collection("automations")
+                    .doc(claimedPost.automationId)
+                    .update({ failureCount: 0 })
+                    .catch(() => { });
+            }
         }
         catch (error) {
-            console.error(`[postingTick] submit ${docSnap.id} failed:`, (0, core_1.stringifyError)(error));
-            await handlePostFailure(docSnap.ref, post, (0, core_1.stringifyError)(error), "ready");
+            console.error(`[postingTick] publish ${docSnap.id} failed:`, (0, core_1.stringifyError)(error));
+            await handlePostFailure(docSnap.ref, claimedPost, (0, core_1.stringifyError)(error), "ready");
         }
-    }
-    // 2) Poll in-flight posts for final status
-    const postingSnap = await core_1.db
-        .collection("posts")
-        .where("status", "==", "posting")
-        .limit(30)
-        .get();
-    for (const docSnap of postingSnap.docs) {
-        const post = docSnap.data();
-        if (!((_e = post.pb) === null || _e === void 0 ? void 0 : _e.postId))
-            continue; // will be retried by failure path
-        try {
-            const pbPost = await (0, postbridge_1.pbGetPost)(post.pb.postId);
-            const status = (pbPost.status || "").toLowerCase();
-            if (status === "posted" || status === "published" || status === "success") {
-                const results = post.platforms.map((platform) => {
-                    var _a;
-                    const match = (_a = pbPost.results) === null || _a === void 0 ? void 0 : _a.find((r) => r.platform === platform);
-                    return Object.assign({ platform, status: "posted" }, ((match === null || match === void 0 ? void 0 : match.url) ? { permalink: match.url } : {}));
-                });
-                await docSnap.ref.update({
-                    status: "posted",
-                    results,
-                    error: FieldValue.delete(),
-                    updatedAt: FieldValue.serverTimestamp(),
-                });
-                if (post.automationId) {
-                    await core_1.db.collection("automations").doc(post.automationId).update({
-                        failureCount: 0,
-                    });
-                }
-            }
-            else if (status === "failed" || status === "error") {
-                const reason = ((_f = pbPost.results) === null || _f === void 0 ? void 0 : _f.map((r) => r.error).filter(Boolean).join("; ")) ||
-                    "Post Bridge reported failure";
-                await handlePostFailure(docSnap.ref, post, reason, "ready");
-            }
-            // otherwise still processing — poll again next tick
-        }
-        catch (error) {
-            console.error(`[postingTick] poll ${docSnap.id} failed:`, (0, core_1.stringifyError)(error));
-        }
-    }
-    if ((0, postbridge_1.isDryRun)()) {
-        console.log("[postingTick] running in DRY-RUN mode (no POST_BRIDGE_API_KEY)");
     }
 });
 /** Shared retry/backoff + terminal-failure handling. */
 async function handlePostFailure(ref, post, message, retryStatus) {
-    var _a, _b, _c, _d;
-    const attempts = ((_a = post.attempts) !== null && _a !== void 0 ? _a : 0) + 1;
-    const maxAttempts = (_b = post.maxAttempts) !== null && _b !== void 0 ? _b : 3;
+    var _a, _b;
+    // The transaction claim already persisted this attempt. Never increment a
+    // second time here, and never trust a legacy document to raise the cap.
+    const attempts = Math.max(1, boundedAttempts(post.attempts));
+    const maxAttempts = MAX_POST_ATTEMPTS;
     if (attempts < maxAttempts) {
         const delay = RETRY_DELAYS_MINUTES[Math.min(attempts - 1, RETRY_DELAYS_MINUTES.length - 1)];
         await ref.update({
             status: retryStatus,
+            attempts,
+            maxAttempts,
             error: message,
             nextAttemptAt: minutesFromNow(delay),
             updatedAt: FieldValue.serverTimestamp(),
@@ -306,13 +274,16 @@ async function handlePostFailure(ref, post, message, retryStatus) {
     }
     await ref.update({
         status: "failed",
+        attempts,
+        maxAttempts,
         error: message,
+        nextAttemptAt: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
     });
     if (post.automationId) {
         const automationRef = core_1.db.collection("automations").doc(post.automationId);
         const snap = await automationRef.get();
-        const failureCount = ((_d = (_c = snap.data()) === null || _c === void 0 ? void 0 : _c.failureCount) !== null && _d !== void 0 ? _d : 0) + 1;
+        const failureCount = ((_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.failureCount) !== null && _b !== void 0 ? _b : 0) + 1;
         await automationRef.update(Object.assign(Object.assign({ failureCount, lastError: message }, (failureCount >= MAX_CONSECUTIVE_AUTOMATION_FAILURES
             ? { status: "error" }
             : {})), { updatedAt: FieldValue.serverTimestamp() }));

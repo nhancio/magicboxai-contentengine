@@ -2,7 +2,7 @@
 
 import { httpsCallable } from "firebase/functions";
 import { functions } from "./firebase";
-import type { SocialPlatform } from "../types";
+import type { SocialPlatform, SocialProvider } from "../types";
 
 function callable<Req, Res>(name: string) {
   return async (data: Req): Promise<Res> => {
@@ -13,10 +13,29 @@ function callable<Req, Res>(name: string) {
   };
 }
 
-export const syncSocialAccounts = callable<
-  Record<string, never>,
-  { synced: number; dryRun: boolean }
->("syncSocialAccounts");
+/** Returns the provider consent URL to redirect the browser to. */
+export const getSocialConnectUrl = callable<
+  { provider: SocialProvider; returnTo?: string },
+  { url: string }
+>("getSocialConnectUrl");
+
+export const disconnectSocialAccount = callable<
+  { accountId: string },
+  { success: boolean }
+>("disconnectSocialAccount");
+
+/**
+ * Kick off the OAuth flow for a provider by redirecting the current tab to the
+ * provider's consent screen. On return the app lands on `returnTo`
+ * (default: the current path) with ?social=connected|error.
+ */
+export async function connectSocial(
+  provider: SocialProvider,
+  returnTo: string = window.location.pathname
+): Promise<void> {
+  const { url } = await getSocialConnectUrl({ provider, returnTo });
+  window.location.href = url;
+}
 
 export interface AutomationPayload {
   id?: string;
@@ -76,3 +95,20 @@ export const getQuota = callable<
   Record<string, never>,
   { plan: string; used: number; limit: number; remaining: number }
 >("getQuota");
+
+/** Infer brand fields from a website URL via Gemini (for onboarding autofill). */
+export const extractBrandFromWebsite = callable<
+  { url: string },
+  { companyName: string; industry: string; audience: string; tone: string }
+>("extractBrandFromWebsite");
+
+/** Create a Dodo Payments checkout session and return its hosted URL. */
+export const createDodoCheckout = callable<
+  { planId: "pro" | "max"; billing: "monthly" | "annual" },
+  { url: string }
+>("createDodoCheckout");
+
+/** Open the authenticated Dodo customer portal for billing management. */
+export const createDodoPortal = callable<Record<string, never>, { url: string }>(
+  "createDodoPortal"
+);

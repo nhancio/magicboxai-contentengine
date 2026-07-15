@@ -4,7 +4,6 @@ import { getApiLogs, getTotalApiRequests } from "@shared/lib/firestore";
 import { Card, CardContent } from "@shared/components/ui/card";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/button";
-import { Badge } from "@shared/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -23,19 +22,6 @@ interface LogEntry {
   duration: number;
   userId?: string;
 }
-
-const DEMO_LOGS: LogEntry[] = [
-  { method: "POST", endpoint: "/api/generate-avatar", statusCode: 200, duration: 1234, userId: "user_abc123", timestamp: new Date(Date.now() - 60000) },
-  { method: "GET", endpoint: "/api/user/profile", statusCode: 200, duration: 45, userId: "user_abc123", timestamp: new Date(Date.now() - 120000) },
-  { method: "POST", endpoint: "/api/generate-ad", statusCode: 200, duration: 2345, userId: "user_def456", timestamp: new Date(Date.now() - 180000) },
-  { method: "GET", endpoint: "/api/avatars", statusCode: 200, duration: 89, userId: "user_abc123", timestamp: new Date(Date.now() - 240000) },
-  { method: "POST", endpoint: "/api/auth/login", statusCode: 200, duration: 156, userId: "user_ghi789", timestamp: new Date(Date.now() - 300000) },
-  { method: "PUT", endpoint: "/api/user/settings", statusCode: 200, duration: 78, userId: "user_def456", timestamp: new Date(Date.now() - 360000) },
-  { method: "DELETE", endpoint: "/api/avatars/av_123", statusCode: 200, duration: 67, userId: "user_abc123", timestamp: new Date(Date.now() - 420000) },
-  { method: "POST", endpoint: "/api/generate-avatar", statusCode: 500, duration: 3456, userId: "user_jkl012", timestamp: new Date(Date.now() - 480000) },
-  { method: "GET", endpoint: "/api/ads", statusCode: 404, duration: 23, userId: "user_def456", timestamp: new Date(Date.now() - 540000) },
-  { method: "POST", endpoint: "/api/generate-ad", statusCode: 429, duration: 12, userId: "user_mno345", timestamp: new Date(Date.now() - 600000) },
-];
 
 const METHOD_FILTERS = ["ALL", "GET", "POST", "PUT", "DELETE"] as const;
 const STATUS_FILTERS = ["ALL", "2xx", "4xx", "5xx"] as const;
@@ -94,17 +80,12 @@ export default function ApiLogs() {
         userId: l.userId as string | undefined,
       }));
 
-      if (entries.length === 0) {
-        setLogs(DEMO_LOGS);
-        setTotalRequests(DEMO_LOGS.length);
-      } else {
-        setLogs(entries);
-        setTotalRequests(total);
-      }
+      setLogs(entries);
+      setTotalRequests(total);
     } catch (err) {
       console.error("Failed to load API logs:", err);
-      setLogs(DEMO_LOGS);
-      setTotalRequests(DEMO_LOGS.length);
+      setLogs([]);
+      setTotalRequests(0);
     } finally {
       setLoading(false);
     }
@@ -147,13 +128,6 @@ export default function ApiLogs() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 glass-card rounded-full">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            <span className="text-[11px] text-white/50">Auto-refresh</span>
-          </div>
           <Button variant="outline" size="sm" onClick={loadLogs} disabled={loading}>
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             Refresh
@@ -221,7 +195,10 @@ export default function ApiLogs() {
           ) : filteredLogs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Activity className="w-10 h-10 text-white/20 mb-3" />
-              <p className="text-white/50 text-sm">No logs match your filters</p>
+              <p className="text-white/50 text-sm">No API logs have been recorded</p>
+              <p className="mt-1 max-w-md text-xs text-white/30">
+                Production function instrumentation must be connected before this view can report activity.
+              </p>
             </div>
           ) : (
             <Table>
@@ -275,11 +252,6 @@ export default function ApiLogs() {
       {/* Summary */}
       <div className="flex items-center justify-between text-sm text-white/40">
         <span>Showing {filteredLogs.length} of {logs.length} entries</span>
-        {logs === DEMO_LOGS && (
-          <Badge variant="secondary" className="text-[10px]">
-            Demo Data
-          </Badge>
-        )}
       </div>
     </div>
   );

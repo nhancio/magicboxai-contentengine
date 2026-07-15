@@ -23,6 +23,7 @@ import {
   Plus,
   Trash2,
   Twitter,
+  Youtube,
   Zap,
 } from "lucide-react";
 
@@ -30,15 +31,16 @@ const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
   instagram: Instagram,
   twitter: Twitter,
   linkedin: Linkedin,
+  youtube: Youtube,
 };
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const STATUS_META: Record<Automation["status"], { label: string; dot: string }> = {
-  active: { label: "Active", dot: "bg-emerald-400" },
-  paused: { label: "Paused", dot: "bg-amber-400" },
-  draft: { label: "Draft", dot: "bg-white/30" },
-  error: { label: "Needs attention", dot: "bg-rose-400" },
+  active: { label: "Active", dot: "bg-emerald-500" },
+  paused: { label: "Paused", dot: "bg-amber-500" },
+  draft: { label: "Draft", dot: "bg-muted-foreground/40" },
+  error: { label: "Needs attention", dot: "bg-red-500" },
 };
 
 function scheduleLabel(automation: Automation): string {
@@ -116,12 +118,13 @@ export default function Automations() {
     <div className="mx-auto max-w-5xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Automations</h1>
-          <p className="mt-1 text-sm text-white/40">
+          <span className="eyebrow">MagicBox</span>
+          <h1 className="mt-2 font-display text-4xl leading-none text-foreground">Automations</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Prompt-driven engines that write, design, and publish on schedule.
           </p>
         </div>
-        <Button asChild className="bg-violet-600 hover:bg-violet-500">
+        <Button asChild>
           <Link to="/automations/new">
             <Plus className="mr-1.5 h-4 w-4" /> New automation
           </Link>
@@ -136,16 +139,16 @@ export default function Automations() {
         </div>
       ) : automations.length === 0 ? (
         <div className="glass-card flex flex-col items-center gap-4 py-16 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-600/15">
-            <Bot className="h-7 w-7 text-violet-300" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-brand/10">
+            <Bot className="h-7 w-7 text-brand" />
           </div>
           <div>
-            <h2 className="font-semibold">Set up your first automation</h2>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-white/40">
+            <h2 className="font-display text-2xl text-foreground">Set up your first automation</h2>
+            <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
               Give it a brief once — it posts fresh content to your channels every day without you.
             </p>
           </div>
-          <Button asChild className="bg-violet-600 hover:bg-violet-500">
+          <Button asChild>
             <Link to="/automations/new">
               <Plus className="mr-1.5 h-4 w-4" /> Create automation
             </Link>
@@ -168,19 +171,19 @@ export default function Automations() {
                     <span className={cn("h-2 w-2 rounded-full", status.dot)} />
                     <Link
                       to={`/automations/${automation.id}`}
-                      className="truncate font-semibold hover:text-violet-300"
+                      className="truncate font-semibold text-foreground hover:text-brand"
                     >
                       {automation.name}
                     </Link>
-                    <span className="text-xs text-white/35">{status.label}</span>
+                    <span className="text-xs text-muted-foreground">{status.label}</span>
                   </div>
-                  <p className="mt-1 truncate text-sm text-white/45">{automation.brief}</p>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">{automation.brief}</p>
                   {automation.status === "error" && automation.lastError && (
-                    <p className="mt-1 truncate text-xs text-rose-300/80">
+                    <p className="mt-1 truncate text-xs text-red-600">
                       {automation.lastError}
                     </p>
                   )}
-                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/40">
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                       <CalendarClock className="h-3.5 w-3.5" />
                       {scheduleLabel(automation)}
@@ -200,7 +203,6 @@ export default function Automations() {
                     size="sm"
                     disabled={busy === automation.id}
                     onClick={() => runNow(automation)}
-                    className="border-white/10 bg-white/[0.04]"
                     title="Generate and publish a post right now"
                   >
                     {busy === automation.id ? (
@@ -215,7 +217,7 @@ export default function Automations() {
                     size="icon"
                     disabled={busy === automation.id || automation.status === "draft"}
                     onClick={() => toggle(automation)}
-                    className="h-8 w-8 text-white/50 hover:text-white"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
                     title={automation.status === "active" ? "Pause" : "Resume"}
                   >
                     {automation.status === "active" ? (
@@ -229,7 +231,7 @@ export default function Automations() {
                     size="icon"
                     disabled={busy === automation.id}
                     onClick={() => remove(automation)}
-                    className="h-8 w-8 text-white/40 hover:text-rose-300"
+                    className="h-8 w-8 text-muted-foreground hover:text-red-600"
                     title="Delete"
                   >
                     <Trash2 className="h-4 w-4" />

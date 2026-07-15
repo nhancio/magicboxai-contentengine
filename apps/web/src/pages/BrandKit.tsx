@@ -139,8 +139,9 @@ export default function BrandKit() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Brand kit</h1>
-        <p className="mt-1 text-sm text-white/40">
+        <span className="eyebrow">Brand Kit</span>
+        <h1 className="mt-2 font-display text-3xl">Brand kit</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Everything the engine needs to sound and look unmistakably like you.
         </p>
       </div>
@@ -156,10 +157,10 @@ export default function BrandKit() {
                   key={brand.id}
                   onClick={() => select(brand.id)}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-3 text-left text-sm transition-colors",
+                    "flex w-full items-center gap-2.5 rounded-lg border px-3.5 py-3 text-left text-sm transition-colors",
                     selectedId === brand.id
-                      ? "border-violet-500/60 bg-violet-600/10 text-white"
-                      : "border-white/[0.08] bg-white/[0.02] text-white/60 hover:bg-white/[0.05]"
+                      ? "border-brand/40 bg-brand/10 text-brand"
+                      : "border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground"
                   )}
                 >
                   <span
@@ -172,10 +173,10 @@ export default function BrandKit() {
               <button
                 onClick={() => select("new")}
                 className={cn(
-                  "flex w-full items-center gap-2.5 rounded-xl border border-dashed px-3.5 py-3 text-left text-sm transition-colors",
+                  "flex w-full items-center gap-2.5 rounded-lg border border-dashed px-3.5 py-3 text-left text-sm transition-colors",
                   selectedId === "new"
-                    ? "border-violet-500/60 text-violet-200"
-                    : "border-white/15 text-white/45 hover:text-white/70"
+                    ? "border-brand/40 text-brand"
+                    : "border-border text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Plus className="h-4 w-4" /> New brand
@@ -186,19 +187,19 @@ export default function BrandKit() {
 
         <div className="glass-card space-y-4 p-6">
           <div className="flex items-center gap-2">
-            <Palette className="h-5 w-5 text-violet-300" />
-            <h2 className="font-semibold">
+            <Palette className="h-5 w-5 text-brand" />
+            <h2 className="font-display text-xl">
               {selectedId === "new" ? "New brand" : "Edit brand"}
             </h2>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Company name</Label>
-              <Input value={form.name} onChange={set("name")} placeholder="Acme Analytics" className="bg-white/[0.04] border-white/10" />
+              <Input value={form.name} onChange={set("name")} placeholder="Acme Analytics" className="bg-secondary border-border" />
             </div>
             <div className="space-y-2">
               <Label>Industry</Label>
-              <Input value={form.industry} onChange={set("industry")} placeholder="B2B SaaS" className="bg-white/[0.04] border-white/10" />
+              <Input value={form.industry} onChange={set("industry")} placeholder="B2B SaaS" className="bg-secondary border-border" />
             </div>
           </div>
           <div className="space-y-2">
@@ -207,7 +208,7 @@ export default function BrandKit() {
               value={form.audience}
               onChange={set("audience")}
               placeholder="Operations leaders at mid-market manufacturers"
-              className="bg-white/[0.04] border-white/10"
+              className="bg-secondary border-border"
             />
           </div>
           <div className="space-y-2">
@@ -217,13 +218,13 @@ export default function BrandKit() {
               onChange={set("toneOfVoice")}
               rows={3}
               placeholder="Confident and human. Plain language over jargon. Specific numbers over vague claims."
-              className="bg-white/[0.04] border-white/10"
+              className="bg-secondary border-border"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Website</Label>
-              <Input value={form.websiteUrl} onChange={set("websiteUrl")} placeholder="https://acme.example" className="bg-white/[0.04] border-white/10" />
+              <Input value={form.websiteUrl} onChange={set("websiteUrl")} placeholder="https://acme.example" className="bg-secondary border-border" />
             </div>
             <div className="space-y-2">
               <Label>Brand color</Label>
@@ -232,9 +233,9 @@ export default function BrandKit() {
                   type="color"
                   value={form.primaryColor}
                   onChange={set("primaryColor")}
-                  className="h-10 w-12 cursor-pointer rounded-md border border-white/10 bg-transparent"
+                  className="h-10 w-12 cursor-pointer rounded-md border border-border bg-transparent"
                 />
-                <Input value={form.primaryColor} onChange={set("primaryColor")} className="bg-white/[0.04] border-white/10" />
+                <Input value={form.primaryColor} onChange={set("primaryColor")} className="bg-secondary border-border" />
               </div>
             </div>
           </div>
@@ -244,7 +245,7 @@ export default function BrandKit() {
               value={form.hashtags}
               onChange={set("hashtags")}
               placeholder="#supplychain #manufacturing #operations"
-              className="bg-white/[0.04] border-white/10"
+              className="bg-secondary border-border"
             />
           </div>
           <div className="space-y-2">
@@ -253,7 +254,7 @@ export default function BrandKit() {
               value={form.bannedTopics}
               onChange={set("bannedTopics")}
               placeholder="competitor names, politics, pricing details"
-              className="bg-white/[0.04] border-white/10"
+              className="bg-secondary border-border"
             />
           </div>
           <div className="flex items-center justify-between pt-2">
@@ -261,7 +262,7 @@ export default function BrandKit() {
               <Button
                 variant="ghost"
                 onClick={handleDelete}
-                className="text-white/40 hover:text-rose-300"
+                className="text-muted-foreground hover:text-red-600"
               >
                 <Trash2 className="mr-1.5 h-4 w-4" /> Delete
               </Button>

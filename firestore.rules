@@ -11,38 +11,62 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Users can read/write their own data
+    // User profile fields are client-managed. Identity, billing, quota/usage,
+    // email-delivery guards, and other server-owned fields are never writable
+    // through the client SDK.
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'email', 'displayName', 'photoURL', 'lastLoginAt', 'onboardingComplete'
+        ])
+        && request.resource.data.email == request.auth.token.email;
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'photoURL', 'lastLoginAt', 'onboardingComplete'
+        ]);
     }
 
     // Influencers (Generated Avatars)
     match /influencers/{id} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     // Photo Avatars
     match /photoAvatars/{id} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     // Ads
     match /ads/{id} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     // Videos
     match /videos/{videoId} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // AI Studio generations (written by backend; users read/delete their own)
+    match /studioGenerations/{id} {
+      allow read, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create, update: if false;
     }
 
     // Subscriptions
@@ -56,36 +80,43 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Social accounts (written by backend sync; users read their own)
+    // Social accounts (written by the OAuth callback; users read their own).
+    // Connect/disconnect happens through callables, so no client write here.
     match /socialAccounts/{id} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // OAuth access tokens — server-only. No client access under any condition.
+    match /socialTokens/{id} {
+      allow read, write: if false;
     }
 
     // Brand profiles
     match /brandProfiles/{id} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     // Automations — created/updated via callables; clients may read,
-    // pause/resume (status + updatedAt only), and delete their own
+    // pause active work in an emergency, and delete their own. Resuming goes
+    // through a callable so quota and connected resources are revalidated.
     match /automations/{id} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
       allow update: if request.auth != null && resource.data.userId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
-        && request.resource.data.status in ['active', 'paused'];
+        && resource.data.status == 'active'
+        && request.resource.data.status == 'paused';
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
-    // Posts — lifecycle state is driven by backend + callables; clients can
-    // read their own and create manual drafts, but not touch pipeline fields
+    // Posts — all creation and lifecycle writes are backend-only. Manual posts
+    // use the authenticated createManualPost callable.
     match /posts/{id} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid
-        && request.resource.data.source == 'manual'
-        && request.resource.data.status in ['draft', 'scheduled', 'ready'];
+      allow create, update: if false;
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid
         && resource.data.status in ['draft', 'failed', 'cancelled'];
     }
