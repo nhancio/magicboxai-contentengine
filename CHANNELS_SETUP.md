@@ -1,82 +1,174 @@
-# Channel connections — Instagram, LinkedIn & YouTube (direct OAuth)
+# Channel connections — Instagram, LinkedIn & YouTube
 
-Post Bridge has been removed. MagicBox now connects Instagram, LinkedIn, and
-YouTube directly via OAuth and publishes through their official APIs.
-X / Twitter is deferred (paid API tier).
+MagicBox connects channels via OAuth and publishes through their official APIs.
+The **live path is Convex** (`packages/backend/convex/`). Firebase Functions
+remain as a legacy fallback only.
 
-## Architecture
+X / Twitter and Reddit are registered but deferred (paid commercial API tiers).
 
-- `functions/src/social.ts` — `getSocialConnectUrl` (callable) builds the consent
-  URL; `socialOAuthCallback` (HTTP) handles the redirect, exchanges the code, and
-  stores the account. `disconnectSocialAccount` (callable) removes it.
-- `functions/src/publishing.ts` — `publishPost()` publishes to each connected
-  account: Instagram via the Graph API (image + Reels), LinkedIn via `/rest/posts`,
-  YouTube via the Data API v3 multipart video upload (with automatic access-token
-  refresh from the stored Google refresh token).
-- Tokens live in `socialTokens/{accountId}` — **server-only**, never client-readable
-  (see `firestore.rules`). Public account info lives in `socialAccounts/{accountId}`.
-- UI: connect in Onboarding step 1 and Settings; the Dashboard lists connected channels.
+## Architecture (Convex — current)
 
-## Secrets to set (production)
+- `convex/social.ts` — `connectUrl` builds the consent URL; `disconnect` removes
+  an account. Tokens live in `socialTokens` (server-only).
+- `convex/http.ts` — `GET /oauth/callback` exchanges the code and redirects back
+  into the app (`?social=connected` / `?social=error`).
+- `convex/lib/providers/*` — one module per platform (YouTube, Instagram,
+  Facebook, LinkedIn live; Twitter/Reddit deferred).
+- `convex/publish.ts` + `scheduler.ts` — publish engine + 1-minute drain cron.
+- UI: Settings + Onboarding call `api.social.connectUrl` / `api.social.accounts`.
 
-```bash
-firebase functions:secrets:set META_APP_ID
-firebase functions:secrets:set META_APP_SECRET
-firebase functions:secrets:set LINKEDIN_CLIENT_ID
-firebase functions:secrets:set LINKEDIN_CLIENT_SECRET
-firebase functions:secrets:set GOOGLE_OAUTH_CLIENT_ID       # YouTube
-firebase functions:secrets:set GOOGLE_OAUTH_CLIENT_SECRET   # YouTube
-firebase functions:secrets:set OAUTH_STATE_SECRET   # any long random string
+### OAuth redirect URI (register this exact URL)
+
+```
+https://beloved-lyrebird-288.convex.site/oauth/callback
 ```
 
-Non-secret config goes in `functions/.env` (see `.env.example`):
-`APP_BASE_URL`, `OAUTH_CALLBACK_URL`.
+(Prod: `https://<your-prod-deployment>.convex.site/oauth/callback`)
 
-## What you need to do next (developer portals)
+### Secrets to set on Convex
 
-The long pole is app review — start these now, in parallel.
+From `packages/backend/`:
 
-### Instagram (Meta)
-1. developers.facebook.com → create an app (type: **Business**).
-2. Add the **Instagram Graph API** and **Facebook Login** products.
-3. Facebook Login → Valid OAuth Redirect URIs = your `OAUTH_CALLBACK_URL`.
-4. Copy the **App ID** → `META_APP_ID`, **App Secret** → `META_APP_SECRET`.
-5. Request **App Review** for: `instagram_basic`, `instagram_content_publish`,
-   `pages_show_list`, `pages_read_engagement`, `business_management`.
-   Record a screencast of the connect + publish flow — reviewers require it.
-6. Requirement for every end user: an Instagram **Business/Creator** account
-   linked to a **Facebook Page**. Personal IG accounts cannot publish via API.
-7. Complete Business Verification for your Meta business.
+```bash
+npx convex env set GOOGLE_OAUTH_CLIENT_ID <id>        # YouTube
+npx convex env set GOOGLE_OAUTH_CLIENT_SECRET <secret>
+npx convex env set APP_BASE_URL https://app.magicboxai.in
 
-### LinkedIn
-1. linkedin.com/developers → create an app, link it to a Company Page.
-2. Products → request **Share on LinkedIn** and **Sign In with LinkedIn using OpenID Connect**.
-3. Auth tab → Redirect URLs = your `OAUTH_CALLBACK_URL`.
-4. Copy **Client ID** → `LINKEDIN_CLIENT_ID`, **Client Secret** → `LINKEDIN_CLIENT_SECRET`.
-5. Scopes used: `openid profile w_member_social`.
+# Optional — free YouTube trending enrichment for Maya
+npx convex env set YOUTUBE_API_KEY <key>
 
-### YouTube (Google)
-1. console.cloud.google.com → the same project as Firebase (or any) →
-   **APIs & Services → Enable APIs** → enable **YouTube Data API v3**.
-2. **OAuth consent screen** → External → add scopes
-   `youtube.upload` and `youtube.readonly` → submit for verification
-   (unverified apps are capped at 100 test users and show a warning screen).
-3. **Credentials → Create OAuth client ID** (type: Web application) →
-   Authorized redirect URIs = your `OAUTH_CALLBACK_URL`.
-4. Copy **Client ID** → `GOOGLE_OAUTH_CLIENT_ID`, **Client secret** →
-   `GOOGLE_OAUTH_CLIENT_SECRET`.
-5. Note: each YouTube upload costs ~1,600 quota units; the default daily quota
-   (10,000) allows ~6 uploads/day per project. Request a quota increase for scale.
+# Later (Instagram / Facebook / LinkedIn)
+npx convex env set META_APP_ID <id>
+npx convex env set META_APP_SECRET <secret>
+npx convex env set LINKEDIN_CLIENT_ID <id>
+npx convex env set LINKEDIN_CLIENT_SECRET <secret>
+```
 
-### After approval
-- Deploy functions, then set `OAUTH_CALLBACK_URL` to the real function URL and redeploy.
-- Deploy `firestore.rules` (adds the locked-down `socialTokens` collection).
-- Test: Settings → Connect Instagram / Connect LinkedIn → run an automation.
+---
 
-## Known limits (v1)
-- Instagram requires media (image or video/Reels); text-only IG posts aren't allowed by the API.
-- LinkedIn video isn't uploaded yet (text + image supported); video posts fall back to text.
-- YouTube requires a video — enable video content on the automation, or attach one manually.
-- YouTube access tokens auto-refresh via the stored refresh token. Instagram/LinkedIn
-  tokens are long-lived (~60 days) but cannot be refreshed server-side; when one
-  expires the account is marked `expired` and the user must reconnect in Settings.
+## YouTube (Google) — do this first
+
+1. [Google Cloud Console](https://console.cloud.google.com) → project
+   `magicboxai-50927` (or your Firebase project).
+2. **APIs & Services → Enable APIs** → enable **YouTube Data API v3**.
+3. **OAuth consent screen** branding (must match the public homepage):
+   - **App name:** `MagicBox` (exact match to https://magicboxai.in/ — do not use
+     “MagicBox AI”, “MagicBox App”, or the company legal name alone)
+   - **User support email:** `support@magicboxai.in`
+   - **App logo:** same logo as the homepage (`logo-512.png` / brand mark)
+   - **Application home page:** `https://magicboxai.in/`
+   - **Privacy policy:** `https://magicboxai.in/privacy.html`
+   - **Terms of service:** `https://magicboxai.in/terms.html`
+   - **Authorized domains:** `magicboxai.in`
+4. **Scopes** (minimum for YouTube publish):
+   - `https://www.googleapis.com/auth/youtube.upload`
+   - `https://www.googleapis.com/auth/youtube.readonly`
+   Add yourself as a test user while the app is unverified.
+5. **Credentials → Create OAuth client ID** (type: **Web application**) →
+   Authorized redirect URIs =
+   `https://beloved-lyrebird-288.convex.site/oauth/callback`
+6. Copy **Client ID** / **Client secret** → set via `npx convex env set` above.
+7. (Optional) Create an API key → `YOUTUBE_API_KEY` for Maya trend enrichment.
+
+### Google brand / homepage verification (why YouTube shows “unverified”)
+
+Google rejects verification when the homepage does not clearly explain the app
+or when the OAuth app name does not match the homepage brand. Requirements:
+[App Homepage](https://support.google.com/cloud/answer/13807376) ·
+[App Identity & Branding](https://support.google.com/cloud/answer/13804963).
+
+After deploying the landing page:
+
+1. Confirm https://magicboxai.in/ shows **MagicBox** as the product name and
+   explains purpose + Google/YouTube data use (no login required).
+2. Confirm Privacy Policy is linked from the homepage and matches the consent
+   screen URL exactly.
+3. In Cloud Console → OAuth consent → **Prepare for verification** → resubmit.
+4. Reply to Google’s verification email confirming the homepage was updated.
+
+### Scopes to keep on the OAuth consent screen (Data Access)
+
+MagicBox only needs these YouTube scopes. **Remove everything else** from
+Google Cloud → Auth Platform → Data Access — extra scopes (Cloud Platform,
+BigQuery, Storage, App Engine, `youtube.force-ssl`, full `youtube`) block or
+delay verification and are not used by the app.
+
+**Keep (sensitive — required for publish):**
+- `https://www.googleapis.com/auth/youtube.upload` — upload videos the user
+  chooses to publish
+- `https://www.googleapis.com/auth/youtube.readonly` — read channel identity
+
+**Optional non-sensitive (only if this same client is used for Google sign-in):**
+- `openid`, `userinfo.email`, `userinfo.profile`
+
+**Remove (do not request):**
+- `cloud-platform`, `cloud-platform.read-only`
+- BigQuery / Cloud Storage / App Engine scopes
+- `youtube` (full manage), `youtube.force-ssl`, `youtube.download`
+- `yt-analytics.readonly` (unless you add analytics features later)
+
+**Justification text** (paste into “How will the scopes be used?”):
+
+> MagicBox is AI marketing automation software. youtube.upload and
+> youtube.readonly let a signed-in user connect their YouTube channel and
+> upload videos they create or approve in MagicBox. We do not use these
+> scopes for ads, scraping others’ content, or unrelated Google Cloud access.
+
+Note: Firebase “Sign in with Google” and “Connect YouTube” are separate OAuth
+steps. Google **requires** YouTube scope consent the first time — we cannot
+skip it. MagicBox passes `login_hint` with the signed-in email so users skip
+the account picker and go straight to the YouTube permission screen.
+
+### Quota note
+Each `videos.insert` costs ~1,600 units against a default **10,000/day** project
+quota (~6 uploads/day for the whole app). Request a quota increase for scale.
+
+### Test
+Settings → **Connect YouTube** → Google consent → back to Settings with
+`?social=connected`. Then Studio → video preset → Post now / Schedule.
+
+---
+
+## Instagram (Meta) — Instagram Login
+
+MagicBox uses **Instagram API with Instagram Login** (not Facebook Login Page
+scopes). Old scopes like `instagram_basic` / `instagram_content_publish` are
+rejected on new Meta apps.
+
+1. developers.facebook.com → your app → **Instagram** use case.
+2. Open **API setup with Instagram login** (not Facebook login).
+3. Permissions needed for publish:
+   - `instagram_business_basic`
+   - `instagram_business_content_publish`
+   (Messaging permissions are optional; not required for Connect/publish.)
+4. **Set up Instagram business login** → add OAuth redirect URI:
+   `https://beloved-lyrebird-288.convex.site/oauth/callback`
+5. Copy **Instagram app ID** + **Instagram app secret** from that page →
+   ```bash
+   npx convex env set META_IG_APP_ID <instagram-app-id>
+   npx convex env set META_IG_APP_SECRET <instagram-app-secret>
+   ```
+   Do **not** reuse `META_APP_ID` here — that is the Facebook App ID (Pages).
+6. End users need an Instagram **Business or Creator** account (Page link
+   not required for this login type).
+7. App Review / Advanced Access before live customer publish.
+
+## LinkedIn
+
+1. linkedin.com/developers → create an app, link a Company Page.
+2. Request **Share on LinkedIn** + **Sign In with LinkedIn using OpenID Connect**.
+3. Auth → Redirect URLs = the Convex callback above.
+4. `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET`.
+5. Scopes: `openid profile w_member_social`.
+
+---
+
+## Known limits
+
+- Instagram requires media (image or Reels); text-only isn't allowed.
+- LinkedIn video upload isn't implemented yet (text + image).
+- YouTube requires a video.
+- YouTube access tokens refresh via the stored Google refresh token.
+  Instagram/LinkedIn long-lived tokens (~60 days) cannot be refreshed
+  server-side — when expired the account is marked `expired` and the user
+  reconnects in Settings.

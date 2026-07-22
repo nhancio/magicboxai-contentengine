@@ -17,6 +17,7 @@ const features: {
     platform: "instagram",
     status: "live",
     media: {
+      src: "/videos/Cute_baby_at_gym.mp4",
       caption: "3 things nobody tells you about launching →",
       handle: "@yourbrand",
     },
@@ -29,6 +30,7 @@ const features: {
     platform: "linkedin",
     status: "review",
     media: {
+      src: "/videos/Playful_cats_cuddling_on_bed.mp4",
       caption:
         "One brand kit. Consistent voice across every channel — without the copy-paste grind.",
       handle: "Your Brand",
@@ -42,6 +44,7 @@ const features: {
     platform: "youtube",
     status: "scheduled",
     media: {
+      src: "/videos/Cozy_cartoon_characters_bedroom.mp4",
       caption: "How one weekly brief became three Shorts",
       handle: "Your Brand",
     },
@@ -54,6 +57,7 @@ const features: {
     platform: "instagram",
     status: "uploading",
     media: {
+      src: "/videos/Cute_fluffy_animated_hamster.mp4",
       caption: "Queued for Reels · brand kit applied",
       handle: "@yourbrand",
     },

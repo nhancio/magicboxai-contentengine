@@ -96,12 +96,22 @@ export const getQuota = callable<
   { plan: string; used: number; limit: number; remaining: number }
 >("getQuota");
 
-/** Infer brand fields from a website URL via Gemini (for onboarding autofill). */
-export const extractBrandFromWebsite = callable<
-  { url: string },
-  { companyName: string; industry: string; audience: string; tone: string }
->("extractBrandFromWebsite");
+/** Fetch a website into a full brand kit (logo, colors, fonts, voice). */
+export type BrandExtractResult = {
+  companyName: string;
+  industry: string;
+  audience: string;
+  tone: string;
+  hashtags: string[];
+  sampleCaptions: string[];
+  logoUrl: string;
+  colors: { primary?: string; secondary?: string; accent?: string };
+  fonts: string[];
+};
 
+export const extractBrandFromWebsite = callable<{ url: string }, BrandExtractResult>(
+  "extractBrandFromWebsite",
+);
 /** Create a Dodo Payments checkout session and return its hosted URL. */
 export const createDodoCheckout = callable<
   { planId: "pro" | "max"; billing: "monthly" | "annual" },

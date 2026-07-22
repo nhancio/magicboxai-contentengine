@@ -1,12 +1,35 @@
 "use strict";
-// Extract a brand profile (company name, industry, audience, tone) from a
-// website URL using Gemini. The user enters only a URL; we fetch the page,
-// distil the visible text, and ask the model to return structured JSON so the
-// onboarding form can auto-fill.
+// Extract a full brand kit from a website URL. The user enters ONLY a URL; we
+// fetch the page (and its main stylesheets), pull the logo, sample the brand
+// mark's dominant colors, read the font stacks, and ask Gemini to infer the
+// written profile (company name, industry, audience, tone, hashtags, sample
+// captions) so the Brand Kit page can show a complete, editable preview
+// before saving.
+//
+// Color approach ported from g3/super-app audit.py: the app icon / logo image
+// is quantized for its dominant colors (the mark defines the brand), CSS hex
+// frequency is the fallback signal, theme-color meta is weighted heavily, and
+// near-duplicates are collapsed by RGB distance.
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extractBrandFromWebsite = void 0;
+exports.findTags = findTags;
+exports.collectLogoCandidates = collectLogoCandidates;
+exports.pickDisplayLogo = pickDisplayLogo;
+exports.pickBrandMark = pickBrandMark;
+exports.extractStylesheetUrls = extractStylesheetUrls;
+exports.colorsFromImageBuffer = colorsFromImageBuffer;
+exports.colorsFromCss = colorsFromCss;
+exports.buildPalette = buildPalette;
+exports.extractFonts = extractFonts;
+exports.parseBrandJson = parseBrandJson;
 const https_1 = require("firebase-functions/v2/https");
+const jimp_1 = __importDefault(require("jimp"));
 const core_1 = require("./core");
+const models_1 = require("./models");
+// ── URL safety ───────────────────────────────────────────────────────────────
 // Reject non-http(s) and obvious internal/loopback hosts (basic SSRF guard —
 // this runs server-side with the function's egress).
 function normalizeUrl(raw) {
@@ -39,6 +62,282 @@ function normalizeUrl(raw) {
         throw new https_1.HttpsError("invalid-argument", "That host isn't reachable.");
     return url;
 }
+const BOT_HEADERS = { "User-Agent": "MagicBoxBot/1.0 (+https://magicboxai.in)" };
+async function fetchText(url, maxBytes, timeoutMs) {
+    var _a;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, { redirect: "follow", signal: controller.signal, headers: BOT_HEADERS });
+        if (!res.ok)
+            throw new https_1.HttpsError("unavailable", `Could not load the site (${res.status}).`);
+        const body = (await res.text()).slice(0, maxBytes);
+        return { body, contentType: (_a = res.headers.get("content-type")) !== null && _a !== void 0 ? _a : "", finalUrl: res.url || url };
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
+async function fetchBinary(url, maxBytes, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, { redirect: "follow", signal: controller.signal, headers: BOT_HEADERS });
+        if (!res.ok)
+            return null;
+        const buf = Buffer.from(await res.arrayBuffer());
+        return buf.byteLength > maxBytes ? null : buf;
+    }
+    catch (_a) {
+        return null;
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
+// ── HTML helpers ─────────────────────────────────────────────────────────────
+/** All opening tags of `tagName` in the document, as attribute maps. */
+function findTags(html, tagName) {
+    var _a, _b, _c;
+    const tags = [];
+    const re = new RegExp(`<${tagName}\\b([^>]*)>`, "gi");
+    let m;
+    while ((m = re.exec(html))) {
+        const attrs = {};
+        const attrRe = /([a-zA-Z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
+        let a;
+        while ((a = attrRe.exec(m[1]))) {
+            attrs[a[1].toLowerCase()] = ((_c = (_b = (_a = a[2]) !== null && _a !== void 0 ? _a : a[3]) !== null && _b !== void 0 ? _b : a[4]) !== null && _c !== void 0 ? _c : "").trim();
+        }
+        tags.push(attrs);
+    }
+    return tags;
+}
+function resolveHref(href, baseUrl) {
+    if (!href || href.startsWith("data:") || href.startsWith("javascript:"))
+        return "";
+    try {
+        return new URL(href, baseUrl).toString();
+    }
+    catch (_a) {
+        return "";
+    }
+}
+// ── Logo extraction ──────────────────────────────────────────────────────────
+/** Every asset on the page that could be the brand mark, tagged by kind. */
+function collectLogoCandidates(html, baseUrl) {
+    var _a, _b, _c, _d, _e, _f, _g;
+    const found = [];
+    const seen = new Set();
+    const add = (href, kind) => {
+        const url = resolveHref(href, baseUrl);
+        if (!url || seen.has(url))
+            return;
+        seen.add(url);
+        found.push({ url, kind });
+    };
+    for (const meta of findTags(html, "meta")) {
+        const key = (_b = (_a = meta.property) !== null && _a !== void 0 ? _a : meta.name) !== null && _b !== void 0 ? _b : "";
+        if (["og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
+            add(meta.content, "social");
+        }
+    }
+    for (const link of findTags(html, "link")) {
+        const rel = ((_c = link.rel) !== null && _c !== void 0 ? _c : "").toLowerCase();
+        if (rel.includes("apple-touch-icon"))
+            add(link.href, "apple-touch-icon");
+        else if (rel.includes("icon"))
+            add(link.href, "favicon");
+    }
+    // <img> tags that look like a logo. Match on class/id/alt (reliable) or the
+    // image *filename* — not the full CDN URL, whose hashes/paths cause false
+    // positives (a lifestyle photo at /.../logoipsum-hero.jpg is not a logo).
+    for (const img of findTags(html, "img")) {
+        const hint = [img.class, img.id, img.alt].filter(Boolean).join(" ").toLowerCase();
+        const src = img.src || img["data-src"] || "";
+        let filename = "";
+        try {
+            filename = (_e = (_d = new URL(src, baseUrl).pathname.split("/").pop()) === null || _d === void 0 ? void 0 : _d.toLowerCase()) !== null && _e !== void 0 ? _e : "";
+        }
+        catch (_h) {
+            filename = (_g = (_f = src.split("/").pop()) === null || _f === void 0 ? void 0 : _f.toLowerCase()) !== null && _g !== void 0 ? _g : "";
+        }
+        if (/logo|brand/.test(hint) || /logo|brand/.test(filename)) {
+            add(src, "logo-img");
+        }
+    }
+    return found;
+}
+/** Best asset to DISPLAY as the brand logo. */
+function pickDisplayLogo(candidates) {
+    var _a, _b;
+    const order = {
+        "logo-img": 0, "apple-touch-icon": 1, social: 2, favicon: 3,
+    };
+    return (_b = (_a = [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]) === null || _a === void 0 ? void 0 : _a.url) !== null && _b !== void 0 ? _b : "";
+}
+/**
+ * Best asset to SAMPLE COLORS from — the app icon is the most reliable brand
+ * mark. og:image (and even logo-img) can be lifestyle photos that pollute the
+ * palette, so square icons win.
+ */
+function pickBrandMark(candidates, baseUrl) {
+    var _a;
+    const order = {
+        "apple-touch-icon": 0, "logo-img": 1, favicon: 2, social: 3,
+    };
+    const best = (_a = [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]) === null || _a === void 0 ? void 0 : _a.url;
+    return best !== null && best !== void 0 ? best : resolveHref("/favicon.ico", baseUrl);
+}
+function extractStylesheetUrls(html, baseUrl) {
+    return findTags(html, "link")
+        .filter((l) => { var _a; return /stylesheet/i.test((_a = l.rel) !== null && _a !== void 0 ? _a : ""); })
+        .map((l) => resolveHref(l.href, baseUrl))
+        .filter((u) => u && !/fonts\.googleapis\.com/i.test(u))
+        .slice(0, 2);
+}
+// ── Color extraction ─────────────────────────────────────────────────────────
+const luminance = ([r, g, b]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+const saturation = ([r, g, b]) => (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
+const rgbDist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const toHex = (c) => `#${c.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+function parseHex(raw) {
+    let h = raw.replace(/^#/, "").toLowerCase();
+    if (h.length === 3)
+        h = h.split("").map((c) => c + c).join("");
+    if (!/^[0-9a-f]{6}$/.test(h))
+        return null;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+/** Quantize a logo/icon image to its dominant colors (alpha flattened onto white). */
+async function colorsFromImageBuffer(buf) {
+    var _a;
+    try {
+        const img = await jimp_1.default.read(buf);
+        const { data, width, height } = img.bitmap;
+        const totalPx = width * height;
+        if (!totalPx)
+            return [];
+        const step = Math.max(1, Math.floor(totalPx / 40000));
+        const buckets = new Map();
+        for (let p = 0; p < totalPx; p += step) {
+            const i = p * 4;
+            const a = data[i + 3] / 255;
+            const r = Math.round(data[i] * a + 255 * (1 - a));
+            const g = Math.round(data[i + 1] * a + 255 * (1 - a));
+            const b = Math.round(data[i + 2] * a + 255 * (1 - a));
+            const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+            const bucket = (_a = buckets.get(key)) !== null && _a !== void 0 ? _a : { sum: [0, 0, 0], count: 0 };
+            bucket.sum[0] += r;
+            bucket.sum[1] += g;
+            bucket.sum[2] += b;
+            bucket.count += 1;
+            buckets.set(key, bucket);
+        }
+        return [...buckets.values()]
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 8)
+            .map(({ sum, count }) => [
+            Math.round(sum[0] / count), Math.round(sum[1] / count), Math.round(sum[2] / count),
+        ]);
+    }
+    catch (_b) {
+        return []; // unsupported format (svg/ico) or corrupt image — CSS colors still apply
+    }
+}
+/** Frequency-rank colors in markup + CSS; theme-color meta is weighted heavily. */
+function colorsFromCss(html, css) {
+    var _a;
+    const counts = new Map();
+    const add = (rgb, weight = 1) => {
+        var _a;
+        if (!rgb)
+            return;
+        const key = rgb.join(",");
+        const entry = (_a = counts.get(key)) !== null && _a !== void 0 ? _a : { rgb, count: 0 };
+        entry.count += weight;
+        counts.set(key, entry);
+    };
+    const source = `${html}\n${css}`;
+    const hexRe = /#([0-9a-f]{6}|[0-9a-f]{3})\b/gi;
+    let m;
+    while ((m = hexRe.exec(source)))
+        add(parseHex(m[1]));
+    const rgbRe = /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/gi;
+    while ((m = rgbRe.exec(source))) {
+        add([
+            Math.min(255, parseInt(m[1], 10)),
+            Math.min(255, parseInt(m[2], 10)),
+            Math.min(255, parseInt(m[3], 10)),
+        ]);
+    }
+    const themeColor = (_a = findTags(html, "meta").find((t) => { var _a; return ((_a = t.name) !== null && _a !== void 0 ? _a : "") === "theme-color"; })) === null || _a === void 0 ? void 0 : _a.content;
+    if (themeColor)
+        add(parseHex(themeColor.trim()), 50);
+    return [...counts.values()]
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 40)
+        .map((e) => e.rgb);
+}
+/**
+ * Merge image colors (first — the mark defines the brand) with CSS colors,
+ * collapse near-duplicates, and fill primary/secondary/accent with colorful
+ * picks, falling back to any non-white/non-black shade.
+ */
+function buildPalette(imageColors, cssColors) {
+    const distinct = [];
+    for (const c of [...imageColors, ...cssColors]) {
+        if (distinct.every((k) => rgbDist(c, k) > 42))
+            distinct.push(c);
+        if (distinct.length >= 12)
+            break;
+    }
+    const colorful = distinct.filter((c) => saturation(c) >= 0.12 && luminance(c) > 0.06 && luminance(c) < 0.92);
+    const usable = colorful.length ? colorful : distinct.filter((c) => luminance(c) > 0.04 && luminance(c) < 0.96);
+    return {
+        primary: usable[0] ? toHex(usable[0]) : undefined,
+        secondary: usable[1] ? toHex(usable[1]) : undefined,
+        accent: usable[2] ? toHex(usable[2]) : undefined,
+    };
+}
+// ── Font extraction ──────────────────────────────────────────────────────────
+const GENERIC_FONTS = new Set([
+    "sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui",
+    "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded", "inherit",
+    "initial", "unset", "-apple-system", "blinkmacsystemfont", "segoe ui",
+    "segoe ui emoji", "segoe ui symbol", "noto color emoji", "apple color emoji",
+    "arial", "helvetica", "helvetica neue", "times new roman", "emoji",
+]);
+/** Font families: Google Fonts URLs first (highest confidence), then declared font-family stacks. */
+function extractFonts(html, css) {
+    var _a;
+    const found = [];
+    const push = (name) => {
+        const clean = name.replace(/["']/g, "").replace(/\+/g, " ").trim();
+        if (!clean || clean.startsWith("var(") || GENERIC_FONTS.has(clean.toLowerCase()))
+            return;
+        if (!found.some((f) => f.toLowerCase() === clean.toLowerCase()))
+            found.push(clean);
+    };
+    const gfRe = /fonts\.googleapis\.com\/css2?\?([^"'\s>]+)/gi;
+    let m;
+    while ((m = gfRe.exec(html))) {
+        for (const param of m[1].split("&")) {
+            if (param.startsWith("family=")) {
+                push(decodeURIComponent(param.slice(7).split(":")[0]));
+            }
+        }
+    }
+    const famRe = /font-family\s*:\s*([^;}{"]+)/gi;
+    const source = `${html}\n${css}`;
+    while ((m = famRe.exec(source))) {
+        push((_a = m[1].split(",")[0]) !== null && _a !== void 0 ? _a : "");
+        if (found.length >= 6)
+            break;
+    }
+    return found.slice(0, 3);
+}
+// ── Text distillation + Gemini profile ───────────────────────────────────────
 // Strip scripts/styles/tags → collapsed visible text, plus <title> and the
 // meta description (dense signal for what the site is about).
 function htmlToText(html) {
@@ -63,12 +362,14 @@ function htmlToText(html) {
         .slice(0, 12000);
 }
 const SYSTEM = `You are a brand analyst. Given the text content of a company's website, infer its brand profile.
-Return ONLY a JSON object with exactly these string keys: "companyName", "industry", "audience", "tone".
-- companyName: the brand/company name.
-- industry: a short phrase (e.g. "B2B SaaS", "DTC skincare", "3PL logistics").
-- audience: who they sell to, in one concise sentence.
-- tone: their brand voice in 3-6 words (e.g. "Confident, plain-spoken, no hype").
-If a field is genuinely unknowable from the text, use an empty string. Do not invent facts.
+Return ONLY a JSON object with exactly these keys:
+- "companyName": string — the brand/company name.
+- "industry": string — a short phrase (e.g. "B2B SaaS", "DTC skincare", "3PL logistics").
+- "audience": string — who they sell to, in one concise sentence.
+- "tone": string — their brand voice in 3-6 words (e.g. "Confident, plain-spoken, no hype").
+- "hashtags": array of 5-8 lowercase hashtag words WITHOUT the # (e.g. ["supplychain","manufacturing"]), relevant to their industry and audience.
+- "sampleCaptions": array of exactly 2 short social captions (max 140 chars each) written in the brand's voice about what they do.
+If a field is genuinely unknowable from the text, use an empty string or empty array. Do not invent facts.
 No markdown, no commentary — JSON only.`;
 function parseBrandJson(text) {
     const cleaned = text
@@ -83,29 +384,27 @@ function parseBrandJson(text) {
         industry: str(parsed.industry, 120),
         audience: str(parsed.audience, 300),
         tone: str(parsed.tone, 200),
+        hashtags: Array.isArray(parsed.hashtags)
+            ? parsed.hashtags.slice(0, 8).map((x) => str(x, 40).replace(/^#/, "")).filter(Boolean)
+            : [],
+        sampleCaptions: Array.isArray(parsed.sampleCaptions)
+            ? parsed.sampleCaptions.slice(0, 2).map((x) => str(x, 200)).filter(Boolean)
+            : [],
     };
 }
 exports.extractBrandFromWebsite = (0, https_1.onCall)({ cors: true, timeoutSeconds: 60, memory: "512MiB" }, async (request) => {
-    var _a, _b, _c, _d;
+    var _a, _b;
     (0, core_1.requireAuth)(request);
     const url = normalizeUrl((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.url) !== null && _b !== void 0 ? _b : "");
     let html;
+    let finalUrl;
     try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 10000);
-        const res = await fetch(url.toString(), {
-            redirect: "follow",
-            signal: controller.signal,
-            headers: { "User-Agent": "MagicBoxBot/1.0 (+https://magicbox.ai)" },
-        });
-        clearTimeout(timer);
-        if (!res.ok)
-            throw new https_1.HttpsError("unavailable", `Could not load the site (${res.status}).`);
-        const ct = (_c = res.headers.get("content-type")) !== null && _c !== void 0 ? _c : "";
-        if (ct && !/text\/html|application\/xhtml/i.test(ct)) {
+        const page = await fetchText(url.toString(), 500000, 10000);
+        if (page.contentType && !/text\/html|application\/xhtml/i.test(page.contentType)) {
             throw new https_1.HttpsError("invalid-argument", "That URL isn't a web page.");
         }
-        html = (await res.text()).slice(0, 500000);
+        html = page.body;
+        finalUrl = page.finalUrl;
     }
     catch (err) {
         if (err instanceof https_1.HttpsError)
@@ -117,17 +416,50 @@ exports.extractBrandFromWebsite = (0, https_1.onCall)({ cors: true, timeoutSecon
     if (contentLen < 40) {
         throw new https_1.HttpsError("failed-precondition", "That page had too little text to analyze.");
     }
-    try {
-        const ai = (0, core_1.getAI)();
-        const result = await ai.models.generateContent({
-            model: "gemini-2.0-flash-001",
-            contents: text,
-            config: { systemInstruction: SYSTEM },
-        });
-        return parseBrandJson((_d = result.text) !== null && _d !== void 0 ? _d : "");
-    }
-    catch (err) {
-        throw new https_1.HttpsError("internal", `Could not analyze the site: ${(0, core_1.stringifyError)(err)}`);
-    }
+    const logoCandidates = collectLogoCandidates(html, finalUrl);
+    const logoUrl = pickDisplayLogo(logoCandidates);
+    const brandMarkUrl = pickBrandMark(logoCandidates, finalUrl);
+    // Visual identity + written profile in parallel: stylesheets (colors and
+    // fonts live there), the brand mark's pixels, and Gemini's read of the
+    // page text. Visual failures are non-fatal.
+    const [css, imageColors, profile] = await Promise.all([
+        (async () => {
+            let out = "";
+            await Promise.all(extractStylesheetUrls(html, finalUrl).map(async (sheetUrl) => {
+                try {
+                    const sheet = await fetchText(sheetUrl, 300000, 5000);
+                    out += `\n${sheet.body}`;
+                }
+                catch (_a) {
+                    /* stylesheet fetch is best-effort */
+                }
+            }));
+            return out;
+        })(),
+        (async () => {
+            if (!brandMarkUrl)
+                return [];
+            const buf = await fetchBinary(brandMarkUrl, 2000000, 6000);
+            return buf ? colorsFromImageBuffer(buf) : [];
+        })(),
+        (async () => {
+            var _a;
+            try {
+                const ai = (0, core_1.getAI)();
+                const result = await ai.models.generateContent({
+                    model: models_1.MODELS.text,
+                    contents: text,
+                    config: { systemInstruction: SYSTEM },
+                });
+                return parseBrandJson((_a = result.text) !== null && _a !== void 0 ? _a : "");
+            }
+            catch (err) {
+                throw new https_1.HttpsError("internal", `Could not analyze the site: ${(0, core_1.stringifyError)(err)}`);
+            }
+        })(),
+    ]);
+    const colors = buildPalette(imageColors, colorsFromCss(html, css));
+    const fonts = extractFonts(html, css);
+    return Object.assign(Object.assign({}, profile), { logoUrl, colors, fonts });
 });
 //# sourceMappingURL=brand.js.map

@@ -46,15 +46,17 @@ export async function getSocialAccounts(userId: string): Promise<SocialAccount[]
   if (!db) return [];
   const q = query(collection(db, "socialAccounts"), where("userId", "==", userId));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => {
-    const data = d.data();
-    return {
-      ...data,
-      id: d.id,
-      linkedAt: toDate(data.linkedAt) ?? new Date(),
-      lastSyncedAt: toDate(data.lastSyncedAt),
-    } as SocialAccount;
-  });
+  return snap.docs
+    .map((d) => {
+      const data = d.data();
+      return {
+        ...data,
+        id: d.id,
+        linkedAt: toDate(data.linkedAt) ?? new Date(),
+        lastSyncedAt: toDate(data.lastSyncedAt),
+      } as SocialAccount;
+    })
+    .filter((a) => a.status !== "disconnected");
 }
 
 // --- Brand Profiles ---

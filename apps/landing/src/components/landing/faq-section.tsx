@@ -1,28 +1,45 @@
 const faqs = [
   {
+    question: "What is AI marketing automation?",
+    answer:
+      "AI marketing automation uses software agents to create, approve, schedule, and publish marketing content with less manual busywork. MagicBox is AI marketing software that turns a brand brief into channel-ready posts for Instagram, LinkedIn, and YouTube.",
+    related: { label: "See how it works", href: "#how-it-works" },
+  },
+  {
+    question: "What are automated marketing agents?",
+    answer:
+      "Automated marketing agents are AI workflows that draft copy, generate images, propose schedules, and help publish to social channels. MagicBox runs these agents with your brand kit and optional human approval before anything goes live.",
+    related: { label: "Explore the features", href: "#features" },
+  },
+  {
     question: "What is an AI agent for marketing?",
     answer:
       "An AI agent for marketing turns a brand brief into repeatable work: drafting channel-specific copy, creating visual assets, scheduling campaigns, and tracking the publishing workflow. MagicBox keeps brand settings and optional human approval in that loop.",
+    related: { label: "See how it works", href: "#how-it-works" },
   },
   {
     question: "How is marketing with AI different from a basic scheduler?",
     answer:
       "A scheduler publishes content you have already made. Marketing with AI can help create the caption and media for each channel before scheduling it. MagicBox combines generation, approval, scheduling, and publishing in one workflow.",
+    related: { label: "Explore the features", href: "#features" },
   },
   {
     question: "Which marketing agents are included in MagicBox?",
     answer:
       "MagicBox currently coordinates agents for brand-aware copy, images, scheduling, and direct publishing. Short-form video is a gated beta and is disabled by default. Instagram, LinkedIn, and YouTube are the supported direct-publishing channels; each connection still depends on platform approval and API permissions.",
+    related: { label: "View supported channels", href: "#supported" },
   },
   {
     question: "Can I review content before it is published?",
     answer:
       "Yes. You can require approval for an automation, review generated posts, and keep control of the final publishing decision. Fully automated schedules are also available when you are comfortable with the workflow.",
+    related: { label: "See the approval workflow", href: "#how-it-works" },
   },
   {
     question: "Is MagicBox an AI agency near me?",
     answer:
       "MagicBox is an online AI marketing platform built in India, not a location-based agency. If you are comparing an AI agency near you with software, MagicBox is the self-serve option for running repeatable content workflows from anywhere.",
+    related: { label: "Compare pricing plans", href: "#pricing" },
   },
 ];
 
@@ -50,6 +67,15 @@ export function FaqSection() {
                 </span>
               </summary>
               <p className="max-w-2xl pt-4 leading-relaxed text-muted-foreground">{faq.answer}</p>
+              {faq.related && (
+                <a
+                  href={faq.related.href}
+                  className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-foreground/80 underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  {faq.related.label}
+                  <span aria-hidden="true">→</span>
+                </a>
+              )}
             </details>
           ))}
         </div>

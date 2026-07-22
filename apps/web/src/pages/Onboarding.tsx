@@ -1,47 +1,124 @@
 import { useEffect, useMemo, useState } from"react";
 import { useNavigate, useSearchParams } from"react-router-dom";
+import { useAction, useQuery } from"convex/react";
 import { getPreset } from"@/lib/presets";
 import { motion, AnimatePresence } from"framer-motion";
 import { toast } from"sonner";
 import { doc, setDoc } from"firebase/firestore";
 import { db } from"@shared/lib/firebase";
 import { useAuth } from"@shared/lib/auth";
+import { api } from"@convex/_generated/api";
+import { isConvexConfigured } from"../lib/convex";
 import type { SocialAccount, SocialPlatform } from"@shared/types";
 import { getSocialAccounts, saveBrandProfile } from"@shared/lib/automations";
-import { connectSocial, generatePreviewContent, extractBrandFromWebsite } from"@shared/lib/suite";
+import {
+ extractBrandFromWebsite,
+ type BrandExtractResult,
+} from"@shared/lib/suite";
 import { Button } from"@shared/components/ui/button";
 import { Input } from"@shared/components/ui/input";
-import { Textarea } from"@shared/components/ui/textarea";
-import { Label } from"@shared/components/ui/label";
+import { Avatar, AvatarFallback, AvatarImage } from"@shared/components/ui/avatar";
 import { cn } from"@shared/lib/utils";
 import PlatformPreview from"../components/previews/PlatformPreview";
 import {
  ArrowRight,
+ CalendarClock,
  Check,
+ Facebook,
+ Globe2,
  Instagram,
  Link2,
  Linkedin,
  Loader2,
- Palette,
+ Send,
  Sparkles,
  Twitter,
- Wand2,
  Youtube,
 } from"lucide-react";
 
-const PLATFORM_META: Record<SocialPlatform, { label: string; icon: typeof Instagram; tint: string }> = {
+const SCAN_STEPS = [
+ "Fetching your site",
+ "Finding logo & icons",
+ "Sampling brand colors",
+ "Reading voice & audience",
+];
+
+function normalizeInputUrl(raw: string): string {
+ const t = raw.trim();
+ if (!t) return "";
+ return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+}
+
+const PLATFORM_META: Record<
+ string,
+ { label: string; icon: typeof Instagram; tint: string }
+> = {
  instagram: { label:"Instagram", icon: Instagram, tint:"from-pink-500 to-orange-400" },
+ facebook: { label:"Facebook", icon: Facebook, tint:"from-blue-600 to-indigo-500" },
  twitter: { label:"Twitter / X", icon: Twitter, tint:"from-sky-400 to-blue-500" },
  linkedin: { label:"LinkedIn", icon: Linkedin, tint:"from-blue-500 to-cyan-500" },
  youtube: { label:"YouTube", icon: Youtube, tint:"from-red-500 to-rose-500" },
 };
 
-const SAMPLE_BRIEF ="Share one practical insight about modern marketing operations, positioning the brand as the calm expert enterprises trust.";
+const CONNECTABLE: Array<"instagram" | "linkedin" | "youtube"> = [
+ "instagram",
+ "linkedin",
+ "youtube",
+];
+
+function channelHandle(account: SocialAccount): string {
+ const raw = (account.username || account.displayName || "").trim();
+ if (!raw) return account.externalId ? `id:${account.externalId.slice(0, 8)}` : "connected";
+ // YouTube customUrl often already starts with @
+ return raw.startsWith("@") ? raw : `@${raw.replace(/^@/, "")}`;
+}
+
+const SAMPLE_BRIEF =
+ "Share one practical insight that positions the brand as a calm expert worth following.";
+
+const PREVIEW_PLATFORMS: SocialPlatform[] = [
+ "instagram",
+ "linkedin",
+ "youtube",
+];
+
+type SamplePost = {
+ id: string;
+ caption: string;
+ hashtags: string[];
+};
+
+function buildBrandSamples(
+ extracted: BrandExtractResult | null,
+ brandName: string,
+): SamplePost[] {
+ const name = brandName || extracted?.companyName || "Your brand";
+ const tags = (extracted?.hashtags ?? [])
+ .map((h) => h.replace(/^#/, ""))
+ .filter(Boolean)
+ .slice(0, 6);
+ const fromSite = (extracted?.sampleCaptions ?? []).filter((c) => c?.trim());
+ const fallbacks = [
+ `${name} helps teams ship clearer marketing — without starting from a blank page every Monday.`,
+ extracted?.industry
+ ? `One take from ${extracted.industry}: consistency beats one-off campaigns. Show up with the same voice every week.`
+ : `Consistency beats one-off campaigns. Show up with the same voice every week.`,
+ extracted?.tone
+ ? `${name} voice check: ${extracted.tone.slice(0, 120)}${extracted.tone.length > 120 ? "…" : ""}`
+ : `Here's what ${name} is focused on this week — practical, on-brand, ready to publish.`,
+ ];
+ const captions = (fromSite.length >= 1 ? fromSite : fallbacks).slice(0, 3);
+ return captions.map((caption, i) => ({
+ id: `sample-${i}`,
+ caption,
+ hashtags: tags,
+ }));
+}
 
 const STEPS = [
- { title:"Connect your channels", icon: Link2 },
- { title:"Your brand", icon: Palette },
- { title:"See it in action", icon: Sparkles },
+ { title: "Connect your channels", icon: Link2 },
+ { title: "Your website", icon: Globe2 },
+ { title: "See it in action", icon: Sparkles },
 ];
 
 export default function Onboarding() {
@@ -50,29 +127,65 @@ export default function Onboarding() {
  const [searchParams] = useSearchParams();
  const preset = getPreset(searchParams.get("preset"));
  const [step, setStep] = useState(0);
- const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+ const [legacyAccounts, setLegacyAccounts] = useState<SocialAccount[]>([]);
  const [connecting, setConnecting] = useState<"instagram" | "linkedin" | "youtube" | null>(null);
  const [saving, setSaving] = useState(false);
 
- // brand form
- const [brandName, setBrandName] = useState("");
- const [industry, setIndustry] = useState("");
- const [toneOfVoice, setToneOfVoice] = useState("");
- const [audience, setAudience] = useState("");
- const [websiteUrl, setWebsiteUrl] = useState("");
- const [brandProfileId, setBrandProfileId] = useState<string>("");
- const [autofilling, setAutofilling] = useState(false);
+ // Convex channel path (same engine Studio / Maya / Settings use).
+ const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
+ const connectUrl = useAction(api.social.connectUrl);
+ const createPost = useAction(api.studio.createPost);
+ const generateCopy = useAction(api.studio.generateCopy);
 
- // preview
+ const accounts: SocialAccount[] = useMemo(() => {
+ if (isConvexConfigured && convexAccounts) {
+ return convexAccounts.map((a: any) => ({
+ id: a._id,
+ userId: a.userId,
+ provider: a.provider,
+ platform: a.platform,
+ externalId: a.externalId,
+ username: a.username ?? "",
+ displayName: a.displayName ?? a.username ?? "",
+ avatarUrl: a.avatarUrl,
+ status: a.status,
+ linkedAt: new Date(a.linkedAt),
+ lastSyncedAt: a.lastSyncedAt ? new Date(a.lastSyncedAt) : undefined,
+ }));
+ }
+ return legacyAccounts;
+ }, [convexAccounts, legacyAccounts]);
+
+ const connectedByPlatform = useMemo(() => {
+ const map = new Map<string, SocialAccount>();
+ for (const a of accounts) {
+ if (a.status === "active" || a.status === "expired") map.set(a.platform, a);
+ }
+ return map;
+ }, [accounts]);
+
+ // brand — website fetch only
+ const [websiteUrl, setWebsiteUrl] = useState("");
+ const [brandPhase, setBrandPhase] = useState<"idle" | "scanning" | "ready" | "saving">("idle");
+ const [scanStep, setScanStep] = useState(0);
+ const [extracted, setExtracted] = useState<BrandExtractResult | null>(null);
+ const [extractedUrl, setExtractedUrl] = useState("");
+ const [brandName, setBrandName] = useState("");
+ const [toneOfVoice, setToneOfVoice] = useState("");
+ const [brandProfileId, setBrandProfileId] = useState<string>("");
+
+ // preview — branded samples from fetch (no dependency on failing Firebase callable)
  const [previewPlatform, setPreviewPlatform] = useState<SocialPlatform>("linkedin");
- const [preview, setPreview] = useState<{ caption: string; hashtags: string[] } | null>(null);
+ const [samples, setSamples] = useState<SamplePost[]>([]);
+ const [activeSampleId, setActiveSampleId] = useState<string>("sample-0");
  const [generating, setGenerating] = useState(false);
+ const [posting, setPosting] = useState(false);
 
  const timezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
  useEffect(() => {
- if (!user) return;
- getSocialAccounts(user.uid).then(setAccounts).catch(() => {});
+ if (!user || isConvexConfigured) return;
+ getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
  }, [user]);
 
  // Returning from the OAuth round-trip: surface the result and refresh.
@@ -82,7 +195,9 @@ export default function Onboarding() {
  if (!social) return;
  if (social === "connected") {
  toast.success(`${params.get("provider") ?? "Channel"} connected`);
- if (user) getSocialAccounts(user.uid).then(setAccounts).catch(() => {});
+ if (user && !isConvexConfigured) {
+ getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
+ }
  } else if (social === "error") {
  toast.error(params.get("reason") || "Could not connect channel");
  }
@@ -97,96 +212,228 @@ export default function Onboarding() {
  const handleConnect = async (provider: "instagram" | "linkedin" | "youtube") => {
  setConnecting(provider);
  try {
- await connectSocial(provider, "/onboarding"); // redirects the tab
+ if (!isConvexConfigured) {
+ toast.error("Convex is not configured — set VITE_CONVEX_URL.");
+ setConnecting(null);
+ return;
+ }
+ const { url, redirectUri } = await connectUrl({
+ provider,
+ returnTo: "/onboarding",
+ returnOrigin: window.location.origin,
+ loginHint: user?.email ?? undefined,
+ });
+ if (redirectUri.includes("cloudfunctions.net")) {
+ toast.error("OAuth misconfigured (Firebase callback). Use Convex.");
+ setConnecting(null);
+ return;
+ }
+ window.location.href = url;
  } catch (error) {
  toast.error(error instanceof Error ? error.message :"Could not start connection");
  setConnecting(null);
  }
  };
 
- const handleAutofill = async () => {
- const url = websiteUrl.trim();
+ useEffect(() => {
+ if (brandPhase !== "scanning") return;
+ setScanStep(0);
+ const id = window.setInterval(() => {
+ setScanStep((s) => (s < SCAN_STEPS.length - 1 ? s + 1 : s));
+ }, 1400);
+ return () => window.clearInterval(id);
+ }, [brandPhase]);
+
+ const handleScanBrand = async () => {
+ const url = normalizeInputUrl(websiteUrl);
  if (!url) {
  toast.error("Enter your website URL first.");
  return;
  }
- setAutofilling(true);
+ setBrandPhase("scanning");
+ setExtracted(null);
  try {
- const b = await extractBrandFromWebsite({ url });
- if (b.companyName) setBrandName(b.companyName);
- if (b.industry) setIndustry(b.industry);
- if (b.audience) setAudience(b.audience);
- if (b.tone) setToneOfVoice(b.tone);
- if (!b.companyName && !b.industry && !b.audience && !b.tone) {
- toast.error("Couldn't pull much from that page — fill it in manually.");
- } else {
- toast.success("Filled in from your website — tweak anything that's off.");
+ const result = await extractBrandFromWebsite({ url });
+ if (!result.companyName && !result.logoUrl && !result.colors?.primary) {
+ toast.error("Couldn't pull much from that page — try the homepage URL.");
+ setBrandPhase("idle");
+ return;
  }
+ setExtracted(result);
+ setExtractedUrl(url);
+ setBrandName(result.companyName || new URL(url).hostname);
+ setToneOfVoice(result.tone || "");
+ setBrandPhase("ready");
+ toast.success("Brand details fetched — review and continue.");
  } catch (error) {
  toast.error(error instanceof Error ? error.message : "Couldn't read that site.");
- } finally {
- setAutofilling(false);
+ setBrandPhase("idle");
  }
  };
 
  const handleSaveBrand = async () => {
- if (!user) return;
+ if (!user || !extracted) return;
+ setBrandPhase("saving");
  setSaving(true);
  try {
- if (brandName.trim()) {
  const id = await saveBrandProfile({
  userId: user.uid,
- name: brandName.trim(),
- industry: industry.trim(),
- toneOfVoice: toneOfVoice.trim(),
- audience: audience.trim(),
- websiteUrl: websiteUrl.trim() || undefined,
+ name: extracted.companyName || new URL(extractedUrl).hostname,
+ industry: extracted.industry || "",
+ toneOfVoice: extracted.tone || "",
+ audience: extracted.audience || "",
+ websiteUrl: extractedUrl,
+ logoUrl: extracted.logoUrl || undefined,
+ colors: {
+ primary: extracted.colors.primary || "#111111",
+ secondary: extracted.colors.secondary,
+ accent: extracted.colors.accent,
+ },
+ hashtagSets: {
+ default: (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean),
+ },
+ sampleCaptions: extracted.sampleCaptions?.length
+ ? extracted.sampleCaptions
+ : undefined,
  });
  setBrandProfileId(id);
- }
+ setBrandName(extracted.companyName || new URL(extractedUrl).hostname);
+ setToneOfVoice(extracted.tone || "");
  setStep(2);
  } catch (error) {
  toast.error(error instanceof Error ? error.message :"Could not save brand");
+ setBrandPhase("ready");
  } finally {
  setSaving(false);
  }
  };
 
- const handlePreview = async (platform: SocialPlatform) => {
- setPreviewPlatform(platform);
+ const activeSample = samples.find((s) => s.id === activeSampleId) ?? samples[0] ?? null;
+
+ const activeAccountForPreview = useMemo(() => {
+ return accounts.find(
+ (a) => a.platform === previewPlatform && a.status === "active",
+ );
+ }, [accounts, previewPlatform]);
+
+ const hydrateSamples = async () => {
+ const local = buildBrandSamples(extracted, brandName);
+ setSamples(local);
+ setActiveSampleId(local[0]?.id ?? "sample-0");
+
+ // Best-effort AI polish via Convex — never blocks the UI if it fails.
+ if (!isConvexConfigured) return;
  setGenerating(true);
- setPreview(null);
  try {
- const result = await generatePreviewContent({
- brief: SAMPLE_BRIEF,
- platform,
- preset:"educational",
- tone: toneOfVoice || undefined,
- brandProfileId: brandProfileId || undefined,
+ const polished = await generateCopy({
+ presetId: "text-post",
+ platform: previewPlatform,
+ prompt: SAMPLE_BRIEF,
+ productName: brandName || extracted?.companyName || undefined,
+ context: [
+ extracted?.industry && `Industry: ${extracted.industry}`,
+ extracted?.audience && `Audience: ${extracted.audience}`,
+ toneOfVoice && `Tone: ${toneOfVoice}`,
+ extractedUrl && `Website: ${extractedUrl}`,
+ ]
+ .filter(Boolean)
+ .join("\n"),
  });
- setPreview(result);
- } catch (error) {
- toast.error(error instanceof Error ? error.message :"Preview failed");
+ const next: SamplePost = {
+ id: "ai-0",
+ caption: polished.caption,
+ hashtags: (polished.hashtags ?? []).map((h) => h.replace(/^#/, "")),
+ };
+ setSamples((prev) => [next, ...prev.filter((s) => s.id !== "ai-0")].slice(0, 3));
+ setActiveSampleId("ai-0");
+ } catch {
+ // Local brand samples already on screen.
  } finally {
  setGenerating(false);
  }
  };
 
+ const handlePreviewPlatform = (platform: SocialPlatform) => {
+ setPreviewPlatform(platform);
+ };
+
  useEffect(() => {
- if (step === 2 && !preview && !generating) {
- handlePreview(previewPlatform);
- }
+ if (step !== 2) return;
+ void hydrateSamples();
  // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [step]);
+
+ const handleQuickPost = async (mode: "now" | "schedule") => {
+ if (!activeSample) return;
+ if (!isConvexConfigured) {
+ toast.error("Convex is not configured — can't publish yet.");
+ return;
+ }
+ if (!activeAccountForPreview) {
+ toast.error(`Connect ${PLATFORM_META[previewPlatform].label} first to post this.`);
+ return;
+ }
+
+ const needsMedia =
+ previewPlatform === "instagram" || previewPlatform === "youtube";
+ const logo = extracted?.logoUrl;
+ if (needsMedia && !logo) {
+ toast.error(
+ `${PLATFORM_META[previewPlatform].label} needs an image — fetch a site with a logo, or post from Studio.`,
+ );
+ return;
+ }
+
+ setPosting(true);
+ try {
+ const result = await createPost({
+ caption: activeSample.caption,
+ hashtags: activeSample.hashtags,
+ platforms: [previewPlatform],
+ socialAccountIds: [activeAccountForPreview.id],
+ mediaUrl: logo || undefined,
+ mediaType: logo ? "image" : undefined,
+ mediaSource: logo ? "upload" : undefined,
+ brief: SAMPLE_BRIEF,
+ brandProfileId: brandProfileId || undefined,
+ mode,
+ timezone,
+ });
+ if (mode === "now") {
+ toast.success(
+ result.status === "posted"
+ ? `Posted to ${PLATFORM_META[previewPlatform].label}`
+ : `Sending to ${PLATFORM_META[previewPlatform].label} now…`,
+ );
+ } else {
+ const when = result.scheduledFor
+ ? new Date(result.scheduledFor).toLocaleString(undefined, {
+ weekday: "short",
+ hour: "numeric",
+ minute: "2-digit",
+ })
+ : null;
+ toast.success(
+ when
+ ? `Queued for next best time · ${when}`
+ : `Queued for ${PLATFORM_META[previewPlatform].label}`,
+ );
+ }
+ } catch (error) {
+ toast.error(error instanceof Error ? error.message : "Could not post");
+ } finally {
+ setPosting(false);
+ }
+ };
 
  const finish = async (goToWizard: boolean) => {
  if (!user || !db) return;
  await setDoc(
- doc(db,"users", user.uid),
+ doc(db, "users", user.uid),
  { onboardingComplete: true },
- { merge: true }
+ { merge: true },
  );
- navigate(goToWizard ?"/automations/new" :"/");
+ navigate(goToWizard ? "/automations/new" : "/");
  };
 
  return (
@@ -199,7 +446,7 @@ export default function Onboarding() {
  <span className="eyebrow">Get started</span>
  <h1 className="mt-2 font-display text-4xl tracking-tight">Welcome to MagicBox</h1>
  <p className="mt-2 text-muted-foreground">
- Three steps and your marketing runs itself.
+ Connect channels, fetch your brand, see a sample post.
  </p>
  </div>
 
@@ -265,79 +512,105 @@ export default function Onboarding() {
  Creator account linked to a Facebook Page. X / Twitter is coming soon.
  </p>
  </div>
- <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.07] p-3 text-xs text-amber-700">
- Channel connection isn&apos;t live yet — our Instagram (Meta) and LinkedIn apps are
- pending review. Connecting won&apos;t work right now. Use{" "}
- <span className="font-medium">Skip for now</span> to explore the rest of the product.
- </div>
- <div className="grid gap-2 sm:grid-cols-2">
- <Button
- onClick={() => handleConnect("instagram")}
- disabled={connecting !== null}
- variant="outline"
- className="justify-start py-5"
- >
- {connecting === "instagram" ? (
- <Loader2 className="mr-2 h-4 w-4 animate-spin" />
- ) : (
- <Instagram className="mr-2 h-4 w-4" />
- )}
- Connect Instagram
- </Button>
- <Button
- onClick={() => handleConnect("linkedin")}
- disabled={connecting !== null}
- variant="outline"
- className="justify-start py-5"
- >
- {connecting === "linkedin" ? (
- <Loader2 className="mr-2 h-4 w-4 animate-spin" />
- ) : (
- <Linkedin className="mr-2 h-4 w-4" />
- )}
- Connect LinkedIn
- </Button>
- <Button
- onClick={() => handleConnect("youtube")}
- disabled={connecting !== null}
- variant="outline"
- className="justify-start py-5"
- >
- {connecting === "youtube" ? (
- <Loader2 className="mr-2 h-4 w-4 animate-spin" />
- ) : (
- <Youtube className="mr-2 h-4 w-4" />
- )}
- Connect YouTube
- </Button>
- </div>
+
  {accounts.length > 0 && (
  <div className="space-y-2">
+ <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+ Connected · {accounts.length}
+ </p>
  {accounts.map((account) => {
- const meta = PLATFORM_META[account.platform];
- if (!meta) return null;
+ const meta = PLATFORM_META[account.platform] ?? {
+ label: account.platform,
+ icon: Link2,
+ };
+ const Icon = meta.icon;
+ const handle = channelHandle(account);
+ const initials = (account.displayName || account.username || "?")
+ .slice(0, 2)
+ .toUpperCase();
+ const needsReconnect = account.status === "expired";
  return (
  <div
  key={account.id}
- className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5"
+ className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5"
  >
- <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-foreground">
- <meta.icon className="h-4 w-4" />
- </div>
- <div className="flex-1">
- <div className="text-sm font-medium">{meta.label}</div>
- <div className="text-xs text-muted-foreground">
- @{account.username || account.displayName}
- </div>
- </div>
- <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-700">
- <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Connected
+ <Avatar className="h-11 w-11 border border-border">
+ <AvatarImage src={account.avatarUrl} alt="" />
+ <AvatarFallback className="bg-secondary text-xs text-foreground">
+ {initials}
+ </AvatarFallback>
+ </Avatar>
+ <div className="min-w-0 flex-1">
+ <div className="flex items-center gap-2">
+ <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+ <span className="truncate text-sm font-medium text-foreground">
+ {account.displayName || meta.label}
  </span>
+ </div>
+ <p className="truncate text-xs text-muted-foreground">
+ {meta.label} · {handle}
+ </p>
+ </div>
+ {needsReconnect ? (
+ <Button
+ size="sm"
+ variant="outline"
+ className="shrink-0 border-amber-500/30 text-amber-700"
+ disabled={connecting !== null}
+ onClick={() =>
+ handleConnect(account.platform as "instagram" | "linkedin" | "youtube")
+ }
+ >
+ Reconnect
+ </Button>
+ ) : (
+ <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-700">
+ <Check className="h-3 w-3" /> Connected
+ </span>
+ )}
  </div>
  );
  })}
  </div>
  )}
+
+ {accounts.length === 0 && (
+ <div className="rounded-lg border border-border bg-secondary/50 p-3 text-xs text-muted-foreground">
+ YouTube connects via Google. Instagram and LinkedIn may need app review for other
+ users. You can skip and connect later in Settings.
+ </div>
+ )}
+
+ <div className="grid gap-2 sm:grid-cols-2">
+ {CONNECTABLE.filter((provider) => {
+ const linked = connectedByPlatform.get(provider);
+ // Already active → shown in the Connected list above; hide Connect.
+ return !(linked && linked.status === "active");
+ }).map((provider) => {
+ const meta = PLATFORM_META[provider];
+ const Icon = meta.icon;
+ const linked = connectedByPlatform.get(provider);
+ const busy = connecting === provider;
+ const expired = linked?.status === "expired";
+ return (
+ <Button
+ key={provider}
+ onClick={() => handleConnect(provider)}
+ disabled={connecting !== null}
+ variant="outline"
+ className="justify-start py-5"
+ >
+ {busy ? (
+ <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+ ) : (
+ <Icon className="mr-2 h-4 w-4" />
+ )}
+ {expired ? `Reconnect ${meta.label}` : `Connect ${meta.label}`}
+ </Button>
+ );
+ })}
+ </div>
+
  {accounts.length > 0 ? (
  <Button onClick={() => setStep(1)} className="w-full py-5">
  Continue <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -355,87 +628,161 @@ export default function Onboarding() {
  )}
 
  {step === 1 && (
- <div className="glass-card space-y-4 p-6">
+ <div className="glass-card space-y-5 p-6">
  <div>
- <h2 className="font-display text-2xl">{STEPS[1].title}</h2>
+ <h2 className="font-display text-2xl">Your website</h2>
  <p className="mt-1 text-sm text-muted-foreground">
- The engine writes in your voice. A minute here pays off in every post.
+ Paste your site URL. We fetch logo, colors, voice, and audience — no manual brand form.
  </p>
  </div>
- <div className="grid gap-4 sm:grid-cols-2">
- <div className="space-y-2">
- <Label>Company name</Label>
- <Input
- value={brandName}
- onChange={(e) => setBrandName(e.target.value)}
- placeholder="Acme Analytics"
- className="bg-card/[0.04] border-border"
- />
+
+ <div className="space-y-3">
+ <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-[0.18em] text-muted-foreground">
+ <Globe2 className="h-3.5 w-3.5 text-brand" />
+ Website → brand kit
  </div>
- <div className="space-y-2">
- <Label>Industry</Label>
- <Input
- value={industry}
- onChange={(e) => setIndustry(e.target.value)}
- placeholder="B2B SaaS, logistics…"
- className="bg-card/[0.04] border-border"
- />
- </div>
- </div>
- <div className="space-y-2">
- <Label>Who are you talking to?</Label>
- <Input
- value={audience}
- onChange={(e) => setAudience(e.target.value)}
- placeholder="Operations leaders at mid-market manufacturers"
- className="bg-card/[0.04] border-border"
- />
- </div>
- <div className="space-y-2">
- <Label>Tone of voice</Label>
- <Textarea
- value={toneOfVoice}
- onChange={(e) => setToneOfVoice(e.target.value)}
- rows={2}
- placeholder="Confident and human. Plain language, no jargon, no hype."
- className="bg-card/[0.04] border-border"
- />
- </div>
- <div className="space-y-2">
- <Label>Your website — autofill the rest with AI</Label>
- <div className="flex gap-2">
+ <div className="flex flex-col gap-3 sm:flex-row">
+ <div className="relative flex-1">
+ <Globe2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
  <Input
  value={websiteUrl}
- onChange={(e) => setWebsiteUrl(e.target.value)}
+ onChange={(e) => {
+ setWebsiteUrl(e.target.value);
+ if (brandPhase === "ready") {
+ setBrandPhase("idle");
+ setExtracted(null);
+ }
+ }}
  onKeyDown={(e) => {
  if (e.key === "Enter") {
  e.preventDefault();
- handleAutofill();
+ void handleScanBrand();
  }
  }}
- placeholder="https://acme.example"
- className="bg-card/[0.04] border-border"
+ placeholder="https://yourbrand.com"
+ disabled={brandPhase === "scanning" || brandPhase === "saving"}
+ className="h-12 bg-card border-border pl-10"
  />
+ </div>
  <Button
  type="button"
- variant="outline"
- onClick={handleAutofill}
- disabled={autofilling || !websiteUrl.trim()}
- className="shrink-0"
+ onClick={() => void handleScanBrand()}
+ disabled={
+ brandPhase === "scanning" ||
+ brandPhase === "saving" ||
+ !websiteUrl.trim()
+ }
+ className="h-12 shrink-0 px-6"
  >
- {autofilling ? (
+ {brandPhase === "scanning" ? (
  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
  ) : (
- <Wand2 className="mr-1.5 h-4 w-4" />
+ <Sparkles className="mr-1.5 h-4 w-4" />
  )}
- Autofill
+ {brandPhase === "scanning" ? "Fetching…" : "Fetch brand"}
  </Button>
  </div>
- <p className="text-xs text-muted-foreground">
- Paste your site URL and we&apos;ll fill company, industry, audience and tone above — edit anything that&apos;s off.
+ </div>
+
+ {brandPhase === "scanning" && (
+ <div className="rounded-xl border border-brand/20 bg-brand/[0.06] p-4">
+ <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
+ <Loader2 className="h-4 w-4 animate-spin text-brand" />
+ Reading your brand…
+ </div>
+ <ul className="space-y-2">
+ {SCAN_STEPS.map((label, i) => (
+ <li
+ key={label}
+ className={cn(
+ "flex items-center gap-2 text-sm",
+ i <= scanStep ? "text-foreground" : "text-muted-foreground/50"
+ )}
+ >
+ {i < scanStep ? (
+ <Check className="h-3.5 w-3.5 text-brand" />
+ ) : i === scanStep ? (
+ <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
+ ) : (
+ <span className="h-3.5 w-3.5 rounded-full border border-border" />
+ )}
+ {label}
+ </li>
+ ))}
+ </ul>
+ </div>
+ )}
+
+ {brandPhase === "ready" && extracted && (
+ <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+ <div className="flex items-start gap-3">
+ {extracted.logoUrl ? (
+ <img
+ src={extracted.logoUrl}
+ alt=""
+ className="h-12 w-12 rounded-lg border border-border bg-secondary object-contain p-1"
+ />
+ ) : (
+ <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-secondary font-display text-lg">
+ {(extracted.companyName || "?").slice(0, 1)}
+ </div>
+ )}
+ <div className="min-w-0 flex-1">
+ <div className="font-display text-xl leading-tight">
+ {extracted.companyName || new URL(extractedUrl).hostname}
+ </div>
+ <p className="mt-0.5 truncate text-xs text-muted-foreground">
+ {extractedUrl.replace(/^https?:\/\//, "")}
+ {extracted.industry ? ` · ${extracted.industry}` : ""}
  </p>
  </div>
- <div className="flex gap-3 pt-2">
+ </div>
+
+ {(extracted.colors.primary ||
+ extracted.colors.secondary ||
+ extracted.colors.accent) && (
+ <div className="flex flex-wrap gap-3">
+ {(["primary", "secondary", "accent"] as const).map((key) => {
+ const hex = extracted.colors[key];
+ if (!hex) return null;
+ return (
+ <div key={key} className="flex items-center gap-2">
+ <div
+ className="h-8 w-8 rounded-lg border border-border"
+ style={{ background: hex }}
+ />
+ <div>
+ <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+ {key}
+ </div>
+ <div className="font-mono text-xs">{hex}</div>
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ )}
+
+ {(extracted.audience || extracted.tone) && (
+ <div className="space-y-2 text-sm text-muted-foreground">
+ {extracted.audience && (
+ <p>
+ <span className="font-medium text-foreground">Audience · </span>
+ {extracted.audience}
+ </p>
+ )}
+ {extracted.tone && (
+ <p>
+ <span className="font-medium text-foreground">Tone · </span>
+ {extracted.tone}
+ </p>
+ )}
+ </div>
+ )}
+ </div>
+ )}
+
+ <div className="flex gap-3 pt-1">
  <Button
  variant="ghost"
  onClick={() => setStep(2)}
@@ -444,8 +791,8 @@ export default function Onboarding() {
  Skip for now
  </Button>
  <Button
- onClick={handleSaveBrand}
- disabled={saving || !brandName.trim()}
+ onClick={() => void handleSaveBrand()}
+ disabled={saving || brandPhase !== "ready" || !extracted}
  className="flex-1 bg-brand hover:bg-brand"
  >
  {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
@@ -458,54 +805,149 @@ export default function Onboarding() {
  {step === 2 && (
  <div className="space-y-5">
  <div className="glass-card p-6">
- <h2 className="text-lg font-semibold">{STEPS[2].title}</h2>
+ <div className="flex flex-wrap items-start justify-between gap-3">
+ <div>
+ <h2 className="font-display text-2xl">{STEPS[2].title}</h2>
  <p className="mt-1 text-sm text-muted-foreground">
- This is a live sample written by your engine — switch platforms to see
- how it adapts the same idea to each channel.
+ Sample posts in your fetched brand — logo, colors, and voice. Post now if a
+ channel is connected.
  </p>
- <div className="mt-4 flex gap-2">
- {(Object.keys(PLATFORM_META) as SocialPlatform[]).map((platform) => {
+ </div>
+ {(extracted?.logoUrl || brandName) && (
+ <div className="flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1.5">
+ {extracted?.logoUrl ? (
+ <img
+ src={extracted.logoUrl}
+ alt=""
+ className="h-6 w-6 rounded-full object-cover"
+ />
+ ) : null}
+ <span className="text-xs font-medium">{brandName || "Your brand"}</span>
+ </div>
+ )}
+ </div>
+
+ {samples.length > 1 && (
+ <div className="mt-4 flex flex-wrap gap-2">
+ {samples.map((s, i) => (
+ <button
+ key={s.id}
+ type="button"
+ onClick={() => setActiveSampleId(s.id)}
+ className={cn(
+ "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+ activeSampleId === s.id
+ ? "border-brand/60 bg-brand/15 text-brand"
+ : "border-border text-muted-foreground hover:bg-secondary",
+ )}
+ >
+ Sample {i + 1}
+ </button>
+ ))}
+ </div>
+ )}
+
+ <div className="mt-4 flex flex-wrap gap-2">
+ {PREVIEW_PLATFORMS.map((platform) => {
  const meta = PLATFORM_META[platform];
+ const connected = accounts.some(
+ (a) => a.platform === platform && a.status === "active",
+ );
  return (
  <button
  key={platform}
- onClick={() => handlePreview(platform)}
- className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+ type="button"
+ onClick={() => handlePreviewPlatform(platform)}
+ className={cn(
+ "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
  previewPlatform === platform
- ?"border-brand/60 bg-brand/15 text-brand"
- :"border-border/[0.08] text-muted-foreground hover:bg-card/[0.04]"
+ ? "border-brand/60 bg-brand/15 text-brand"
+ : "border-border text-muted-foreground hover:bg-secondary",
  )}
  >
  <meta.icon className="h-3.5 w-3.5" /> {meta.label}
+ {connected && (
+ <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+ )}
  </button>
  );
  })}
  </div>
+
  <div className="mt-5 flex justify-center">
- {generating ? (
+ {generating && !activeSample ? (
  <div className="flex h-64 flex-col items-center justify-center gap-3 text-muted-foreground">
  <Loader2 className="h-6 w-6 animate-spin text-brand" />
- <span className="text-sm">Writing a sample for {PLATFORM_META[previewPlatform].label}…</span>
+ <span className="text-sm">Writing samples in your brand voice…</span>
  </div>
- ) : preview ? (
+ ) : activeSample ? (
+ <div className="w-full max-w-sm space-y-3">
  <PlatformPreview
  platform={previewPlatform}
  content={{
- caption: preview.caption,
- hashtags: preview.hashtags,
- brandName: brandName ||"Your Brand",
+ caption: activeSample.caption,
+ hashtags: activeSample.hashtags,
+ brandName: brandName || "Your Brand",
  handle: brandName
- ? brandName.toLowerCase().replace(/\s+/g,"")
- : undefined,
+ ? brandName.toLowerCase().replace(/\s+/g, "")
+ : "yourbrand",
+ logoUrl: extracted?.logoUrl,
+ brandColors: extracted?.colors,
  }}
  />
+ {generating && (
+ <p className="text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+ Polishing with AI…
+ </p>
+ )}
+ </div>
  ) : (
  <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
- Sample unavailable right now — you can still continue.
+ Go back and fetch a website to unlock branded samples.
  </div>
  )}
  </div>
+
+ {activeSample && (
+ <div className="mt-5 space-y-2">
+ {activeAccountForPreview ? (
+ <div className="grid gap-2 sm:grid-cols-2">
+ <Button
+ onClick={() => void handleQuickPost("now")}
+ disabled={posting}
+ className="w-full py-5"
+ >
+ {posting ? (
+ <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+ ) : (
+ <Send className="mr-1.5 h-4 w-4" />
+ )}
+ Post now
+ </Button>
+ <Button
+ variant="outline"
+ onClick={() => void handleQuickPost("schedule")}
+ disabled={posting}
+ className="w-full py-5"
+ >
+ {posting ? (
+ <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+ ) : (
+ <CalendarClock className="mr-1.5 h-4 w-4" />
+ )}
+ Next best time
+ </Button>
  </div>
+ ) : (
+ <div className="rounded-lg border border-dashed border-border bg-secondary/40 px-4 py-3 text-center text-xs text-muted-foreground">
+ Connect {PLATFORM_META[previewPlatform].label} in step 1 to quick-post this
+ sample.
+ </div>
+ )}
+ </div>
+ )}
+ </div>
+
  <div className="flex gap-3">
  <Button
  variant="ghost"

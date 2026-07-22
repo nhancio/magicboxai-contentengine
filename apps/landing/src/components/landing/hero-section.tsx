@@ -36,37 +36,50 @@ export function HeroSection() {
             isVisible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
           }`}
         >
-          <span className="mb-6 inline-flex items-center gap-3 font-mono text-sm text-muted-foreground">
-            <span className="h-px w-8 bg-foreground/30" />
-            AI marketing agent for modern teams
-            <span className="h-px w-8 bg-foreground/30" />
-          </span>
-
-          <h1 className="mb-6 font-display text-[clamp(2.5rem,6vw,4.75rem)] leading-[0.95] tracking-tight">
-            Create once.
-            <br />
-            Publish{" "}
-            <span className="relative inline-block">
-              everywhere
-              <span className="absolute -bottom-1 left-0 right-0 h-3 bg-brand/20" />
-            </span>{" "}
-            that matters.
+          {/* App name must match OAuth consent screen exactly: "MagicBox" */}
+          <p className="mb-3 font-mono text-xs uppercase tracking-[0.22em] text-muted-foreground">
+            Application name: MagicBox
+          </p>
+          <h1 className="mb-4 font-display text-[clamp(2.75rem,7vw,5.5rem)] leading-[0.92] tracking-tight">
+            MagicBox
           </h1>
 
-          <p className="mx-auto mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground lg:text-xl">
-            Turn one brand brief into channel-ready posts for Instagram, LinkedIn,
-            and YouTube — with approval controls and direct publishing.
+          <p className="mb-6 font-display text-[clamp(1.5rem,3.5vw,2.25rem)] leading-tight tracking-tight text-foreground/85">
+            AI marketing automation for social media
+          </p>
+
+          <p className="mx-auto mb-6 max-w-2xl text-lg leading-relaxed text-muted-foreground lg:text-xl">
+            <strong className="font-medium text-foreground">MagicBox</strong> is a
+            web application from Nhancio Technologies Private Limited. It helps
+            marketers and creators generate on-brand social posts, approve them,
+            schedule publishing, and post to Instagram, LinkedIn, and{" "}
+            <strong className="font-medium text-foreground">YouTube</strong> from
+            accounts you connect.
+          </p>
+
+          <p className="mx-auto mb-8 max-w-2xl text-base leading-relaxed text-muted-foreground">
+            When you connect Google / YouTube, MagicBox uses your authorized Google
+            account only to upload and manage videos you choose to publish on your
+            YouTube channel — not to train unrelated models or share your data with
+            third parties for advertising. See our{" "}
+            <a
+              href="/privacy.html"
+              className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/80"
+            >
+              Privacy Policy
+            </a>
+            .
           </p>
 
           <div className="mb-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Button asChild size="lg" variant="brand" className="group h-14 rounded-full px-8 text-base">
               <a href={`${APP_URL}/login`}>
-                Start free
+                Start free with MagicBox
                 <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
               </a>
             </Button>
             <Button asChild size="lg" variant="outline" className="h-14 rounded-full px-8 text-base">
-              <a href="#how-it-works">See how it works</a>
+              <a href="#about-magicbox">What MagicBox does</a>
             </Button>
           </div>
 
@@ -92,6 +105,11 @@ export function HeroSection() {
           }`}
         >
           <PhoneShowcase
+            mediaConfig={{
+              instagram: { src: "/videos/Applying_a_wrist_brace.mp4", handle: "@yourbrand" },
+              linkedin: { src: "/videos/Cute_winking_animated_girl.mp4", handle: "Your Brand" },
+              youtube: { src: "/videos/Adorable_toddler_calling_someone.mp4", handle: "Your Brand" },
+            }}
             platforms={["instagram", "youtube", "linkedin"]}
             statuses={{
               instagram: "live",

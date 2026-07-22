@@ -19,8 +19,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["../../shared/*"]
+      "@shared/*": ["../../shared/*"],
+      "@convex/*": ["../../packages/backend/convex/*"]
     }
   },
-  "include": ["src", "../../shared"]
+  "include": ["src", "../../shared", "../../packages/backend/convex/_generated"]
 }

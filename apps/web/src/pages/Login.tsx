@@ -1,10 +1,109 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/button";
-import { Card, CardContent } from "@shared/components/ui/card";
 import { useAuth } from "@shared/lib/auth";
-import { Image, Layers3, Loader2, PlaySquare } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import "./login.css";
+
+const LoginLottie = lazy(() => import("./LoginLottie"));
+
+/** Sample reels shipped with the app for the login stage. */
+const REELS = [
+  {
+    src: "/videos/Cute_winking_animated_girl.mp4",
+    handle: "@yourbrand",
+    caption: "Morning reel — drafted, approved, live.",
+    side: "left" as const,
+  },
+  {
+    src: "/videos/Playful_cats_cuddling_on_bed.mp4",
+    handle: "@magicbox",
+    caption: "Scheduled for peak engagement.",
+    side: "right" as const,
+  },
+];
+
+function ReelPhone({
+  src,
+  handle,
+  caption,
+  side,
+}: {
+  src: string;
+  handle: string;
+  caption: string;
+  side: "left" | "right";
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+
+    el.muted = true;
+    el.defaultMuted = true;
+    el.setAttribute("muted", "");
+    el.setAttribute("playsinline", "");
+    el.setAttribute("webkit-playsinline", "");
+
+    const tryPlay = () => {
+      void el.play().catch(() => {});
+    };
+
+    tryPlay();
+    el.addEventListener("loadeddata", tryPlay);
+    el.addEventListener("canplay", tryPlay);
+
+    const io =
+      typeof IntersectionObserver !== "undefined"
+        ? new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) tryPlay();
+                else el.pause();
+              }
+            },
+            { threshold: 0.2 },
+          )
+        : null;
+    io?.observe(el);
+
+    return () => {
+      el.removeEventListener("loadeddata", tryPlay);
+      el.removeEventListener("canplay", tryPlay);
+      io?.disconnect();
+    };
+  }, [src]);
+
+  return (
+    <div className={`lg-phone lg-phone--${side}`} aria-hidden>
+      <div className="lg-phone-bezel">
+        <div className="lg-phone-screen">
+          <div className="absolute inset-0 bg-gradient-to-br from-violet-900/80 via-zinc-900 to-fuchsia-950/70" />
+          <video
+            ref={videoRef}
+            src={src}
+            muted
+            loop
+            playsInline
+            autoPlay
+            preload="metadata"
+          />
+          <div className="lg-phone-notch" />
+          <div className="lg-phone-ui">
+            <div>
+              <div className="lg-phone-handle">{handle}</div>
+              <div className="lg-phone-live">Live reel</div>
+            </div>
+            <p className="lg-phone-caption">{caption}</p>
+          </div>
+          <div className="lg-phone-home" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Login() {
   const { user, loading, signInWithGoogle } = useAuth();
@@ -41,56 +140,100 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-background px-4 py-8 text-foreground">
-      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
-        <section className="animate-fade-in">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground text-background font-display text-xl leading-none">
-              M
-            </div>
-            <span className="eyebrow">MagicBox</span>
-          </div>
-          <h1 className="max-w-3xl font-display text-5xl leading-[1.05] tracking-tight md:text-6xl">
-            Your marketing creation desk.
-          </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">
-            Sign in with Google and create campaign copy, image prompts, video scripts, and carousel slides from one brief.
-          </p>
-          <div className="mt-8 grid max-w-3xl gap-3 sm:grid-cols-3">
-            {[
-              { label: "Image pieces", icon: Image },
-              { label: "Video scripts", icon: PlaySquare },
-              { label: "Carousels", icon: Layers3 },
-            ].map((item) => (
-              <div key={item.label} className="rounded-lg border border-border bg-card p-4">
-                <item.icon className="mb-3 h-5 w-5 text-brand" />
-                <div className="text-sm font-medium">{item.label}</div>
+    <div className="lg-page min-h-screen px-5 py-10 text-foreground sm:px-8">
+      <div className="relative z-10 mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-10 lg:grid-cols-[minmax(0,1.1fr)_400px] lg:gap-14">
+        <section>
+          <div
+            className="lg-reveal mb-7 flex items-center gap-3"
+            style={{ animationDelay: "0.05s" }}
+          >
+            <img
+              src="/logo.png"
+              alt="MagicBox"
+              width={44}
+              height={44}
+              className="h-11 w-11 rounded-xl shadow-sm ring-1 ring-foreground/10"
+            />
+            <div>
+              <div className="font-display text-2xl leading-none tracking-tight">MagicBox</div>
+              <div className="mt-1 font-mono text-[0.6rem] uppercase tracking-[0.22em] text-muted-foreground">
+                AI marketing suite
               </div>
+            </div>
+          </div>
+
+          <h1
+            className="lg-reveal max-w-xl font-display text-5xl leading-[1.02] tracking-tight md:text-[4.1rem]"
+            style={{ animationDelay: "0.12s" }}
+          >
+            Your brand.
+            <br />
+            Reels on autopilot.
+          </h1>
+
+          <p
+            className="lg-reveal mt-5 max-w-lg text-base leading-7 text-muted-foreground md:text-lg"
+            style={{ animationDelay: "0.22s" }}
+          >
+            Sign in to generate on-brand posts and short-form video, then publish
+            to Instagram, LinkedIn, and YouTube — without starting from a blank
+            page.
+          </p>
+
+          <div
+            className="lg-reveal lg-stage"
+            style={{ animationDelay: "0.34s" }}
+            aria-hidden
+          >
+            <div className="lg-stage-glow" />
+            {REELS.map((reel) => (
+              <ReelPhone key={reel.side} {...reel} />
             ))}
           </div>
+
+          <p
+            className="lg-reveal mt-4 max-w-md font-mono text-[0.65rem] uppercase tracking-[0.16em] text-muted-foreground"
+            style={{ animationDelay: "0.48s" }}
+          >
+            Sample output · your workspace unlocks the real pipeline
+          </p>
         </section>
 
-        <Card className="animate-slide-up rounded-lg border-border bg-card shadow-sm">
-          <CardContent className="p-6">
-            <div className="mb-6">
-              <span className="eyebrow">Sign in</span>
-              <div className="mt-3 font-display text-2xl">Continue to MagicBox</div>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Google login keeps every generated brief tied to your workspace.
-              </p>
-            </div>
-            <Button
-              onClick={handleSignIn}
-              disabled={signingIn}
-              className="h-12 w-full"
-            >
-              {signingIn ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Signing in
-                </>
-              ) : (
-                <>
+        <div className="lg-reveal relative" style={{ animationDelay: "0.28s" }}>
+          <div className="absolute inset-0 translate-x-2.5 translate-y-2.5 rounded-2xl border border-border bg-secondary/80" />
+          <div className="relative rounded-2xl border-[1.5px] border-foreground/75 bg-card/95 p-7 shadow-xl shadow-brand/5 backdrop-blur-sm">
+            {signingIn ? (
+              <div className="py-2 text-center">
+                <Suspense
+                  fallback={<Loader2 className="mx-auto h-10 w-10 animate-spin text-brand" />}
+                >
+                  <LoginLottie />
+                </Suspense>
+                <p className="mt-4 font-mono text-[0.65rem] uppercase tracking-[0.22em] text-muted-foreground">
+                  Opening your workspace…
+                </p>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Finish signing in with the Google window.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="mb-7">
+                  <div className="flex items-center gap-2">
+                    <span className="lg-dot" />
+                    <span className="font-mono text-[0.65rem] uppercase tracking-[0.22em] text-muted-foreground">
+                      Sign in
+                    </span>
+                  </div>
+                  <div className="mt-3.5 font-display text-3xl leading-tight">
+                    Continue to MagicBox
+                  </div>
+                  <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
+                    One Google login — brand kit, automations, and reels stay
+                    tied to your workspace.
+                  </p>
+                </div>
+                <Button onClick={handleSignIn} className="h-12 w-full text-[0.95rem]">
                   <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
                     <path
                       fill="#4285F4"
@@ -110,32 +253,32 @@ export default function Login() {
                     />
                   </svg>
                   Sign in with Google
-                </>
-              )}
-            </Button>
-            <p className="mt-6 text-center text-xs leading-6 text-muted-foreground">
-              By continuing, you agree to our{" "}
-              <a
-                href="https://magicboxai.in/terms.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-brand underline underline-offset-2 hover:text-brand/80"
-              >
-                Terms of Service
-              </a>{" "}
-              and{" "}
-              <a
-                href="https://magicboxai.in/privacy.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-brand underline underline-offset-2 hover:text-brand/80"
-              >
-                Privacy Policy
-              </a>
-              .
-            </p>
-          </CardContent>
-        </Card>
+                </Button>
+                <p className="mt-6 text-center text-xs leading-6 text-muted-foreground">
+                  By continuing, you agree to our{" "}
+                  <a
+                    href="https://magicboxai.in/terms.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand underline underline-offset-2 hover:text-brand/80"
+                  >
+                    Terms of Service
+                  </a>{" "}
+                  and{" "}
+                  <a
+                    href="https://magicboxai.in/privacy.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand underline underline-offset-2 hover:text-brand/80"
+                  >
+                    Privacy Policy
+                  </a>
+                  .
+                </p>
+              </>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

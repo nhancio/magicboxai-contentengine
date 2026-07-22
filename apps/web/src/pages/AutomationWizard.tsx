@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from"react";
 import { useNavigate, useParams } from"react-router-dom";
 import { motion, AnimatePresence } from"framer-motion";
 import { toast } from"sonner";
+import { useQuery } from"convex/react";
 import { useAuth } from"@shared/lib/auth";
 import type { SocialAccount, SocialPlatform, BrandProfile } from"@shared/types";
 import {
@@ -19,6 +20,8 @@ import { Input } from"@shared/components/ui/input";
 import { Textarea } from"@shared/components/ui/textarea";
 import { Label } from"@shared/components/ui/label";
 import { cn } from"@shared/lib/utils";
+import { api } from"@convex/_generated/api";
+import { isConvexConfigured } from"../lib/convex";
 import PlatformPreview from"../components/previews/PlatformPreview";
 import {
  ArrowLeft,
@@ -67,8 +70,34 @@ export default function AutomationWizard() {
 
  const [step, setStep] = useState(0);
  const [loading, setLoading] = useState(false);
- const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+ const [legacyAccounts, setLegacyAccounts] = useState<SocialAccount[]>([]);
  const [brands, setBrands] = useState<BrandProfile[]>([]);
+
+ const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} :"skip");
+
+ const accounts: SocialAccount[] = useMemo(() => {
+ const fromConvex: SocialAccount[] = (convexAccounts ?? [])
+ .filter((a: any) => a.status ==="active"|| a.status ==="expired")
+ .map((a: any) => ({
+ id: String(a._id),
+ userId: String(a.userId ??""),
+ provider: a.platform as SocialAccount["provider"],
+ platform: a.platform as SocialPlatform,
+ externalId: String(a.externalId ??""),
+ username: String(a.username ??""),
+ displayName: String(a.displayName ?? a.username ?? a.platform),
+ avatarUrl: a.avatarUrl,
+ status: a.status as SocialAccount["status"],
+ linkedAt: new Date(a.linkedAt ?? Date.now()),
+ }));
+ const seen = new Set(
+ fromConvex.map((a) => `${a.platform}:${(a.username || a.displayName).toLowerCase()}`),
+ );
+ const fromLegacy = legacyAccounts.filter(
+ (a) => !seen.has(`${a.platform}:${(a.username || a.displayName).toLowerCase()}`),
+ );
+ return [...fromConvex, ...fromLegacy];
+ }, [convexAccounts, legacyAccounts]);
 
  // form state
  const [name, setName] = useState("");
@@ -91,7 +120,7 @@ export default function AutomationWizard() {
 
  useEffect(() => {
  if (!user) return;
- getSocialAccounts(user.uid).then(setAccounts).catch(() => {});
+ getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
  getBrandProfiles(user.uid).then(setBrands).catch(() => {});
  }, [user]);
 
@@ -346,7 +375,7 @@ export default function AutomationWizard() {
  <div className="rounded-lg border border-dashed border-border p-8 text-center">
  <p className="text-sm text-muted-foreground">No connected accounts yet.</p>
  <p className="mt-1 text-xs text-muted-foreground">
- Connect Instagram or LinkedIn in Settings, then come back to pick them here.
+ Connect YouTube, LinkedIn, or Instagram in Settings, then come back to pick them here.
  </p>
  </div>
  ) : (

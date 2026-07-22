@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
 import type { Post, PostStatus, SocialPlatform } from "@shared/types";
 import { getPostsInRange } from "@shared/lib/automations";
 import { Button } from "@shared/components/ui/button";
 import { LottiePlayer } from "@shared/components/ui/lottie";
 import { cn } from "@shared/lib/utils";
+import { api } from "@convex/_generated/api";
+import { isConvexConfigured } from "../lib/convex";
 import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Facebook,
   Instagram,
   Linkedin,
   Plus,
@@ -17,11 +21,12 @@ import {
   Youtube,
 } from "lucide-react";
 
-const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
+const PLATFORM_ICONS: Record<string, typeof Instagram> = {
   instagram: Instagram,
   twitter: Twitter,
   linkedin: Linkedin,
   youtube: Youtube,
+  facebook: Facebook,
 };
 
 const STATUS_DOT: Record<PostStatus, string> = {
@@ -63,25 +68,71 @@ function monthMatrix(anchor: Date): Date[] {
 
 const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
+function toUiPost(raw: any): Post {
+  return {
+    id: String(raw._id ?? raw.id),
+    userId: String(raw.userId ?? ""),
+    automationId: raw.automationId,
+    brandProfileId: raw.brandProfileId,
+    source: raw.source ?? "manual",
+    scheduledFor: raw.scheduledFor instanceof Date ? raw.scheduledFor : new Date(raw.scheduledFor),
+    timezone: raw.timezone ?? "UTC",
+    status: raw.status as PostStatus,
+    brief: raw.brief ?? "",
+    content: raw.content,
+    media: raw.media,
+    platforms: (raw.platforms ?? []) as SocialPlatform[],
+    socialAccountIds: raw.socialAccountIds ?? [],
+    results: raw.results,
+    attempts: raw.attempts ?? 0,
+    maxAttempts: raw.maxAttempts ?? 3,
+    nextAttemptAt: raw.nextAttemptAt ? new Date(raw.nextAttemptAt) : undefined,
+    error: raw.error,
+    createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt ?? Date.now()),
+    updatedAt: raw.updatedAt ? new Date(raw.updatedAt) : undefined,
+  };
+}
+
 export default function Schedule() {
   const { user } = useAuth();
   const [anchor, setAnchor] = useState(() => new Date());
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [legacyPosts, setLegacyPosts] = useState<Post[]>([]);
+  const [legacyLoading, setLegacyLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
 
   const days = useMemo(() => monthMatrix(anchor), [anchor]);
+  const rangeStart = days[0];
+  const rangeEnd = useMemo(() => {
+    const end = new Date(days[days.length - 1]);
+    end.setHours(23, 59, 59, 999);
+    return end;
+  }, [days]);
+
+  const convexPosts = useQuery(
+    api.posts.listInRange,
+    isConvexConfigured
+      ? { startMs: rangeStart.getTime(), endMs: rangeEnd.getTime() }
+      : "skip",
+  );
 
   useEffect(() => {
     if (!user) return;
-    setLoading(true);
-    const start = days[0];
-    const end = new Date(days[days.length - 1]);
-    end.setHours(23, 59, 59);
-    getPostsInRange(user.uid, start, end)
-      .then(setPosts)
-      .finally(() => setLoading(false));
-  }, [user, days]);
+    setLegacyLoading(true);
+    getPostsInRange(user.uid, rangeStart, rangeEnd)
+      .then(setLegacyPosts)
+      .catch(() => setLegacyPosts([]))
+      .finally(() => setLegacyLoading(false));
+  }, [user, rangeStart, rangeEnd]);
+
+  const posts = useMemo(() => {
+    const fromConvex = (convexPosts ?? []).map(toUiPost);
+    const seen = new Set(fromConvex.map((p) => p.id));
+    const fromLegacy = legacyPosts.filter((p) => !seen.has(p.id) && !seen.has(`legacy:${p.id}`));
+    return [...fromConvex, ...fromLegacy];
+  }, [convexPosts, legacyPosts]);
+
+  const loading =
+    legacyLoading || (isConvexConfigured && convexPosts === undefined);
 
   const postsByDay = useMemo(() => {
     const map = new Map<string, Post[]>();
@@ -201,7 +252,7 @@ export default function Schedule() {
           </div>
 
           <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3 text-[11px] text-muted-foreground">
-            {(["scheduled", "pending_approval", "posted", "failed"] as PostStatus[]).map((s) => (
+            {(["scheduled", "generating", "pending_approval", "posted", "failed"] as PostStatus[]).map((s) => (
               <span key={s} className="flex items-center gap-1.5">
                 <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[s])} />
                 {STATUS_LABEL[s]}

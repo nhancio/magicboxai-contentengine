@@ -17,18 +17,29 @@ import { v } from "convex/values";
  *  - Large media stays in GCS/Blob; we store only URLs + storage paths here.
  */
 
+/**
+ * Every destination MagicBox can publish to. `facebook` is a first-class target
+ * (a Page), distinct from `instagram` even though both authenticate through Meta.
+ */
 const socialPlatform = v.union(
   v.literal("instagram"),
+  v.literal("facebook"),
   v.literal("twitter"),
   v.literal("linkedin"),
   v.literal("youtube"),
+  v.literal("reddit"),
 );
 
-const socialProvider = v.union(
-  v.literal("instagram"),
-  v.literal("linkedin"),
-  v.literal("youtube"),
-);
+/**
+ * The OAuth-connectable subset. Kept identical to `socialPlatform` so a platform
+ * can never appear on a post without a way to connect it — the mismatch that
+ * previously let `twitter` exist as a platform with no connect path.
+ *
+ * `twitter` and `reddit` are registered but deliberately DEFERRED: their provider
+ * modules throw `ProviderDeferredError` until commercial API access is chosen
+ * (X = metered pay-per-use; Reddit = paid commercial tier + manual approval).
+ */
+const socialProvider = socialPlatform;
 
 export default defineSchema({
   users: defineTable({
@@ -93,7 +104,9 @@ export default defineSchema({
   }).index("by_userId", ["userId"]).index("by_legacyId", ["legacyId"]),
 
   socialAccounts: defineTable({
-    legacyId: v.string(),
+    // Optional: rows created natively by the Convex OAuth flow have no Firestore
+    // ancestor. Present only on backfilled rows.
+    legacyId: v.optional(v.string()),
     userId: v.string(),
     provider: socialProvider,
     platform: socialPlatform,
@@ -115,13 +128,21 @@ export default defineSchema({
 
   // Secrets: OAuth tokens. Kept server-only; never exposed to public queries.
   socialTokens: defineTable({
-    legacyId: v.string(),
+    legacyId: v.optional(v.string()),
     userId: v.string(),
     socialAccountId: v.string(),
     provider: socialProvider,
     encryptedAccessToken: v.optional(v.string()),
     encryptedRefreshToken: v.optional(v.string()),
     expiresAt: v.optional(v.number()),
+    // Provider-specific identifiers needed at publish time:
+    //  - instagram: igUserId (Instagram User token; pageId unused for IG Login)
+    //  - youtube:   channelId
+    //  - facebook:  pageId
+    igUserId: v.optional(v.string()),
+    pageId: v.optional(v.string()),
+    channelId: v.optional(v.string()),
+    scopes: v.optional(v.array(v.string())),
     updatedAt: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
@@ -173,9 +194,14 @@ export default defineSchema({
     .index("by_status_nextRunAt", ["status", "nextRunAt"]),
 
   posts: defineTable({
-    legacyId: v.string(),
+    legacyId: v.optional(v.string()),
     userId: v.string(),
     automationId: v.optional(v.string()),
+    // Set when the post originated from a Maya swipe-approval.
+    suggestionId: v.optional(v.id("suggestions")),
+    // Lease for the publish cron: prevents two overlapping ticks double-posting.
+    claimedAt: v.optional(v.number()),
+    claimToken: v.optional(v.string()),
     brandProfileId: v.optional(v.string()),
     source: v.union(v.literal("automation"), v.literal("manual")),
     scheduledFor: v.number(),
@@ -246,6 +272,315 @@ export default defineSchema({
   })
     .index("by_eventId", ["eventId"])
     .index("by_userId", ["userId"]),
+
+  videoJobs: defineTable({
+    userId: v.string(),
+    templateId: v.string(),
+    status: v.union(v.literal("pending"), v.literal("rendering"), v.literal("completed"), v.literal("failed")),
+    videoUrl: v.optional(v.string()),
+    duration: v.optional(v.number()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  }).index("by_userId", ["userId"]),
+
+  avatars: defineTable({
+    userId: v.string(),
+    name: v.string(),
+    personality: v.string(),
+    voiceTone: v.string(),
+    description: v.string(),
+    sourceType: v.union(v.literal("photos"), v.literal("video_upload"), v.literal("webcam")),
+    status: v.union(v.literal("processing"), v.literal("ready"), v.literal("failed")),
+    videoUrl: v.optional(v.string()), // Generated preview or uploaded source
+    previewStatus: v.optional(v.string()),
+    previewError: v.optional(v.string()),
+    storagePaths: v.optional(v.array(v.string())), // Raw images/video
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  }).index("by_userId", ["userId"]),
+
+  studioVideos: defineTable({
+    userId: v.string(),
+    avatarId: v.id("avatars"),
+    productImageUrl: v.optional(v.string()),
+    productImageStoragePath: v.optional(v.string()),
+    userPrompt: v.string(),
+    generatedScript: v.optional(v.string()),
+    status: v.union(v.literal("draft"), v.literal("generating_script"), v.literal("rendering"), v.literal("completed"), v.literal("failed")),
+    videoUrl: v.optional(v.string()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  }).index("by_userId", ["userId"]).index("by_avatarId", ["avatarId"]),
+
+
+  /**
+   * One-time OAuth state nonces. The Firebase implementation used a stateless
+   * HMAC state, which is replay-able within its TTL; persisting the nonce and
+   * burning it on use closes that gap (a known outstanding security item).
+   */
+  oauthStates: defineTable({
+    nonce: v.string(),
+    userId: v.string(),
+    provider: socialProvider,
+    returnTo: v.optional(v.string()),
+    // Origin the browser started from (e.g. http://localhost:8174). Without this
+    // we always bounced back to APP_BASE_URL (production), which still ran the
+    // legacy Firebase OAuth path and showed cloudfunctions.net on Google's
+    // "unverified app" screen.
+    returnOrigin: v.optional(v.string()),
+    // PKCE verifier — required by X, harmless (unused) for the others.
+    codeVerifier: v.optional(v.string()),
+    expiresAt: v.number(),
+    usedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_nonce", ["nonce"])
+    .index("by_expiresAt", ["expiresAt"]),
+
+  /**
+   * Normalized trend signals powering Maya. Global (not tenant-scoped) and
+   * refreshed by the daily `trends:refresh` cron. Free-first sources only:
+   * YouTube Data API (chart=mostPopular, ~1 quota unit) and Gemini Google-Search
+   * grounding. Paid sources (Apify TikTok, SerpApi) attach behind config flags.
+   */
+  trends: defineTable({
+    platform: socialPlatform,
+    kind: v.union(
+      v.literal("topic"),
+      v.literal("hashtag"),
+      v.literal("sound"),
+      v.literal("format"),
+    ),
+    value: v.string(),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    // Normalized 0..1 rank within (platform, kind, region) for this batch.
+    score: v.number(),
+    region: v.string(),
+    source: v.union(
+      v.literal("youtube_api"),
+      v.literal("gemini_grounding"),
+      v.literal("apify_tiktok"),
+      v.literal("serpapi"),
+      v.literal("manual"),
+    ),
+    evidenceUrl: v.optional(v.string()),
+    raw: v.optional(v.any()),
+    batchDate: v.string(), // YYYY-MM-DD (UTC) — the daily fetch this belongs to
+    fetchedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_batchDate", ["batchDate"])
+    .index("by_platform_batchDate", ["platform", "batchDate"])
+    .index("by_expiresAt", ["expiresAt"]),
+
+  /**
+   * Maya's daily swipe deck. This is the approval state machine:
+   *   pending -> approved -> scheduled -> published
+   *   pending -> discarded (terminal, but RETAINED as training signal)
+   * Discarded rows are never deleted: left-swipes are the learning signal that
+   * down-weights similar pillars/topics in the next batch.
+   */
+  suggestions: defineTable({
+    userId: v.string(),
+    brandProfileId: v.optional(v.string()),
+    pillarId: v.optional(v.string()),
+    batchDate: v.string(), // YYYY-MM-DD in the user's timezone
+    // Idempotency: `${userId}_${batchDate}_${slot}` — a cron re-run never
+    // double-generates a deck.
+    idempotencyKey: v.string(),
+    slot: v.number(), // 0..n-1 position within the day's deck
+    platforms: v.array(socialPlatform),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("scheduled"),
+      v.literal("published"),
+      v.literal("discarded"),
+      v.literal("failed"),
+    ),
+    hook: v.optional(v.string()),
+    angle: v.optional(v.string()),
+    caption: v.string(),
+    hashtags: v.array(v.string()),
+    mediaPlan: v.optional(
+      v.object({
+        type: v.union(v.literal("none"), v.literal("image"), v.literal("video")),
+        prompt: v.optional(v.string()),
+      }),
+    ),
+    media: v.optional(
+      v.array(
+        v.object({
+          type: v.union(v.literal("image"), v.literal("video")),
+          url: v.string(),
+          storagePath: v.optional(v.string()),
+          source: v.union(
+            v.literal("imagen"),
+            v.literal("veo"),
+            v.literal("remotion"),
+            v.literal("upload"),
+          ),
+        }),
+      ),
+    ),
+    // Which trend rows grounded this suggestion (provenance for "why this?").
+    trendRefs: v.optional(v.array(v.id("trends"))),
+    // gemini text-embedding-004 (768d) of hook+caption — powers dedup.
+    embedding: v.optional(v.array(v.float64())),
+    feedback: v.optional(
+      v.object({
+        decision: v.union(v.literal("right"), v.literal("left")),
+        reason: v.optional(v.string()),
+        dwellMs: v.optional(v.number()),
+        decidedAt: v.number(),
+      }),
+    ),
+    postId: v.optional(v.id("posts")), // set once approved -> scheduled
+    scheduledAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_userId_batchDate", ["userId", "batchDate"])
+    .index("by_userId_status", ["userId", "status"])
+    .index("by_idempotencyKey", ["idempotencyKey"])
+    .index("by_postId", ["postId"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 768,
+      filterFields: ["userId"],
+    }),
+
+  /**
+   * Per-user, per-platform best-time posting slots. Right-swipe binds a
+   * suggestion to the next OPEN slot rather than asking for a datetime.
+   * Cold start = seeded platform defaults; `source: "learned"` once recomputed
+   * from the user's own engagement.
+   */
+  slotTemplates: defineTable({
+    userId: v.string(),
+    platform: socialPlatform,
+    timezone: v.string(),
+    slots: v.array(
+      v.object({
+        dayOfWeek: v.number(), // 0=Sun .. 6=Sat
+        hour: v.number(),
+        minute: v.number(),
+      }),
+    ),
+    source: v.union(v.literal("seeded"), v.literal("learned")),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_platform", ["userId", "platform"]),
+
+  /**
+   * Content pillars ("buckets"). Maya rotates across these so a day's deck is a
+   * balanced mix rather than five variations of one idea. Weights are nudged by
+   * swipe feedback.
+   */
+  contentPillars: defineTable({
+    userId: v.string(),
+    brandProfileId: v.optional(v.string()),
+    name: v.string(),
+    description: v.optional(v.string()),
+    weight: v.number(), // relative selection weight; adjusted by feedback
+    active: v.boolean(),
+    lastUsedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  }).index("by_userId", ["userId"]),
+
+  /** Per-user Maya settings + the cron's bookkeeping. */
+  mayaConfig: defineTable({
+    userId: v.string(),
+    enabled: v.boolean(),
+    dailyCount: v.number(), // default 5
+    timezone: v.string(),
+    reviewHourLocal: v.number(), // deck is ready by this local hour
+    platforms: v.array(socialPlatform),
+    brandProfileId: v.optional(v.string()),
+    socialAccountIds: v.optional(v.array(v.string())),
+    autoScheduleOnApprove: v.boolean(),
+    lastBatchDate: v.optional(v.string()),
+    lastRunAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_enabled", ["enabled"]),
+
+  /**
+   * Durable AI-media generation jobs (Gemini image + Veo video).
+   *
+   * Veo is a long-running operation that can take minutes; a single action can't
+   * (and shouldn't) block on it. So a job row is the durable handle: the start
+   * action records `operationName`, then a scheduled `pollVeo` action resumes
+   * from the row until the video is ready — surviving process restarts, which is
+   * exactly the Firebase bug ("a crash mid-poll loses a paid operation").
+   *
+   * `target` lets a finished asset attach itself back to the suggestion (Maya
+   * card preview) or post (publish-ready media) that requested it.
+   */
+  mediaJobs: defineTable({
+    userId: v.string(),
+    kind: v.union(v.literal("image"), v.literal("video")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("rendering"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    prompt: v.string(),
+    aspectRatio: v.optional(v.string()),
+    // Veo long-running operation name: "models/<model>/operations/<id>".
+    operationName: v.optional(v.string()),
+    storageId: v.optional(v.id("_storage")),
+    url: v.optional(v.string()),
+    error: v.optional(v.string()),
+    attempts: v.number(),
+    /** v-credits charged when the Veo job started (for refunds on failure). */
+    billedSeconds: v.optional(v.number()),
+    // Where to attach the finished asset (and what to flip to "scheduled").
+    target: v.optional(
+      v.object({
+        kind: v.union(v.literal("suggestion"), v.literal("post")),
+        id: v.string(),
+      }),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_status", ["status"]),
+
+  /**
+   * Spendable credit balances. Free trial seeds 50 i-credits + 100 v-credits once.
+   *   i-credit → 1 text / image / text+image post (or 1 AI image generation)
+   *   v-credit → 1 second of video (Veo / uploaded video posts)
+   */
+  creditBalances: defineTable({
+    userId: v.string(),
+    iCredits: v.number(),
+    vCredits: v.number(),
+    trialGrantedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
+  /** Append-only ledger for audits / support. */
+  creditLedger: defineTable({
+    userId: v.string(),
+    kind: v.union(v.literal("i"), v.literal("v")),
+    delta: v.number(),
+    reason: v.string(),
+    refId: v.optional(v.string()),
+    balanceAfter: v.number(),
+    createdAt: v.number(),
+  }).index("by_userId", ["userId"]),
 
   apiLogs: defineTable({
     endpoint: v.string(),

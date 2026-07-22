@@ -10,6 +10,7 @@ const uuid_1 = require("uuid");
 const core_1 = require("./core");
 const marketingPrompts_1 = require("./prompts/marketingPrompts");
 const googleVeo_1 = require("./video/googleVeo");
+const models_1 = require("./models");
 function parseJsonBlock(text) {
     var _a;
     const cleaned = text
@@ -37,7 +38,7 @@ async function generateCaptionForPlatform(args) {
         platform: args.platform,
     });
     const result = await ai.models.generateContent({
-        model: "gemini-2.0-flash-001",
+        model: models_1.MODELS.text,
         contents: prompt,
         config: { systemInstruction },
     });

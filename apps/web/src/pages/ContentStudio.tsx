@@ -142,21 +142,27 @@ export default function ContentStudio() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <Select value={selectedAvatar} onValueChange={setSelectedAvatar}>
+                    <Select
+                      value={selectedAvatar || undefined}
+                      onValueChange={setSelectedAvatar}
+                    >
                       <SelectTrigger className="bg-secondary border-border">
                         <SelectValue placeholder="Choose an avatar from your library" />
                       </SelectTrigger>
                       <SelectContent>
                         {avatars.length === 0 ? (
-                          <SelectItem value="_none" disabled>
-                            No ready avatars yet
-                          </SelectItem>
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            No ready avatars yet — create one under Avatars.
+                          </div>
                         ) : (
-                          avatars.map((avatar) => (
-                            <SelectItem key={avatar.id} value={avatar.id ?? avatar.name}>
-                              {avatar.name} • {avatar.personality}
-                            </SelectItem>
-                          ))
+                          avatars.map((avatar, index) => {
+                            const value = String(avatar.id || avatar.name || `avatar-${index}`);
+                            return (
+                              <SelectItem key={value} value={value}>
+                                {avatar.name || "Untitled"} • {avatar.personality || "Creator"}
+                              </SelectItem>
+                            );
+                          })
                         )}
                       </SelectContent>
                     </Select>

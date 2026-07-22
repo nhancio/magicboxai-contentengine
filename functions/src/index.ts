@@ -4,6 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import { v4 as uuidv4 } from "uuid";
 import { assertVeoGenerationEnabled, PLAN_VIDEO_LIMIT } from "./core";
 import { generateVeoVideo, type VeoDurationSeconds } from "./video/googleVeo";
+import { MODELS } from "./models";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -421,8 +422,13 @@ type AnalyzeAvatarPhotosData = {
 };
 type GenerateAvatarVideoData = {
   photoStoragePath: string;
+  frameStoragePaths?: string[];
   avatarName: string;
   personality: string;
+};
+type AnalyzeAvatarVideoData = {
+  videoStoragePath: string;
+  mimeType?: string;
 };
 type GenerateUGCVideoData = {
   videoId?: string;
@@ -437,6 +443,9 @@ type GenerateUGCVideoData = {
   productImageAnalysis?: string;
 };
 
+/** Sole MagicBox admin — keep this allowlist tight. */
+const SOLE_ADMIN_EMAILS = new Set(["nithindidigam@nhancio.com"]);
+
 export const setAdminRole = onCall(
   { cors: true },
   async (request: CallableRequest<SetAdminRoleData>) => {
@@ -450,18 +459,25 @@ export const setAdminRole = onCall(
     if (!email) {
       throw new HttpsError("invalid-argument", "Email is required");
     }
+    const normalized = email.trim().toLowerCase();
+    if (!SOLE_ADMIN_EMAILS.has(normalized)) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only the designated sole admin email can hold admin privileges",
+      );
+    }
 
     try {
-      const userRecord = await admin.auth().getUserByEmail(email);
+      const userRecord = await admin.auth().getUserByEmail(normalized);
       await admin.auth().setCustomUserClaims(userRecord.uid, { admin: true });
-      await db.collection("admins").doc(email).set({
+      await db.collection("admins").doc(normalized).set({
         uid: userRecord.uid,
-        email,
+        email: normalized,
         grantedBy: uid,
         grantedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      return { success: true, message: `Admin role granted to ${email}` };
+      return { success: true, message: `Admin role granted to ${normalized}` };
     } catch (error: unknown) {
       throw new HttpsError("internal", parseError(error));
     }
@@ -475,15 +491,27 @@ export const verifyAdminStatus = onCall(
     const userRecord = await admin.auth().getUser(uid);
     const isAdmin = userRecord.customClaims?.admin === true;
 
-    if (!isAdmin && request.auth?.token.email) {
-      const adminDoc = await db.collection("admins").doc(request.auth.token.email).get();
+    // Bootstrap path: an email listed in `admins` is promoted to a real custom
+    // claim on first sign-in. The email must be verified by the provider —
+    // Firebase will mint an account for an arbitrary unverified address, so
+    // trusting an unverified `email` here would let anyone claim an admin
+    // address that has been pre-provisioned but not yet registered.
+    const email = (userRecord.email ?? "").trim().toLowerCase();
+    if (!isAdmin && email && userRecord.emailVerified && SOLE_ADMIN_EMAILS.has(email)) {
+      const adminDoc = await db.collection("admins").doc(email).get();
       if (adminDoc.exists) {
         await admin.auth().setCustomUserClaims(uid, { admin: true });
         return { isAdmin: true };
       }
     }
 
-    return { isAdmin };
+    // Strip admin claim if someone outside the sole-admin allowlist somehow got one.
+    if (isAdmin && email && !SOLE_ADMIN_EMAILS.has(email)) {
+      await admin.auth().setCustomUserClaims(uid, { admin: false });
+      return { isAdmin: false };
+    }
+
+    return { isAdmin: isAdmin && SOLE_ADMIN_EMAILS.has(email) };
   }
 );
 
@@ -613,7 +641,7 @@ export const generateScript = onCall(
     try {
       const ai = getAI();
       const result = await ai.models.generateContent({
-        model: "gemini-2.0-flash-001",
+        model: MODELS.text,
         contents: prompt,
         config: {
           systemInstruction: systemInstruction || undefined,
@@ -636,7 +664,7 @@ export const analyzeImage = onCall(
     try {
       const ai = getAI();
       const result = await ai.models.generateContent({
-        model: "gemini-2.0-flash-001",
+        model: MODELS.text,
         contents: [
           prompt,
           {
@@ -689,7 +717,7 @@ export const analyzeAvatarPhotos = onCall(
           }));
 
       const result = await ai.models.generateContent({
-        model: "gemini-2.0-flash-001",
+        model: MODELS.text,
         contents: [
           prompt ||
             `You are analyzing multiple photos of the same person for a reusable talking-head avatar.
@@ -713,6 +741,64 @@ Requirements:
   }
 );
 
+export const analyzeAvatarVideo = onCall(
+  { timeoutSeconds: 300, memory: "512MiB", cors: true },
+  async (request: CallableRequest<AnalyzeAvatarVideoData>) => {
+    const uid = requireAuth(request);
+    const { videoStoragePath, mimeType } = request.data;
+
+    if (!videoStoragePath) {
+      throw new HttpsError("invalid-argument", "videoStoragePath is required");
+    }
+    if (!videoStoragePath.startsWith(`users/${uid}/`)) {
+      throw new HttpsError("permission-denied", "Video does not belong to the current user");
+    }
+
+    try {
+      const bucket = getBucket();
+      const file = bucket.file(videoStoragePath);
+      const [exists] = await file.exists();
+      if (!exists) {
+        throw new HttpsError("not-found", "Video was not found in storage");
+      }
+
+      const [metadata] = await file.getMetadata();
+      const contentType = mimeType || metadata.contentType;
+      if (!contentType?.startsWith("video/")) {
+        throw new HttpsError("invalid-argument", "File is not a video");
+      }
+
+      const ai = getAI();
+      const result = await ai.models.generateContent({
+        model: MODELS.text,
+        contents: [
+          `You are analyzing a short video of a person who wants a reusable talking-head avatar.
+Return:
+DESCRIPTION: 2-3 sentences describing their consistent visual identity, energy, and creator vibe
+PERSONALITY: a concise creator archetype, max 3 words
+VOICE_TONE: the most suitable speaking tone, informed by how they actually speak and move in the video
+
+Requirements:
+- Focus on facial features, expressiveness, gestures, and camera presence
+- If they speak, use their delivery style to inform VOICE_TONE
+- Ignore background and lighting differences; prioritize identity`,
+          {
+            fileData: {
+              fileUri: `gs://${bucket.name}/${videoStoragePath}`,
+              mimeType: contentType,
+            },
+          },
+        ],
+      });
+
+      return { text: result.text };
+    } catch (error: unknown) {
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError("internal", parseError(error));
+    }
+  }
+);
+
 export const generateAvatarVideo = onCall(
   { timeoutSeconds: 540, memory: "1GiB", cors: true },
   async (request: CallableRequest<GenerateAvatarVideoData>) => {
@@ -720,21 +806,36 @@ export const generateAvatarVideo = onCall(
     const uid = requireAuth(request);
     assertVeoGenerationEnabled();
     console.log(`[generateAvatarVideo] UID: ${uid}`);
-    const { photoStoragePath, avatarName, personality } = request.data;
-    console.log(`[generateAvatarVideo] Input data:`, { photoStoragePath, avatarName, personality });
+    const { photoStoragePath, frameStoragePaths, avatarName, personality } = request.data;
+    console.log(`[generateAvatarVideo] Input data:`, {
+      photoStoragePath,
+      frameCount: frameStoragePaths?.length ?? 0,
+      avatarName,
+      personality,
+    });
 
     if (!photoStoragePath || !avatarName) {
       console.error("[generateAvatarVideo] MISSING ARGS");
       throw new HttpsError("invalid-argument", "photoStoragePath and avatarName are required");
     }
+    if (!photoStoragePath.startsWith(`users/${uid}/`)) {
+      throw new HttpsError("permission-denied", "Image does not belong to the current user");
+    }
+    if (frameStoragePaths?.some((p) => !p.startsWith(`users/${uid}/`))) {
+      throw new HttpsError("permission-denied", "Frame path does not belong to the current user");
+    }
 
     try {
       const outputStoragePrefix = `users/${uid}/avatar-previews/${uuidv4()}/`;
       console.log(`[generateAvatarVideo] outputStoragePrefix: ${outputStoragePrefix}`);
+      const frameNote =
+        frameStoragePaths && frameStoragePaths.length > 1
+          ? ` Identity was sampled across ${frameStoragePaths.length} stills from the source clip; stay consistent with that person.`
+          : "";
       const previewPrompt = buildAvatarPreviewPrompt({
         avatarName,
         personality,
-      });
+      }) + frameNote;
 
       console.log(`[generateAvatarVideo] previewPrompt: ${previewPrompt}`);
       const res = await generateVideoFromImage({

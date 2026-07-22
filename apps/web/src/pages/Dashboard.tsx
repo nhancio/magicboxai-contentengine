@@ -1,17 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useQuery, useMutation } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
-import type { Automation, Post, PostStatus, SocialPlatform, SocialAccount } from "@shared/types";
+import type { Automation, Post, PostStatus, SocialAccount } from "@shared/types";
 import { getAutomations, getPosts, getSocialAccounts } from "@shared/lib/automations";
 import { getQuota } from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
 import { cn } from "@shared/lib/utils";
+import { api } from "@convex/_generated/api";
+import { isConvexConfigured } from "../lib/convex";
 import {
   ArrowRight,
   Bot,
   CalendarClock,
   CheckCircle2,
+  Facebook,
   Instagram,
   Linkedin,
   Plus,
@@ -21,11 +25,20 @@ import {
   Zap,
 } from "lucide-react";
 
-const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
+const PLATFORM_ICONS: Record<string, typeof Instagram> = {
   instagram: Instagram,
   twitter: Twitter,
   linkedin: Linkedin,
   youtube: Youtube,
+  facebook: Facebook,
+};
+
+type ChannelRow = {
+  id: string;
+  platform: string;
+  username: string;
+  displayName: string;
+  status: string;
 };
 
 const STATUS_DOT: Record<PostStatus, string> = {
@@ -40,40 +53,127 @@ const STATUS_DOT: Record<PostStatus, string> = {
   cancelled: "bg-muted-foreground/25",
 };
 
+function channelKey(platform: string, username: string, displayName: string) {
+  return `${platform}:${(username || displayName || "").toLowerCase()}`;
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [automations, setAutomations] = useState<Automation[]>([]);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [legacyPosts, setLegacyPosts] = useState<Post[]>([]);
   const [quota, setQuota] = useState<{ plan: string; used: number; limit: number } | null>(null);
-  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [legacyAccounts, setLegacyAccounts] = useState<SocialAccount[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Same source of truth as Settings / Posts — Convex.
+  const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
+  const convexPostsRaw = useQuery(api.posts.list, isConvexConfigured ? { limit: 200 } : "skip");
+  const mayaDeck = useQuery(api.maya.deck, isConvexConfigured ? {} : "skip");
+  const creditBalance = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
+  const claimTrial = useMutation(api.credits.claimTrial);
+
+  useEffect(() => {
+    if (!isConvexConfigured || !creditBalance?.needsTrialClaim) return;
+    claimTrial({}).catch((e) => console.warn("[dashboard] claimTrial", e));
+  }, [creditBalance?.needsTrialClaim, claimTrial]);
 
   useEffect(() => {
     if (!user) return;
     Promise.all([
       getAutomations(user.uid),
-      getPosts(user.uid, 100),
+      getPosts(user.uid, 100).catch(() => [] as Post[]),
       getQuota({}).catch(() => null),
-      getSocialAccounts(user.uid).catch(() => []),
+      // Legacy Firebase rows only fill gaps until those channels are reconnected via Convex.
+      getSocialAccounts(user.uid).catch(() => [] as SocialAccount[]),
     ])
       .then(([a, p, q, s]) => {
         setAutomations(a);
-        setPosts(p);
+        setLegacyPosts(p);
         setQuota(q);
-        setAccounts(s);
+        setLegacyAccounts(s);
       })
       .finally(() => setLoading(false));
   }, [user]);
+
+  const posts: Post[] = useMemo(() => {
+    const fromConvex: Post[] = (convexPostsRaw ?? []).map((raw: any) => ({
+      id: String(raw._id),
+      userId: String(raw.userId ?? ""),
+      automationId: raw.automationId,
+      brandProfileId: raw.brandProfileId,
+      source: raw.source ?? "manual",
+      scheduledFor: new Date(raw.scheduledFor),
+      timezone: raw.timezone ?? "UTC",
+      status: raw.status as PostStatus,
+      brief: raw.brief ?? "",
+      content: raw.content,
+      media: raw.media,
+      platforms: raw.platforms ?? [],
+      socialAccountIds: raw.socialAccountIds ?? [],
+      results: raw.results,
+      attempts: raw.attempts ?? 0,
+      maxAttempts: raw.maxAttempts ?? 3,
+      nextAttemptAt: raw.nextAttemptAt ? new Date(raw.nextAttemptAt) : undefined,
+      error: raw.error,
+      createdAt: new Date(raw.createdAt ?? Date.now()),
+      updatedAt: raw.updatedAt ? new Date(raw.updatedAt) : undefined,
+    }));
+
+    if (!isConvexConfigured) return legacyPosts;
+
+    // Prefer Convex; keep legacy rows that don't share an id (migration leftovers).
+    const seen = new Set(fromConvex.map((p) => p.id));
+    const extras = legacyPosts.filter((p) => !seen.has(p.id));
+    return [...fromConvex, ...extras];
+  }, [convexPostsRaw, legacyPosts]);
+
+  const postsLoading =
+    loading || (isConvexConfigured && convexPostsRaw === undefined);
+
+  const accounts: ChannelRow[] = useMemo(() => {
+    const fromConvex: ChannelRow[] = (convexAccounts ?? [])
+      .filter((a: any) => a.status === "active" || a.status === "expired")
+      .map((a: any) => ({
+        id: String(a._id),
+        platform: String(a.platform),
+        username: String(a.username || ""),
+        displayName: String(a.displayName || a.username || a.platform),
+        status: String(a.status),
+      }));
+
+    const seen = new Set(
+      fromConvex.map((a) => channelKey(a.platform, a.username, a.displayName)),
+    );
+
+    const fromLegacy: ChannelRow[] = legacyAccounts
+      .filter((a) => a.status === "active" || a.status === "expired")
+      .filter((a) => !seen.has(channelKey(a.platform, a.username, a.displayName)))
+      .map((a) => ({
+        id: a.id,
+        platform: a.platform,
+        username: a.username || "",
+        displayName: a.displayName || a.username || a.platform,
+        status: a.status,
+      }));
+
+    return [...fromConvex, ...fromLegacy];
+  }, [convexAccounts, legacyAccounts]);
+
+  const channelsLoading =
+    loading || (isConvexConfigured && convexAccounts === undefined);
 
   const firstName = user?.displayName?.split(" ")[0] ?? "there";
   const now = Date.now();
   const activeAutomations = automations.filter((a) => a.status === "active");
   const erroredAutomations = automations.filter((a) => a.status === "error");
+  const queuedCount = posts.filter((p) =>
+    ["scheduled", "generating", "ready", "posting"].includes(p.status),
+  ).length;
   const upcoming = posts
     .filter(
       (p) =>
         p.scheduledFor.getTime() >= now - 60_000 &&
-        ["scheduled", "generating", "ready", "posting", "pending_approval"].includes(p.status)
+        ["scheduled", "generating", "ready", "posting", "pending_approval"].includes(p.status),
     )
     .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime())
     .slice(0, 5);
@@ -81,17 +181,19 @@ export default function Dashboard() {
     .filter((p) => ["posted", "failed"].includes(p.status))
     .sort((a, b) => b.scheduledFor.getTime() - a.scheduledFor.getTime())
     .slice(0, 5);
-  const awaitingApproval = posts.filter((p) => p.status === "pending_approval").length;
+  const awaitingApproval =
+    posts.filter((p) => p.status === "pending_approval").length +
+    (mayaDeck?.pending?.length ?? 0);
   const publishedThisMonth = posts.filter(
     (p) =>
       p.status === "posted" &&
       p.scheduledFor.getMonth() === new Date().getMonth() &&
-      p.scheduledFor.getFullYear() === new Date().getFullYear()
+      p.scheduledFor.getFullYear() === new Date().getFullYear(),
   ).length;
 
   const stats = [
     { label: "Active automations", value: activeAutomations.length, icon: Bot },
-    { label: "Queued posts", value: upcoming.length, icon: CalendarClock },
+    { label: "Queued posts", value: queuedCount, icon: CalendarClock },
     { label: "Awaiting approval", value: awaitingApproval, icon: ShieldAlert },
     { label: "Published this month", value: publishedThisMonth, icon: CheckCircle2 },
   ];
@@ -145,13 +247,13 @@ export default function Dashboard() {
               <span className="text-[10px] font-mono uppercase tracking-widest">{stat.label}</span>
             </div>
             <div className="mt-2 font-display text-3xl tabular-nums">
-              {loading ? "—" : stat.value}
+              {postsLoading ? "—" : stat.value}
             </div>
           </motion.div>
         ))}
       </div>
 
-      {/* Connected channels */}
+      {/* Connected channels — Convex (Settings) + legacy Firebase fill-ins */}
       <div className="glass-card mb-6 p-5">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-display text-xl">Connected channels</h2>
@@ -159,12 +261,12 @@ export default function Dashboard() {
             Manage →
           </Link>
         </div>
-        {loading ? (
+        {channelsLoading ? (
           <div className="h-12 animate-pulse rounded-lg bg-secondary" />
         ) : accounts.length === 0 ? (
           <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border p-5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
-              No channels connected yet. Connect Instagram or LinkedIn to start publishing.
+              No channels connected yet. Connect YouTube, LinkedIn, or Instagram in Settings.
             </p>
             <Button asChild variant="outline" size="sm">
               <Link to="/settings">
@@ -176,6 +278,8 @@ export default function Dashboard() {
           <div className="flex flex-wrap gap-2.5">
             {accounts.map((account) => {
               const Icon = PLATFORM_ICONS[account.platform] ?? Instagram;
+              const raw = (account.username || account.displayName || "").trim();
+              const handle = raw ? (raw.startsWith("@") ? raw : `@${raw}`) : account.platform;
               return (
                 <div
                   key={account.id}
@@ -185,14 +289,17 @@ export default function Dashboard() {
                     <Icon className="h-4 w-4" />
                   </div>
                   <div className="pr-1">
-                    <div className="text-sm font-medium leading-tight">
-                      @{account.username || account.displayName}
-                    </div>
+                    <div className="text-sm font-medium leading-tight">{handle}</div>
                     <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
                       {account.platform === "twitter" ? "Twitter / X" : account.platform}
                     </div>
                   </div>
-                  <span className="ml-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  <span
+                    className={cn(
+                      "ml-1 h-1.5 w-1.5 rounded-full",
+                      account.status === "active" ? "bg-emerald-500" : "bg-amber-500",
+                    )}
+                  />
                 </div>
               );
             })}
@@ -209,7 +316,7 @@ export default function Dashboard() {
               Calendar →
             </Link>
           </div>
-          {loading ? (
+          {postsLoading ? (
             <div className="space-y-2">
               {[0, 1, 2].map((i) => (
                 <div key={i} className="h-14 animate-pulse rounded-lg bg-secondary" />
@@ -218,10 +325,14 @@ export default function Dashboard() {
           ) : upcoming.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               No posts queued.{" "}
-              <Link to="/automations/new" className="text-brand hover:underline">
-                Launch an automation
+              <Link to="/studio" className="text-brand hover:underline">
+                Open Studio
               </Link>{" "}
-              to fill your calendar.
+              or{" "}
+              <Link to="/maya" className="text-brand hover:underline">
+                review Maya
+              </Link>
+              .
             </div>
           ) : (
             <div className="space-y-2">
@@ -262,7 +373,7 @@ export default function Dashboard() {
               All posts →
             </Link>
           </div>
-          {loading ? (
+          {postsLoading ? (
             <div className="space-y-2">
               {[0, 1, 2].map((i) => (
                 <div key={i} className="h-14 animate-pulse rounded-lg bg-secondary" />
@@ -336,28 +447,45 @@ export default function Dashboard() {
         </div>
 
         <div className="glass-card p-5">
-          <h2 className="mb-3 font-display text-xl">Monthly usage</h2>
-          {quota && quota.limit > 0 ? (
-            <>
-              <div className="flex items-baseline justify-between text-sm">
-                <span className="text-muted-foreground">Posts published</span>
-                <span className="tabular-nums text-foreground">
-                  {quota.used} / {quota.limit}
-                </span>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-display text-xl">Credits</h2>
+            <Link to="/pricing" className="text-xs font-mono uppercase tracking-widest text-brand hover:text-brand/80">
+              Top up →
+            </Link>
+          </div>
+          {isConvexConfigured && creditBalance === undefined ? (
+            <div className="h-14 animate-pulse rounded-lg bg-secondary" />
+          ) : creditBalance && !creditBalance.needsTrialClaim ? (
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-baseline justify-between text-sm">
+                  <span className="text-muted-foreground">i-credits</span>
+                  <span className="tabular-nums text-foreground">{creditBalance.iCredits}</span>
+                </div>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  1 credit = 1 text / image post (or AI image)
+                </p>
               </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary">
-                <div
-                  className="h-full rounded-full bg-brand"
-                  style={{ width: `${Math.min(100, (quota.used / quota.limit) * 100)}%` }}
-                />
+              <div>
+                <div className="flex items-baseline justify-between text-sm">
+                  <span className="text-muted-foreground">v-credits</span>
+                  <span className="tabular-nums text-foreground">{creditBalance.vCredits}</span>
+                </div>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  1 credit = 1 second of video
+                </p>
               </div>
-              <p className="mt-2 text-xs capitalize text-muted-foreground">{quota.plan} plan</p>
-            </>
+              {creditBalance.trialGranted && (
+                <p className="text-[11px] text-muted-foreground">
+                  Free trial includes {creditBalance.freeTrial.i} i + {creditBalance.freeTrial.v} v.
+                </p>
+              )}
+            </div>
           ) : (
             <div className="text-sm text-muted-foreground">
-              Publishing requires an active plan.{" "}
-              <Link to="/pricing" className="text-brand hover:underline">
-                See pricing
+              Free trial: 50 i-credits + 100 v-credits.{" "}
+              <Link to="/studio" className="text-brand hover:underline">
+                Start creating
               </Link>
             </div>
           )}

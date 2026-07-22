@@ -79,6 +79,7 @@ export default function VideoCreator() {
  // Product
  const [productName, setProductName] = useState("");
  const [productDescription, setProductDescription] = useState("");
+ const [userPrompt, setUserPrompt] = useState("");
  const [productImage, setProductImage] = useState<File | null>(null);
  const [productImagePreview, setProductImagePreview] = useState<string | null>(null);
  const [selectedTone, setSelectedTone] = useState<string>("Bold");
@@ -200,6 +201,7 @@ export default function VideoCreator() {
  tone: selectedTone,
  platform: selectedPlatform,
  productPhotoAnalysis,
+ userPrompt,
  });
 
  setGeneratedScript(result);
@@ -369,11 +371,11 @@ export default function VideoCreator() {
  No avatars yet
  </h3>
  <p className="text-muted-foreground text-sm max-w-md mx-auto">
- You need to create an avatar first by uploading 5 to 10 photos of yourself.
+ You need to create an avatar first — upload photos, upload a video, or record yourself live.
  Avatar creation is free!
  </p>
  </div>
- <Link to="/avatar-builder">
+ <Link to="/avatars">
  <Button className="bg-brand hover: hover: text-foreground gap-2 mt-2">
  <Camera className="w-4 h-4" />
  Create Your Avatar
@@ -430,7 +432,7 @@ export default function VideoCreator() {
  </div>
 
  <div className="flex items-center justify-between pt-4">
- <Link to="/avatar-builder">
+ <Link to="/avatars?tab=create">
  <Button
  variant="ghost"
  className="text-brand hover:text-brand hover:bg-brand/10 gap-2"
@@ -622,6 +624,28 @@ export default function VideoCreator() {
  </div>
  </button>
  )}
+ </CardContent>
+ </Card>
+
+ {/* Creative Brief */}
+ <Card className="bg-card/[0.03] border-border/[0.06] rounded-2xl">
+ <CardHeader className="pb-4">
+ <CardTitle className="text-foreground text-base flex items-center gap-2">
+ <Sparkles className="w-4 h-4 text-brand" />
+ What should your avatar say?
+ </CardTitle>
+ </CardHeader>
+ <CardContent className="space-y-2">
+ <Textarea
+ value={userPrompt}
+ onChange={(e) => setUserPrompt(e.target.value)}
+ placeholder='e.g. "Talk about how this serum cleared my skin in 2 weeks" — a rough idea is enough'
+ rows={3}
+ className="bg-card/[0.04] border-border/[0.08] text-foreground placeholder:text-muted-foreground resize-none"
+ />
+ <p className="text-xs text-muted-foreground">
+ Give a short prompt and AI will expand it into a full, detailed script your avatar speaks while presenting the product.
+ </p>
  </CardContent>
  </Card>
 

@@ -28,7 +28,13 @@ export default function OnboardingGate({ children }: { children: React.ReactNode
     };
   }, [user]);
 
-  if (complete === null) return null;
+  if (complete === null) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+      </div>
+    );
+  }
 
   if (!complete && location.pathname !== "/onboarding") {
     return <Navigate to="/onboarding" replace />;

@@ -1,25 +1,28 @@
-import { useState } from"react";
-import { useAuth } from"@shared/lib/auth";
-import { saveInfluencer } from"@shared/lib/firestore";
-import { generateAvatarImage } from"@shared/lib/gemini";
-import type { AvatarSettings } from"@shared/types";
-import { Button } from"@shared/components/ui/button";
-import { Input } from"@shared/components/ui/input";
-import { Label } from"@shared/components/ui/label";
-import { Textarea } from"@shared/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from"@shared/components/ui/card";
-import { Badge } from"@shared/components/ui/badge";
-import { ScrollArea } from"@shared/components/ui/scroll-area";
-import { Separator } from"@shared/components/ui/separator";
+import { useState } from "react";
+import { useAction } from "convex/react";
+import { useAuth } from "@shared/lib/auth";
+import { saveInfluencer } from "@shared/lib/firestore";
+import { buildAvatarPrompt } from "@shared/lib/gemini";
+import type { AvatarSettings } from "@shared/types";
+import { Button } from "@shared/components/ui/button";
+import { Input } from "@shared/components/ui/input";
+import { Label } from "@shared/components/ui/label";
+import { Textarea } from "@shared/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@shared/components/ui/card";
+import { Badge } from "@shared/components/ui/badge";
+import { ScrollArea } from "@shared/components/ui/scroll-area";
+import { Separator } from "@shared/components/ui/separator";
 import {
- Select,
- SelectContent,
- SelectItem,
- SelectTrigger,
- SelectValue,
-} from"@shared/components/ui/select";
-import { Sparkles, Loader2, Save, RotateCcw, User, Image } from"lucide-react";
-import { toast } from"sonner";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@shared/components/ui/select";
+import { Sparkles, Loader2, Save, RotateCcw, User, Image } from "lucide-react";
+import { toast } from "sonner";
+import { api } from "@convex/_generated/api";
+import { isConvexConfigured } from "../lib/convex";
 
 const SETTING_OPTIONS: Record<keyof AvatarSettings, string[]> = {
  gender: ["Male","Female","Non-binary"],
@@ -75,53 +78,79 @@ const DEFAULT_SETTINGS: AvatarSettings = {
 
 type GenerateState ="idle" |"generating" |"done";
 
-export default function AvatarBuilder() {
- const { user } = useAuth();
- const [avatarName, setAvatarName] = useState("");
- const [prompt, setPrompt] = useState("");
- const [settings, setSettings] = useState<AvatarSettings>({ ...DEFAULT_SETTINGS });
- const [generateState, setGenerateState] = useState<GenerateState>("idle");
- const [imageUrl, setImageUrl] = useState("");
- const [generatedPrompt, setGeneratedPrompt] = useState("");
- const [saving, setSaving] = useState(false);
+function errorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return "Failed to generate avatar";
+  const anyErr = err as Error & { code?: string; details?: unknown };
+  // Firebase callables often surface as message "internal" with the real text elsewhere.
+  const raw = anyErr.message?.replace(/^FirebaseError:\s*/i, "").trim() || "";
+  if (raw && raw.toLowerCase() !== "internal" && !raw.startsWith("functions/")) {
+    return raw.slice(0, 200);
+  }
+  if (typeof anyErr.details === "string" && anyErr.details.trim()) {
+    return anyErr.details.trim().slice(0, 200);
+  }
+  if (anyErr.code === "functions/internal" || raw.toLowerCase() === "internal") {
+    return "Image generation failed. Check Gemini/Imagen access, then try again.";
+  }
+  return raw || "Failed to generate avatar";
+}
 
- const updateSetting = (key: keyof AvatarSettings, value: string) => {
- setSettings((prev) => ({ ...prev, [key]: value }));
- };
+export default function AvatarBuilder({ embedded = false }: { embedded?: boolean }) {
+  const { user } = useAuth();
+  const generateImage = useAction(api.media.generateImage);
+  const [avatarName, setAvatarName] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [settings, setSettings] = useState<AvatarSettings>({ ...DEFAULT_SETTINGS });
+  const [generateState, setGenerateState] = useState<GenerateState>("idle");
+  const [imageUrl, setImageUrl] = useState("");
+  const [generatedPrompt, setGeneratedPrompt] = useState("");
+  const [saving, setSaving] = useState(false);
 
- const handleReset = () => {
- setSettings({ ...DEFAULT_SETTINGS });
- setAvatarName("");
- setPrompt("");
- setImageUrl("");
- setGeneratedPrompt("");
- setGenerateState("idle");
- };
+  const updateSetting = (key: keyof AvatarSettings, value: string) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+  };
 
- const handleGenerate = async () => {
- if (!avatarName.trim()) {
- toast.error("Please enter an avatar name");
- return;
- }
+  const handleReset = () => {
+    setSettings({ ...DEFAULT_SETTINGS });
+    setAvatarName("");
+    setPrompt("");
+    setImageUrl("");
+    setGeneratedPrompt("");
+    setGenerateState("idle");
+  };
 
- setGenerateState("generating");
- setImageUrl("");
- try {
- const { imageUrl: url, prompt: usedPrompt } = await generateAvatarImage({
- name: avatarName,
- description: prompt,
- settings: settings as unknown as Record<string, string>,
- });
- setImageUrl(url);
- setGeneratedPrompt(usedPrompt);
- setGenerateState("done");
- toast.success("Avatar generated successfully!");
- } catch (err) {
- setGenerateState("idle");
- const message = err instanceof Error ? err.message : "Failed to generate avatar";
- toast.error(message);
- }
- };
+  const handleGenerate = async () => {
+    if (!avatarName.trim()) {
+      toast.error("Please enter an avatar name");
+      return;
+    }
+    if (!isConvexConfigured) {
+      toast.error("Convex is not configured — cannot generate images");
+      return;
+    }
+
+    setGenerateState("generating");
+    setImageUrl("");
+    try {
+      const usedPrompt = buildAvatarPrompt({
+        name: avatarName,
+        description: prompt,
+        settings: settings as unknown as Record<string, string>,
+      });
+      // Same Gemini image path Studio uses (credits: 1 i-credit).
+      const { url } = await generateImage({
+        prompt: usedPrompt,
+        aspectRatio: "1:1",
+      });
+      setImageUrl(url);
+      setGeneratedPrompt(usedPrompt);
+      setGenerateState("done");
+      toast.success("Avatar generated — 1 i-credit used");
+    } catch (err) {
+      setGenerateState("idle");
+      toast.error(errorMessage(err));
+    }
+  };
 
  const handleSave = async () => {
  if (!user) return;
@@ -148,7 +177,15 @@ export default function AvatarBuilder() {
  const filledCount = settingKeys.filter((k) => settings[k]).length;
 
  return (
- <div className="animate-fade-in">
+ <div className="animate-fade-in space-y-4">
+ {embedded && (
+ <div className="space-y-1">
+ <h2 className="font-display text-xl text-foreground">Custom avatar</h2>
+ <p className="text-sm text-muted-foreground">
+ Generate a look with AI appearance settings, then save it to your library.
+ </p>
+ </div>
+ )}
  <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6 h-full">
  {/* Settings Panel */}
  <div className="space-y-6">

@@ -153,7 +153,25 @@ export async function analyzeProductPhoto(file: File): Promise<string> {
   return result.data.text;
 }
 
-export async function analyzeAvatarPhotos(files: File[]): Promise<{ description: string; personality: string; voiceTone: string }> {
+export interface AvatarAnalysis {
+  description: string;
+  personality: string;
+  voiceTone: string;
+}
+
+function parseAvatarAnalysis(text: string): AvatarAnalysis {
+  const descMatch = text.match(/DESCRIPTION:\s*(.+?)(?=\nPERSONALITY:)/s);
+  const persMatch = text.match(/PERSONALITY:\s*(.+?)(?=\nVOICE_TONE:)/s);
+  const voiceMatch = text.match(/VOICE_TONE:\s*(.+?)$/s);
+
+  return {
+    description: descMatch?.[1]?.trim() || "A natural content creator with authentic presence.",
+    personality: persMatch?.[1]?.trim() || "Content Creator",
+    voiceTone: voiceMatch?.[1]?.trim() || "Warm and conversational",
+  };
+}
+
+export async function analyzeAvatarPhotos(files: File[]): Promise<AvatarAnalysis> {
   if (!functions) {
     throw new Error("Firebase functions not initialized");
   }
@@ -176,21 +194,12 @@ export async function analyzeAvatarPhotos(files: File[]): Promise<{ description:
     images,
   });
 
-  const text = result.data.text;
-  const descMatch = text.match(/DESCRIPTION:\s*(.+?)(?=\nPERSONALITY:)/s);
-  const persMatch = text.match(/PERSONALITY:\s*(.+?)(?=\nVOICE_TONE:)/s);
-  const voiceMatch = text.match(/VOICE_TONE:\s*(.+?)$/s);
-
-  return {
-    description: descMatch?.[1]?.trim() || "A natural content creator with authentic presence.",
-    personality: persMatch?.[1]?.trim() || "Content Creator",
-    voiceTone: voiceMatch?.[1]?.trim() || "Warm and conversational",
-  };
+  return parseAvatarAnalysis(result.data.text);
 }
 
 export async function analyzeAvatarPhotosFromStorage(
   storagePaths: string[]
-): Promise<{ description: string; personality: string; voiceTone: string }> {
+): Promise<AvatarAnalysis> {
   if (!functions) {
     throw new Error("Firebase functions not initialized");
   }
@@ -206,16 +215,25 @@ export async function analyzeAvatarPhotosFromStorage(
     storagePaths: storagePaths.slice(0, 10),
   });
 
-  const text = result.data.text;
-  const descMatch = text.match(/DESCRIPTION:\s*(.+?)(?=\nPERSONALITY:)/s);
-  const persMatch = text.match(/PERSONALITY:\s*(.+?)(?=\nVOICE_TONE:)/s);
-  const voiceMatch = text.match(/VOICE_TONE:\s*(.+?)$/s);
+  return parseAvatarAnalysis(result.data.text);
+}
 
-  return {
-    description: descMatch?.[1]?.trim() || "A natural content creator with authentic presence.",
-    personality: persMatch?.[1]?.trim() || "Content Creator",
-    voiceTone: voiceMatch?.[1]?.trim() || "Warm and conversational",
-  };
+export async function analyzeAvatarVideoFromStorage(
+  videoStoragePath: string,
+  mimeType?: string
+): Promise<AvatarAnalysis> {
+  if (!functions) {
+    throw new Error("Firebase functions not initialized");
+  }
+
+  const analyzeAvatarVideoFn = httpsCallable<
+    { videoStoragePath: string; mimeType?: string },
+    { text: string }
+  >(functions, "analyzeAvatarVideo");
+
+  const result = await analyzeAvatarVideoFn({ videoStoragePath, mimeType });
+
+  return parseAvatarAnalysis(result.data.text);
 }
 
 /**
@@ -295,6 +313,7 @@ export async function generateScript(params: {
   tone: string;
   platform: string;
   productPhotoAnalysis?: string;
+  userPrompt?: string;
 }): Promise<{
   hook: string;
   script: string;
@@ -311,9 +330,13 @@ export async function generateScript(params: {
     ? `\n- Product Photo Analysis: ${params.productPhotoAnalysis}`
     : "";
 
+  const briefContext = params.userPrompt?.trim()
+    ? `\n- Creator brief (from the user, may be rough or minimal — expand it into a full, detailed, persuasive script while staying faithful to its intent): ${params.userPrompt.trim()}`
+    : "";
+
   const prompt = `Generate a viral UGC video script with these details:
 - Product: ${params.productName}
-- Description: ${params.productDescription}${photoContext}
+- Description: ${params.productDescription}${photoContext}${briefContext}
 - Template Style: ${params.templateName}
 - Avatar Personality: ${params.avatarPersonality}
 - Tone: ${params.tone}

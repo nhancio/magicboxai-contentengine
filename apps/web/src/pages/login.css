@@ -1,0 +1,232 @@
+/*
+  Login — branded reel stage.
+  Two angled phones play sample MagicBox output; motion is CSS-only and
+  respects prefers-reduced-motion.
+*/
+
+/* ── Page atmosphere ─────────────────────────────────────── */
+.lg-page {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 80% 55% at 18% 20%, rgb(var(--brand) / 0.09), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 88% 78%, rgb(var(--brand) / 0.06), transparent 50%),
+    linear-gradient(165deg, rgb(var(--background)) 0%, rgb(250 248 255) 48%, rgb(var(--background)) 100%);
+}
+.lg-page::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.35;
+  background-image:
+    linear-gradient(rgb(var(--foreground) / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--foreground) / 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 40% 40%, black, transparent 75%);
+}
+
+.lg-reveal {
+  opacity: 0;
+  animation: lgReveal 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes lgReveal {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Angled phone stage ──────────────────────────────────── */
+.lg-stage {
+  position: relative;
+  height: clamp(22rem, 52vw, 28rem);
+  width: 100%;
+  max-width: 34rem;
+  margin-top: 1.75rem;
+}
+.lg-phone {
+  position: absolute;
+  width: clamp(9.5rem, 28vw, 12.5rem);
+  aspect-ratio: 9 / 19.2;
+  border-radius: 1.55rem;
+  background: #111;
+  border: 2.5px solid #1a1a1a;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.08) inset,
+    0 28px 50px -24px rgb(0 0 0 / 0.55),
+    0 12px 24px -12px rgb(var(--brand) / 0.35);
+  overflow: hidden;
+  transform-origin: center bottom;
+}
+.lg-phone--left {
+  left: 6%;
+  bottom: 8%;
+  z-index: 2;
+  transform: rotate(-11deg) translateY(0);
+  animation: lgFloatL 5.5s ease-in-out infinite;
+}
+.lg-phone--right {
+  right: 4%;
+  bottom: 2%;
+  z-index: 3;
+  transform: rotate(9deg) translateY(0);
+  animation: lgFloatR 6.2s ease-in-out infinite 0.4s;
+}
+@keyframes lgFloatL {
+  0%, 100% { transform: rotate(-11deg) translateY(0); }
+  50% { transform: rotate(-11deg) translateY(-10px); }
+}
+@keyframes lgFloatR {
+  0%, 100% { transform: rotate(9deg) translateY(0); }
+  50% { transform: rotate(9deg) translateY(-14px); }
+}
+
+.lg-phone-bezel {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+}
+.lg-phone-screen {
+  position: relative;
+  flex: 1;
+  border-radius: 1.2rem;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+.lg-phone-screen video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.lg-phone-notch {
+  position: absolute;
+  top: 0.45rem;
+  left: 50%;
+  z-index: 4;
+  width: 38%;
+  height: 0.7rem;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #0a0a0a;
+}
+.lg-phone-ui {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.35rem 0.65rem 0.75rem;
+  background: linear-gradient(
+    180deg,
+    rgb(0 0 0 / 0.35) 0%,
+    transparent 28%,
+    transparent 58%,
+    rgb(0 0 0 / 0.72) 100%
+  );
+  color: #fff;
+  pointer-events: none;
+}
+.lg-phone-handle {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+.lg-phone-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  align-self: flex-start;
+  margin-top: 0.35rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.18);
+  backdrop-filter: blur(6px);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.lg-phone-live::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #f43f5e;
+  box-shadow: 0 0 0 2px rgb(244 63 94 / 0.35);
+  animation: lgPulse 1.6s ease-in-out infinite;
+}
+@keyframes lgPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.lg-phone-caption {
+  font-size: 0.62rem;
+  line-height: 1.35;
+  font-weight: 500;
+  text-shadow: 0 1px 8px rgb(0 0 0 / 0.5);
+}
+.lg-phone-home {
+  position: absolute;
+  bottom: 0.35rem;
+  left: 50%;
+  z-index: 4;
+  width: 32%;
+  height: 0.22rem;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.45);
+}
+
+.lg-stage-glow {
+  position: absolute;
+  left: 50%;
+  bottom: -8%;
+  z-index: 0;
+  width: 70%;
+  height: 40%;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse, rgb(var(--brand) / 0.22), transparent 70%);
+  filter: blur(18px);
+  pointer-events: none;
+}
+
+.lg-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgb(var(--brand));
+  animation: lgPulse 2.2s ease-in-out infinite;
+}
+
+@media (max-width: 1023px) {
+  .lg-stage {
+    height: 20rem;
+    max-width: 22rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .lg-phone {
+    width: 8.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-reveal { animation: none; opacity: 1; }
+  .lg-phone--left,
+  .lg-phone--right,
+  .lg-phone-live::before,
+  .lg-dot {
+    animation: none;
+  }
+  .lg-phone--left { transform: rotate(-11deg); }
+  .lg-phone--right { transform: rotate(9deg); }
+}

@@ -3,8 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
-    "dev": "vite --port 5175",
+    "dev": "vite --port 8175",
     "build": "vite build",
     "preview": "vite preview"
   },

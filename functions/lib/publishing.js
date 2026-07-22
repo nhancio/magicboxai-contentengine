@@ -43,7 +43,7 @@ const admin = __importStar(require("firebase-admin"));
 const core_1 = require("./core");
 const entitlements_1 = require("./entitlements");
 const GRAPH = "https://graph.facebook.com/v21.0";
-const LINKEDIN_VERSION = "202401";
+const LINKEDIN_VERSION = "202601";
 const ACTUAL_PLATFORMS = ["instagram", "linkedin", "youtube"];
 function isActualPlatform(value) {
     return typeof value === "string" && ACTUAL_PLATFORMS.includes(value);

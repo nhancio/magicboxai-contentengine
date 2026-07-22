@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^1.47.0",
     "convex": "^1.17.0"
   },
   "devDependencies": {

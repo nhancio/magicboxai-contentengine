@@ -1,18 +1,38 @@
-// Extract a brand profile (company name, industry, audience, tone) from a
-// website URL using Gemini. The user enters only a URL; we fetch the page,
-// distil the visible text, and ask the model to return structured JSON so the
-// onboarding form can auto-fill.
+// Extract a full brand kit from a website URL. The user enters ONLY a URL; we
+// fetch the page (and its main stylesheets), pull the logo, sample the brand
+// mark's dominant colors, read the font stacks, and ask Gemini to infer the
+// written profile (company name, industry, audience, tone, hashtags, sample
+// captions) so the Brand Kit page can show a complete, editable preview
+// before saving.
+//
+// Color approach ported from g3/super-app audit.py: the app icon / logo image
+// is quantized for its dominant colors (the mark defines the brand), CSS hex
+// frequency is the fallback signal, theme-color meta is weighted heavily, and
+// near-duplicates are collapsed by RGB distance.
 
 import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/https";
+import Jimp from "jimp";
 import { getAI, requireAuth, stringifyError } from "./core";
+import { MODELS } from "./models";
 
 type ExtractReq = { url: string };
-type BrandFields = {
+
+export type BrandExtract = {
   companyName: string;
   industry: string;
   audience: string;
   tone: string;
+  hashtags: string[];
+  sampleCaptions: string[];
+  logoUrl: string;
+  colors: { primary?: string; secondary?: string; accent?: string };
+  fonts: string[];
 };
+
+export type RGB = [number, number, number];
+type LogoCandidate = { url: string; kind: "logo-img" | "apple-touch-icon" | "favicon" | "social" };
+
+// ── URL safety ───────────────────────────────────────────────────────────────
 
 // Reject non-http(s) and obvious internal/loopback hosts (basic SSRF guard —
 // this runs server-side with the function's egress).
@@ -45,6 +65,280 @@ function normalizeUrl(raw: string): URL {
   return url;
 }
 
+const BOT_HEADERS = { "User-Agent": "MagicBoxBot/1.0 (+https://magicboxai.in)" };
+
+async function fetchText(url: string, maxBytes: number, timeoutMs: number): Promise<{ body: string; contentType: string; finalUrl: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { redirect: "follow", signal: controller.signal, headers: BOT_HEADERS });
+    if (!res.ok) throw new HttpsError("unavailable", `Could not load the site (${res.status}).`);
+    const body = (await res.text()).slice(0, maxBytes);
+    return { body, contentType: res.headers.get("content-type") ?? "", finalUrl: res.url || url };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchBinary(url: string, maxBytes: number, timeoutMs: number): Promise<Buffer | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { redirect: "follow", signal: controller.signal, headers: BOT_HEADERS });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.byteLength > maxBytes ? null : buf;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── HTML helpers ─────────────────────────────────────────────────────────────
+
+/** All opening tags of `tagName` in the document, as attribute maps. */
+export function findTags(html: string, tagName: string): Array<Record<string, string>> {
+  const tags: Array<Record<string, string>> = [];
+  const re = new RegExp(`<${tagName}\\b([^>]*)>`, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const attrs: Record<string, string> = {};
+    const attrRe = /([a-zA-Z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
+    let a: RegExpExecArray | null;
+    while ((a = attrRe.exec(m[1]))) {
+      attrs[a[1].toLowerCase()] = (a[2] ?? a[3] ?? a[4] ?? "").trim();
+    }
+    tags.push(attrs);
+  }
+  return tags;
+}
+
+function resolveHref(href: string | undefined, baseUrl: string): string {
+  if (!href || href.startsWith("data:") || href.startsWith("javascript:")) return "";
+  try {
+    return new URL(href, baseUrl).toString();
+  } catch {
+    return "";
+  }
+}
+
+// ── Logo extraction ──────────────────────────────────────────────────────────
+
+/** Every asset on the page that could be the brand mark, tagged by kind. */
+export function collectLogoCandidates(html: string, baseUrl: string): LogoCandidate[] {
+  const found: LogoCandidate[] = [];
+  const seen = new Set<string>();
+  const add = (href: string | undefined, kind: LogoCandidate["kind"]) => {
+    const url = resolveHref(href, baseUrl);
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    found.push({ url, kind });
+  };
+
+  for (const meta of findTags(html, "meta")) {
+    const key = meta.property ?? meta.name ?? "";
+    if (["og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
+      add(meta.content, "social");
+    }
+  }
+
+  for (const link of findTags(html, "link")) {
+    const rel = (link.rel ?? "").toLowerCase();
+    if (rel.includes("apple-touch-icon")) add(link.href, "apple-touch-icon");
+    else if (rel.includes("icon")) add(link.href, "favicon");
+  }
+
+  // <img> tags that look like a logo. Match on class/id/alt (reliable) or the
+  // image *filename* — not the full CDN URL, whose hashes/paths cause false
+  // positives (a lifestyle photo at /.../logoipsum-hero.jpg is not a logo).
+  for (const img of findTags(html, "img")) {
+    const hint = [img.class, img.id, img.alt].filter(Boolean).join(" ").toLowerCase();
+    const src = img.src || img["data-src"] || "";
+    let filename = "";
+    try {
+      filename = new URL(src, baseUrl).pathname.split("/").pop()?.toLowerCase() ?? "";
+    } catch {
+      filename = src.split("/").pop()?.toLowerCase() ?? "";
+    }
+    if (/logo|brand/.test(hint) || /logo|brand/.test(filename)) {
+      add(src, "logo-img");
+    }
+  }
+
+  return found;
+}
+
+/** Best asset to DISPLAY as the brand logo. */
+export function pickDisplayLogo(candidates: LogoCandidate[]): string {
+  const order: Record<LogoCandidate["kind"], number> = {
+    "logo-img": 0, "apple-touch-icon": 1, social: 2, favicon: 3,
+  };
+  return [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]?.url ?? "";
+}
+
+/**
+ * Best asset to SAMPLE COLORS from — the app icon is the most reliable brand
+ * mark. og:image (and even logo-img) can be lifestyle photos that pollute the
+ * palette, so square icons win.
+ */
+export function pickBrandMark(candidates: LogoCandidate[], baseUrl: string): string {
+  const order: Record<LogoCandidate["kind"], number> = {
+    "apple-touch-icon": 0, "logo-img": 1, favicon: 2, social: 3,
+  };
+  const best = [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]?.url;
+  return best ?? resolveHref("/favicon.ico", baseUrl);
+}
+
+export function extractStylesheetUrls(html: string, baseUrl: string): string[] {
+  return findTags(html, "link")
+    .filter((l) => /stylesheet/i.test(l.rel ?? ""))
+    .map((l) => resolveHref(l.href, baseUrl))
+    .filter((u) => u && !/fonts\.googleapis\.com/i.test(u))
+    .slice(0, 2);
+}
+
+// ── Color extraction ─────────────────────────────────────────────────────────
+
+const luminance = ([r, g, b]: RGB) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+const saturation = ([r, g, b]: RGB) => (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
+const rgbDist = (a: RGB, b: RGB) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const toHex = (c: RGB) => `#${c.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+
+function parseHex(raw: string): RGB | null {
+  let h = raw.replace(/^#/, "").toLowerCase();
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  if (!/^[0-9a-f]{6}$/.test(h)) return null;
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+/** Quantize a logo/icon image to its dominant colors (alpha flattened onto white). */
+export async function colorsFromImageBuffer(buf: Buffer): Promise<RGB[]> {
+  try {
+    const img = await Jimp.read(buf);
+    const { data, width, height } = img.bitmap;
+    const totalPx = width * height;
+    if (!totalPx) return [];
+    const step = Math.max(1, Math.floor(totalPx / 40_000));
+    const buckets = new Map<number, { sum: [number, number, number]; count: number }>();
+    for (let p = 0; p < totalPx; p += step) {
+      const i = p * 4;
+      const a = data[i + 3] / 255;
+      const r = Math.round(data[i] * a + 255 * (1 - a));
+      const g = Math.round(data[i + 1] * a + 255 * (1 - a));
+      const b = Math.round(data[i + 2] * a + 255 * (1 - a));
+      const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+      const bucket = buckets.get(key) ?? { sum: [0, 0, 0], count: 0 };
+      bucket.sum[0] += r; bucket.sum[1] += g; bucket.sum[2] += b; bucket.count += 1;
+      buckets.set(key, bucket);
+    }
+    return [...buckets.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8)
+      .map(({ sum, count }): RGB => [
+        Math.round(sum[0] / count), Math.round(sum[1] / count), Math.round(sum[2] / count),
+      ]);
+  } catch {
+    return []; // unsupported format (svg/ico) or corrupt image — CSS colors still apply
+  }
+}
+
+/** Frequency-rank colors in markup + CSS; theme-color meta is weighted heavily. */
+export function colorsFromCss(html: string, css: string): RGB[] {
+  const counts = new Map<string, { rgb: RGB; count: number }>();
+  const add = (rgb: RGB | null, weight = 1) => {
+    if (!rgb) return;
+    const key = rgb.join(",");
+    const entry = counts.get(key) ?? { rgb, count: 0 };
+    entry.count += weight;
+    counts.set(key, entry);
+  };
+
+  const source = `${html}\n${css}`;
+  const hexRe = /#([0-9a-f]{6}|[0-9a-f]{3})\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = hexRe.exec(source))) add(parseHex(m[1]));
+  const rgbRe = /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/gi;
+  while ((m = rgbRe.exec(source))) {
+    add([
+      Math.min(255, parseInt(m[1], 10)),
+      Math.min(255, parseInt(m[2], 10)),
+      Math.min(255, parseInt(m[3], 10)),
+    ]);
+  }
+
+  const themeColor = findTags(html, "meta").find((t) => (t.name ?? "") === "theme-color")?.content;
+  if (themeColor) add(parseHex(themeColor.trim()), 50);
+
+  return [...counts.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 40)
+    .map((e) => e.rgb);
+}
+
+/**
+ * Merge image colors (first — the mark defines the brand) with CSS colors,
+ * collapse near-duplicates, and fill primary/secondary/accent with colorful
+ * picks, falling back to any non-white/non-black shade.
+ */
+export function buildPalette(imageColors: RGB[], cssColors: RGB[]): { primary?: string; secondary?: string; accent?: string } {
+  const distinct: RGB[] = [];
+  for (const c of [...imageColors, ...cssColors]) {
+    if (distinct.every((k) => rgbDist(c, k) > 42)) distinct.push(c);
+    if (distinct.length >= 12) break;
+  }
+
+  const colorful = distinct.filter((c) => saturation(c) >= 0.12 && luminance(c) > 0.06 && luminance(c) < 0.92);
+  const usable = colorful.length ? colorful : distinct.filter((c) => luminance(c) > 0.04 && luminance(c) < 0.96);
+
+  return {
+    primary: usable[0] ? toHex(usable[0]) : undefined,
+    secondary: usable[1] ? toHex(usable[1]) : undefined,
+    accent: usable[2] ? toHex(usable[2]) : undefined,
+  };
+}
+
+// ── Font extraction ──────────────────────────────────────────────────────────
+
+const GENERIC_FONTS = new Set([
+  "sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui",
+  "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded", "inherit",
+  "initial", "unset", "-apple-system", "blinkmacsystemfont", "segoe ui",
+  "segoe ui emoji", "segoe ui symbol", "noto color emoji", "apple color emoji",
+  "arial", "helvetica", "helvetica neue", "times new roman", "emoji",
+]);
+
+/** Font families: Google Fonts URLs first (highest confidence), then declared font-family stacks. */
+export function extractFonts(html: string, css: string): string[] {
+  const found: string[] = [];
+  const push = (name: string) => {
+    const clean = name.replace(/["']/g, "").replace(/\+/g, " ").trim();
+    if (!clean || clean.startsWith("var(") || GENERIC_FONTS.has(clean.toLowerCase())) return;
+    if (!found.some((f) => f.toLowerCase() === clean.toLowerCase())) found.push(clean);
+  };
+
+  const gfRe = /fonts\.googleapis\.com\/css2?\?([^"'\s>]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = gfRe.exec(html))) {
+    for (const param of m[1].split("&")) {
+      if (param.startsWith("family=")) {
+        push(decodeURIComponent(param.slice(7).split(":")[0]));
+      }
+    }
+  }
+
+  const famRe = /font-family\s*:\s*([^;}{"]+)/gi;
+  const source = `${html}\n${css}`;
+  while ((m = famRe.exec(source))) {
+    push(m[1].split(",")[0] ?? "");
+    if (found.length >= 6) break;
+  }
+
+  return found.slice(0, 3);
+}
+
+// ── Text distillation + Gemini profile ───────────────────────────────────────
+
 // Strip scripts/styles/tags → collapsed visible text, plus <title> and the
 // meta description (dense signal for what the site is about).
 function htmlToText(html: string): string {
@@ -71,52 +365,55 @@ function htmlToText(html: string): string {
 }
 
 const SYSTEM = `You are a brand analyst. Given the text content of a company's website, infer its brand profile.
-Return ONLY a JSON object with exactly these string keys: "companyName", "industry", "audience", "tone".
-- companyName: the brand/company name.
-- industry: a short phrase (e.g. "B2B SaaS", "DTC skincare", "3PL logistics").
-- audience: who they sell to, in one concise sentence.
-- tone: their brand voice in 3-6 words (e.g. "Confident, plain-spoken, no hype").
-If a field is genuinely unknowable from the text, use an empty string. Do not invent facts.
+Return ONLY a JSON object with exactly these keys:
+- "companyName": string — the brand/company name.
+- "industry": string — a short phrase (e.g. "B2B SaaS", "DTC skincare", "3PL logistics").
+- "audience": string — who they sell to, in one concise sentence.
+- "tone": string — their brand voice in 3-6 words (e.g. "Confident, plain-spoken, no hype").
+- "hashtags": array of 5-8 lowercase hashtag words WITHOUT the # (e.g. ["supplychain","manufacturing"]), relevant to their industry and audience.
+- "sampleCaptions": array of exactly 2 short social captions (max 140 chars each) written in the brand's voice about what they do.
+If a field is genuinely unknowable from the text, use an empty string or empty array. Do not invent facts.
 No markdown, no commentary — JSON only.`;
 
-function parseBrandJson(text: string): BrandFields {
+type GeminiProfile = Pick<BrandExtract, "companyName" | "industry" | "audience" | "tone" | "hashtags" | "sampleCaptions">;
+
+export function parseBrandJson(text: string): GeminiProfile {
   const cleaned = text
     .trim()
     .replace(/^```(?:json)?/i, "")
     .replace(/```$/i, "")
     .trim();
-  const parsed = JSON.parse(cleaned) as Partial<BrandFields>;
+  const parsed = JSON.parse(cleaned) as Partial<Record<keyof GeminiProfile, unknown>>;
   const str = (v: unknown, max: number) => (v == null ? "" : String(v)).slice(0, max);
   return {
     companyName: str(parsed.companyName, 120),
     industry: str(parsed.industry, 120),
     audience: str(parsed.audience, 300),
     tone: str(parsed.tone, 200),
+    hashtags: Array.isArray(parsed.hashtags)
+      ? parsed.hashtags.slice(0, 8).map((x) => str(x, 40).replace(/^#/, "")).filter(Boolean)
+      : [],
+    sampleCaptions: Array.isArray(parsed.sampleCaptions)
+      ? parsed.sampleCaptions.slice(0, 2).map((x) => str(x, 200)).filter(Boolean)
+      : [],
   };
 }
 
 export const extractBrandFromWebsite = onCall(
   { cors: true, timeoutSeconds: 60, memory: "512MiB" },
-  async (request: CallableRequest<ExtractReq>): Promise<BrandFields> => {
+  async (request: CallableRequest<ExtractReq>): Promise<BrandExtract> => {
     requireAuth(request);
     const url = normalizeUrl(request.data?.url ?? "");
 
     let html: string;
+    let finalUrl: string;
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
-      const res = await fetch(url.toString(), {
-        redirect: "follow",
-        signal: controller.signal,
-        headers: { "User-Agent": "MagicBoxBot/1.0 (+https://magicbox.ai)" },
-      });
-      clearTimeout(timer);
-      if (!res.ok) throw new HttpsError("unavailable", `Could not load the site (${res.status}).`);
-      const ct = res.headers.get("content-type") ?? "";
-      if (ct && !/text\/html|application\/xhtml/i.test(ct)) {
+      const page = await fetchText(url.toString(), 500_000, 10_000);
+      if (page.contentType && !/text\/html|application\/xhtml/i.test(page.contentType)) {
         throw new HttpsError("invalid-argument", "That URL isn't a web page.");
       }
-      html = (await res.text()).slice(0, 500_000);
+      html = page.body;
+      finalUrl = page.finalUrl;
     } catch (err) {
       if (err instanceof HttpsError) throw err;
       throw new HttpsError("unavailable", `Could not reach that site: ${stringifyError(err)}`);
@@ -128,16 +425,51 @@ export const extractBrandFromWebsite = onCall(
       throw new HttpsError("failed-precondition", "That page had too little text to analyze.");
     }
 
-    try {
-      const ai = getAI();
-      const result = await ai.models.generateContent({
-        model: "gemini-2.0-flash-001",
-        contents: text,
-        config: { systemInstruction: SYSTEM },
-      });
-      return parseBrandJson(result.text ?? "");
-    } catch (err) {
-      throw new HttpsError("internal", `Could not analyze the site: ${stringifyError(err)}`);
-    }
+    const logoCandidates = collectLogoCandidates(html, finalUrl);
+    const logoUrl = pickDisplayLogo(logoCandidates);
+    const brandMarkUrl = pickBrandMark(logoCandidates, finalUrl);
+
+    // Visual identity + written profile in parallel: stylesheets (colors and
+    // fonts live there), the brand mark's pixels, and Gemini's read of the
+    // page text. Visual failures are non-fatal.
+    const [css, imageColors, profile] = await Promise.all([
+      (async () => {
+        let out = "";
+        await Promise.all(
+          extractStylesheetUrls(html, finalUrl).map(async (sheetUrl) => {
+            try {
+              const sheet = await fetchText(sheetUrl, 300_000, 5_000);
+              out += `\n${sheet.body}`;
+            } catch {
+              /* stylesheet fetch is best-effort */
+            }
+          })
+        );
+        return out;
+      })(),
+      (async () => {
+        if (!brandMarkUrl) return [] as RGB[];
+        const buf = await fetchBinary(brandMarkUrl, 2_000_000, 6_000);
+        return buf ? colorsFromImageBuffer(buf) : [];
+      })(),
+      (async () => {
+        try {
+          const ai = getAI();
+          const result = await ai.models.generateContent({
+            model: MODELS.text,
+            contents: text,
+            config: { systemInstruction: SYSTEM },
+          });
+          return parseBrandJson(result.text ?? "");
+        } catch (err) {
+          throw new HttpsError("internal", `Could not analyze the site: ${stringifyError(err)}`);
+        }
+      })(),
+    ]);
+
+    const colors = buildPalette(imageColors, colorsFromCss(html, css));
+    const fonts = extractFonts(html, css);
+
+    return { ...profile, logoUrl, colors, fonts };
   }
 );

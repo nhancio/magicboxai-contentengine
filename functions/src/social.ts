@@ -212,17 +212,44 @@ export const disconnectSocialAccount = onCall(
   { cors: true },
   async (request: CallableRequest<{ accountId: string }>) => {
     const uid = requireAuth(request);
-    const id = request.data?.accountId;
+    const id = (request.data?.accountId ?? "").toString().trim();
     if (!id) throw new HttpsError("invalid-argument", "accountId is required");
 
-    const ref = db.collection("socialAccounts").doc(id);
-    const snap = await ref.get();
+    // Prefer direct doc id (deterministic: `{uid}_{provider}_{externalId}`).
+    let ref = db.collection("socialAccounts").doc(id);
+    let snap = await ref.get();
+
+    // Fallback: client may send an older/external id — resolve among this user's rows.
     if (!snap.exists || snap.data()?.userId !== uid) {
-      throw new HttpsError("not-found", "Account not found");
+      const owned = await db
+        .collection("socialAccounts")
+        .where("userId", "==", uid)
+        .get();
+      const match = owned.docs.find(
+        (d) =>
+          d.id === id ||
+          d.data()?.externalId === id ||
+          `${d.data()?.provider}` === id ||
+          `${d.data()?.platform}` === id
+      );
+      if (!match) {
+        console.warn("disconnectSocialAccount: not found", {
+          uid,
+          id,
+          owned: owned.docs.map((d) => d.id),
+        });
+        throw new HttpsError("not-found", "Account not found");
+      }
+      ref = match.ref;
+      snap = match;
     }
-    await db.collection("socialTokens").doc(id).delete().catch(() => {});
+
+    const accountId = snap.id;
+    await db.collection("socialTokens").doc(accountId).delete().catch(() => {});
+    // Soft-mark first so a partial failure still hides the channel in the UI.
+    await ref.set({ status: "disconnected" }, { merge: true }).catch(() => {});
     await ref.delete();
-    return { success: true };
+    return { success: true, accountId };
   }
 );
 

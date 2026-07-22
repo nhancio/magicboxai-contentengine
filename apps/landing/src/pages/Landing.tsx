@@ -1,5 +1,6 @@
 import { Navigation } from "@/components/landing/navigation";
 import { HeroSection } from "@/components/landing/hero-section";
+import { AboutMagicBoxSection } from "@/components/landing/about-magicbox-section";
 import { IntegrationsSection } from "@/components/landing/integrations-section";
 import { HowItWorksSection } from "@/components/landing/how-it-works-section";
 import { FeaturesSection } from "@/components/landing/features-section";
@@ -10,16 +11,16 @@ import { CtaSection } from "@/components/landing/cta-section";
 import { FooterSection } from "@/components/landing/footer-section";
 
 /**
- * Conversion-focused composition:
- * phone hero → supported channels → workflow → feature stories →
- * use cases → pricing → FAQ → CTA.
- * Spotlight/Security removed as redundant with phone-led sections.
+ * Conversion-focused composition + Google OAuth verification homepage content:
+ * hero (purpose + MagicBox name) → about MagicBox (Google data use) →
+ * channels → workflow → features → use cases → pricing → FAQ → CTA.
  */
 export default function Landing() {
   return (
     <main className="relative overflow-x-hidden bg-background text-foreground">
       <Navigation />
       <HeroSection />
+      <AboutMagicBoxSection />
       <IntegrationsSection />
       <HowItWorksSection />
       <FeaturesSection />

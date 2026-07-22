@@ -56,7 +56,10 @@ export function SpotlightSection() {
           </div>
 
           <div className={`hidden lg:flex justify-center transition-all duration-1000 delay-200 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-            <PhoneReels />
+            <PhoneShowcase 
+              platforms={["instagram"]} 
+              mediaConfig={{ instagram: { src: '/videos/Pregnant_woman_taking_over_bed.mp4', handle: '@yourbrand', caption: 'Automated 10x distribution 🚀' } }} 
+            />
           </div>
         </div>
       </div>

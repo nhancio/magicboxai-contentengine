@@ -1,0 +1,23 @@
+{
+  "name": "@magicboxai/renderer",
+  "version": "1.0.0",
+  "description": "Video rendering pipeline using Remotion and FFmpeg",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "remotion preview src/index.ts",
+    "render": "remotion render src/index.ts HelloWorld out/video.mp4"
+  },
+  "dependencies": {
+    "remotion": "^4.0.0",
+    "@remotion/cli": "^4.0.0",
+    "@remotion/bundler": "^4.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0"
+  }
+}

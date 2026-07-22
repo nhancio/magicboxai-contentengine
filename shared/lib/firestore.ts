@@ -82,16 +82,23 @@ export async function deleteAd(id: string) {
 }
 
 // --- Photo Avatars ---
+export type AvatarSourceType = "photos" | "video_upload" | "webcam";
+
 export interface PhotoAvatarRecord {
   id?: string;
   userId: string;
   name: string;
+  // For video-sourced avatars this holds the extracted reference frame, which
+  // downstream Veo generation uses as the identity image.
   photoUrls: string[];
   photoStoragePaths?: string[];
   description: string;
   personality: string;
   voiceTone: string;
   videoUrl?: string;
+  sourceType?: AvatarSourceType;
+  sourceVideoUrl?: string;
+  sourceVideoStoragePath?: string;
   previewStatus?: "pending" | "completed" | "failed";
   previewError?: string;
   status: "processing" | "ready" | "failed";

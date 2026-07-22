@@ -1,72 +1,80 @@
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useAuth } from "@shared/lib/auth";
 import type { BrandProfile } from "@shared/types";
 import {
   getBrandProfiles,
   saveBrandProfile,
-  updateBrandProfile,
   deleteBrandProfile,
 } from "@shared/lib/automations";
+import {
+  extractBrandFromWebsite,
+  type BrandExtractResult,
+} from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
 import { Input } from "@shared/components/ui/input";
-import { Textarea } from "@shared/components/ui/textarea";
-import { Label } from "@shared/components/ui/label";
 import { cn } from "@shared/lib/utils";
-import { Loader2, Palette, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  ExternalLink,
+  Globe2,
+  Loader2,
+  Sparkles,
+  Trash2,
+  Type,
+} from "lucide-react";
 
-type FormState = {
-  name: string;
-  industry: string;
-  toneOfVoice: string;
-  audience: string;
-  websiteUrl: string;
-  bannedTopics: string;
-  hashtags: string;
-  primaryColor: string;
-};
+type Phase = "idle" | "scanning" | "ready" | "saving";
 
-const EMPTY: FormState = {
-  name: "",
-  industry: "",
-  toneOfVoice: "",
-  audience: "",
-  websiteUrl: "",
-  bannedTopics: "",
-  hashtags: "",
-  primaryColor: "#7c3aed",
-};
+const SCAN_STEPS = [
+  "Fetching your site",
+  "Finding logo & icons",
+  "Sampling brand colors",
+  "Reading voice & audience",
+];
 
-function toForm(brand: BrandProfile): FormState {
-  return {
-    name: brand.name,
-    industry: brand.industry,
-    toneOfVoice: brand.toneOfVoice,
-    audience: brand.audience,
-    websiteUrl: brand.websiteUrl ?? "",
-    bannedTopics: (brand.bannedTopics ?? []).join(", "),
-    hashtags: (brand.hashtagSets?.default ?? []).join(" "),
-    primaryColor: brand.colors?.primary ?? "#7c3aed",
-  };
+function normalizeInputUrl(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "";
+  return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+}
+
+function Swatch({ hex, label }: { hex?: string; label: string }) {
+  if (!hex) return null;
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <div
+        className="h-14 w-14 rounded-xl border border-border shadow-inner"
+        style={{ background: hex }}
+        title={hex}
+      />
+      <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <span className="font-mono text-[11px] text-foreground/80">{hex}</span>
+    </div>
+  );
 }
 
 export default function BrandKit() {
   const { user } = useAuth();
   const [brands, setBrands] = useState<BrandProfile[]>([]);
-  const [selectedId, setSelectedId] = useState<string | "new">("new");
-  const [form, setForm] = useState<FormState>(EMPTY);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [url, setUrl] = useState("");
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [scanStep, setScanStep] = useState(0);
+  const [extracted, setExtracted] = useState<BrandExtractResult | null>(null);
+  const [extractedUrl, setExtractedUrl] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const refresh = async () => {
     if (!user) return;
     const list = await getBrandProfiles(user.uid);
     setBrands(list);
     setLoading(false);
-    if (list.length && selectedId === "new") {
-      setSelectedId(list[0].id);
-      setForm(toForm(list[0]));
-    }
+    if (!selectedId && list[0]) setSelectedId(list[0].id);
   };
 
   useEffect(() => {
@@ -74,212 +82,449 @@ export default function BrandKit() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const select = (id: string | "new") => {
-    setSelectedId(id);
-    if (id === "new") {
-      setForm(EMPTY);
-    } else {
-      const brand = brands.find((b) => b.id === id);
-      if (brand) setForm(toForm(brand));
+  useEffect(() => {
+    if (phase !== "scanning") return;
+    setScanStep(0);
+    const id = window.setInterval(() => {
+      setScanStep((s) => (s < SCAN_STEPS.length - 1 ? s + 1 : s));
+    }, 1400);
+    return () => window.clearInterval(id);
+  }, [phase]);
+
+  const selected = brands.find((b) => b.id === selectedId) ?? null;
+
+  const handleScan = async () => {
+    const normalized = normalizeInputUrl(url);
+    if (!normalized) {
+      toast.error("Enter a website URL first.");
+      return;
+    }
+    setPhase("scanning");
+    setExtracted(null);
+    try {
+      const result = await extractBrandFromWebsite({ url: normalized });
+      if (!result.companyName && !result.logoUrl && !result.colors?.primary) {
+        toast.error("Couldn't pull much from that page — try the homepage URL.");
+        setPhase("idle");
+        return;
+      }
+      setExtracted(result);
+      setExtractedUrl(normalized);
+      setPhase("ready");
+      toast.success("Brand kit fetched — review and save.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn't read that site.");
+      setPhase("idle");
     }
   };
-
-  const set = (key: keyof FormState) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const handleSave = async () => {
-    if (!user || !form.name.trim()) return;
-    setSaving(true);
+    if (!user || !extracted) return;
+    setPhase("saving");
     try {
-      const payload = {
-        name: form.name.trim(),
-        industry: form.industry.trim(),
-        toneOfVoice: form.toneOfVoice.trim(),
-        audience: form.audience.trim(),
-        websiteUrl: form.websiteUrl.trim() || undefined,
-        bannedTopics: form.bannedTopics
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
-        hashtagSets: {
-          default: form.hashtags
-            .split(/[\s,]+/)
-            .map((s) => s.replace(/^#/, "").trim())
-            .filter(Boolean),
+      const id = await saveBrandProfile({
+        userId: user.uid,
+        name: extracted.companyName || new URL(extractedUrl).hostname,
+        industry: extracted.industry || "",
+        toneOfVoice: extracted.tone || "",
+        audience: extracted.audience || "",
+        websiteUrl: extractedUrl,
+        logoUrl: extracted.logoUrl || undefined,
+        colors: {
+          primary: extracted.colors.primary || "#111111",
+          secondary: extracted.colors.secondary,
+          accent: extracted.colors.accent,
         },
-        colors: { primary: form.primaryColor },
-      };
-      if (selectedId === "new") {
-        const id = await saveBrandProfile({ userId: user.uid, ...payload });
-        setSelectedId(id);
-        toast.success("Brand kit created");
-      } else {
-        await updateBrandProfile(selectedId, payload);
-        toast.success("Brand kit saved");
-      }
+        hashtagSets: {
+          default: (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean),
+        },
+        sampleCaptions: extracted.sampleCaptions?.length
+          ? extracted.sampleCaptions
+          : undefined,
+      });
+      setSelectedId(id);
+      setExtracted(null);
+      setUrl("");
+      setPhase("idle");
       await refresh();
+      toast.success("Brand kit saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save brand kit");
-    } finally {
-      setSaving(false);
+      setPhase("ready");
     }
   };
 
-  const handleDelete = async () => {
-    if (selectedId === "new") return;
-    if (!confirm("Delete this brand kit? Automations using it fall back to a neutral voice.")) return;
-    await deleteBrandProfile(selectedId);
-    setSelectedId("new");
-    setForm(EMPTY);
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this brand kit? Automations using it fall back to a neutral voice.")) {
+      return;
+    }
+    await deleteBrandProfile(id);
+    if (selectedId === id) setSelectedId(null);
     await refresh();
     toast.success("Brand kit deleted");
   };
 
+  const busy = phase === "scanning" || phase === "saving";
+
   return (
-    <div className="mx-auto max-w-4xl">
-      <div className="mb-6">
+    <div className="mx-auto max-w-5xl">
+      <header className="mb-8">
         <span className="eyebrow">Brand Kit</span>
-        <h1 className="mt-2 font-display text-3xl">Brand kit</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Everything the engine needs to sound and look unmistakably like you.
+        <h1 className="mt-2 font-display text-3xl tracking-tight">Fetch your brand</h1>
+        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+          Paste a website URL. MagicBox fetches the logo, palette, fonts, and voice — then saves a
+          kit Maya and Studio can use.
         </p>
-      </div>
+      </header>
 
-      <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-        <div className="space-y-2">
-          {loading ? (
-            <div className="glass-card h-12 animate-pulse" />
-          ) : (
-            <>
-              {brands.map((brand) => (
-                <button
-                  key={brand.id}
-                  onClick={() => select(brand.id)}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg border px-3.5 py-3 text-left text-sm transition-colors",
-                    selectedId === brand.id
-                      ? "border-brand/40 bg-brand/10 text-brand"
-                      : "border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground"
-                  )}
-                >
-                  <span
-                    className="h-3 w-3 shrink-0 rounded-full"
-                    style={{ background: brand.colors?.primary ?? "#7c3aed" }}
-                  />
-                  <span className="truncate">{brand.name}</span>
-                </button>
-              ))}
-              <button
-                onClick={() => select("new")}
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-lg border border-dashed px-3.5 py-3 text-left text-sm transition-colors",
-                  selectedId === "new"
-                    ? "border-brand/40 text-brand"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Plus className="h-4 w-4" /> New brand
-              </button>
-            </>
-          )}
-        </div>
-
-        <div className="glass-card space-y-4 p-6">
-          <div className="flex items-center gap-2">
-            <Palette className="h-5 w-5 text-brand" />
-            <h2 className="font-display text-xl">
-              {selectedId === "new" ? "New brand" : "Edit brand"}
-            </h2>
+      {/* URL scanner */}
+      <div className="relative mb-8 overflow-hidden rounded-2xl border border-border bg-card">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.35]"
+          style={{
+            backgroundImage:
+              "radial-gradient(ellipse at 20% 0%, color-mix(in oklab, var(--brand) 28%, transparent), transparent 55%), radial-gradient(ellipse at 90% 100%, color-mix(in oklab, var(--brand) 12%, transparent), transparent 40%)",
+          }}
+        />
+        <div className="relative space-y-4 p-6 sm:p-8">
+          <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-[0.18em] text-muted-foreground">
+            <Globe2 className="h-3.5 w-3.5 text-brand" />
+            Website → brand kit
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Company name</Label>
-              <Input value={form.name} onChange={set("name")} placeholder="Acme Analytics" className="bg-secondary border-border" />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+            <div className="relative flex-1">
+              <Globe2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !busy) void handleScan();
+                }}
+                placeholder="yourbrand.com"
+                disabled={busy}
+                className="h-12 border-border bg-background/80 pl-10 font-mono text-sm"
+              />
             </div>
-            <div className="space-y-2">
-              <Label>Industry</Label>
-              <Input value={form.industry} onChange={set("industry")} placeholder="B2B SaaS" className="bg-secondary border-border" />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Audience</Label>
-            <Input
-              value={form.audience}
-              onChange={set("audience")}
-              placeholder="Operations leaders at mid-market manufacturers"
-              className="bg-secondary border-border"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Tone of voice</Label>
-            <Textarea
-              value={form.toneOfVoice}
-              onChange={set("toneOfVoice")}
-              rows={3}
-              placeholder="Confident and human. Plain language over jargon. Specific numbers over vague claims."
-              className="bg-secondary border-border"
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Website</Label>
-              <Input value={form.websiteUrl} onChange={set("websiteUrl")} placeholder="https://acme.example" className="bg-secondary border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label>Brand color</Label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={form.primaryColor}
-                  onChange={set("primaryColor")}
-                  className="h-10 w-12 cursor-pointer rounded-md border border-border bg-transparent"
-                />
-                <Input value={form.primaryColor} onChange={set("primaryColor")} className="bg-secondary border-border" />
-              </div>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Preferred hashtags</Label>
-            <Input
-              value={form.hashtags}
-              onChange={set("hashtags")}
-              placeholder="#supplychain #manufacturing #operations"
-              className="bg-secondary border-border"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Never mention (comma-separated)</Label>
-            <Input
-              value={form.bannedTopics}
-              onChange={set("bannedTopics")}
-              placeholder="competitor names, politics, pricing details"
-              className="bg-secondary border-border"
-            />
-          </div>
-          <div className="flex items-center justify-between pt-2">
-            {selectedId !== "new" ? (
-              <Button
-                variant="ghost"
-                onClick={handleDelete}
-                className="text-muted-foreground hover:text-red-600"
-              >
-                <Trash2 className="mr-1.5 h-4 w-4" /> Delete
-              </Button>
-            ) : (
-              <span />
-            )}
             <Button
-              onClick={handleSave}
-              disabled={saving || !form.name.trim()}
-              className="bg-violet-600 hover:bg-violet-500"
+              size="lg"
+              className="h-12 shrink-0 gap-2 px-6"
+              onClick={handleScan}
+              disabled={busy || !url.trim()}
             >
-              {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              {selectedId === "new" ? "Create brand kit" : "Save changes"}
+              {phase === "scanning" ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Fetching…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" /> Fetch brand
+                </>
+              )}
             </Button>
           </div>
+
+          <AnimatePresence mode="wait">
+            {phase === "scanning" && (
+              <motion.div
+                key="scan"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="rounded-xl border border-border/80 bg-background/70 px-4 py-3"
+              >
+                <ul className="space-y-2">
+                  {SCAN_STEPS.map((label, i) => {
+                    const done = i < scanStep;
+                    const active = i === scanStep;
+                    return (
+                      <li key={label} className="flex items-center gap-2.5 text-sm">
+                        {done ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : active ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
+                        ) : (
+                          <span className="h-3.5 w-3.5 rounded-full border border-border" />
+                        )}
+                        <span
+                          className={cn(
+                            active ? "text-foreground" : done ? "text-muted-foreground" : "text-muted-foreground/50",
+                          )}
+                        >
+                          {label}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
+
+      {/* Extraction preview */}
+      <AnimatePresence>
+        {extracted && phase !== "idle" && (
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mb-8 overflow-hidden rounded-2xl border border-border bg-card"
+          >
+            <div className="flex flex-col gap-6 border-b border-border p-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-border bg-secondary">
+                  {extracted.logoUrl ? (
+                    <img
+                      src={extracted.logoUrl}
+                      alt=""
+                      className="h-full w-full object-contain p-1.5"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <Sparkles className="h-6 w-6 text-muted-foreground" />
+                  )}
+                </div>
+                <div>
+                  <h2 className="font-display text-2xl leading-tight">
+                    {extracted.companyName || "Untitled brand"}
+                  </h2>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {extracted.industry || "Industry detected from site"}
+                  </p>
+                  <a
+                    href={extractedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 font-mono text-[11px] text-brand hover:underline"
+                  >
+                    {extractedUrl.replace(/^https?:\/\//, "")}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => { setExtracted(null); setPhase("idle"); }}>
+                  Discard
+                </Button>
+                <Button onClick={handleSave} disabled={phase === "saving"} className="gap-2">
+                  {phase === "saving" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ArrowRight className="h-4 w-4" />
+                  )}
+                  Save brand kit
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-6 p-6 lg:grid-cols-[1fr_1.2fr]">
+              <div>
+                <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Palette
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  <Swatch hex={extracted.colors.primary} label="Primary" />
+                  <Swatch hex={extracted.colors.secondary} label="Secondary" />
+                  <Swatch hex={extracted.colors.accent} label="Accent" />
+                  {!extracted.colors.primary && (
+                    <p className="text-sm text-muted-foreground">No strong palette found.</p>
+                  )}
+                </div>
+                {extracted.fonts?.length > 0 && (
+                  <div className="mt-6">
+                    <p className="mb-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                      <Type className="h-3 w-3" /> Fonts
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {extracted.fonts.slice(0, 4).map((f) => (
+                        <span
+                          key={f}
+                          className="rounded-full border border-border bg-secondary px-3 py-1 text-xs text-foreground/80"
+                        >
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    Audience
+                  </p>
+                  <p className="text-sm leading-relaxed text-foreground/90">
+                    {extracted.audience || "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    Tone of voice
+                  </p>
+                  <p className="text-sm leading-relaxed text-foreground/90">
+                    {extracted.tone || "—"}
+                  </p>
+                </div>
+                {extracted.hashtags?.length > 0 && (
+                  <div>
+                    <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                      Hashtags
+                    </p>
+                    <p className="font-mono text-xs text-brand">
+                      {extracted.hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ")}
+                    </p>
+                  </div>
+                )}
+                {extracted.sampleCaptions?.length > 0 && (
+                  <div>
+                    <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                      Sample captions
+                    </p>
+                    <ul className="space-y-2">
+                      {extracted.sampleCaptions.map((c) => (
+                        <li
+                          key={c}
+                          className="rounded-lg border border-border bg-secondary/60 px-3 py-2 text-sm italic text-muted-foreground"
+                        >
+                          “{c}”
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* Saved kits */}
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-display text-xl">Saved kits</h2>
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {loading ? "…" : `${brands.length} saved`}
+          </span>
+        </div>
+
+        {loading ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {[0, 1].map((i) => (
+              <div key={i} className="h-28 animate-pulse rounded-xl bg-secondary" />
+            ))}
+          </div>
+        ) : brands.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border px-6 py-12 text-center">
+            <Sparkles className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
+            <p className="font-display text-lg">No kits yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Fetch one from a website above — no manual fields required.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {brands.map((brand) => {
+              const active = selectedId === brand.id;
+              return (
+                <button
+                  key={brand.id}
+                  type="button"
+                  onClick={() => setSelectedId(brand.id)}
+                  className={cn(
+                    "group relative rounded-2xl border p-4 text-left transition-colors",
+                    active
+                      ? "border-brand/40 bg-brand/5"
+                      : "border-border bg-card hover:bg-accent/40",
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-secondary">
+                      {brand.logoUrl ? (
+                        <img
+                          src={brand.logoUrl}
+                          alt=""
+                          className="h-full w-full object-contain p-1"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <span
+                          className="h-5 w-5 rounded-full"
+                          style={{ background: brand.colors?.primary ?? "#888" }}
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-foreground">{brand.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {brand.industry || brand.websiteUrl || "Brand kit"}
+                      </p>
+                      <div className="mt-2 flex gap-1.5">
+                        {[brand.colors?.primary, brand.colors?.secondary, brand.colors?.accent]
+                          .filter(Boolean)
+                          .map((hex) => (
+                            <span
+                              key={hex}
+                              className="h-3 w-3 rounded-full border border-border"
+                              style={{ background: hex }}
+                            />
+                          ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`Delete ${brand.name}`}
+                      className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-secondary hover:text-red-600 group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDelete(brand.id);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {selected && (
+          <div className="mt-4 rounded-2xl border border-border bg-card p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="font-display text-lg">{selected.name}</h3>
+              {selected.websiteUrl && (
+                <a
+                  href={selected.websiteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-[11px] text-brand hover:underline"
+                >
+                  {selected.websiteUrl.replace(/^https?:\/\//, "")}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-foreground/50">
+                  Audience
+                </span>
+                <br />
+                {selected.audience || "—"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-foreground/50">
+                  Tone
+                </span>
+                <br />
+                {selected.toneOfVoice || "—"}
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

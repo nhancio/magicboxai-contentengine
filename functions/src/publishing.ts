@@ -9,7 +9,7 @@ import type { PostDoc, SocialTokenDoc, SocialPlatform, SocialProvider } from "./
 import { activePaidPostEntitlement } from "./entitlements";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
-const LINKEDIN_VERSION = "202401";
+const LINKEDIN_VERSION = "202601";
 const ACTUAL_PLATFORMS = ["instagram", "linkedin", "youtube"] as const;
 
 function isActualPlatform(value: unknown): value is (typeof ACTUAL_PLATFORMS)[number] {

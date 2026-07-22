@@ -2,7 +2,7 @@
  * Reusable phone-frame primitives for Ferryman-style storytelling.
  * Placeholder media slots accept a future video `src` without layout changes.
  */
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import {
   Bookmark,
   Heart,
@@ -120,17 +120,65 @@ function MediaBackdrop({
   media?: PhoneMedia;
   posterClassName: string;
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !media?.src) return;
+
+    el.muted = true;
+    el.defaultMuted = true;
+    el.setAttribute("muted", "");
+    el.setAttribute("playsinline", "");
+    el.setAttribute("webkit-playsinline", "");
+
+    const tryPlay = () => {
+      void el.play().catch(() => {
+        /* iOS may block until visible; retry on intersection */
+      });
+    };
+
+    tryPlay();
+    el.addEventListener("loadeddata", tryPlay);
+    el.addEventListener("canplay", tryPlay);
+
+    const io =
+      typeof IntersectionObserver !== "undefined"
+        ? new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) tryPlay();
+                else el.pause();
+              }
+            },
+            { threshold: 0.25 },
+          )
+        : null;
+    io?.observe(el);
+
+    return () => {
+      el.removeEventListener("loadeddata", tryPlay);
+      el.removeEventListener("canplay", tryPlay);
+      io?.disconnect();
+    };
+  }, [media?.src]);
+
   if (media?.src) {
     return (
-      <video
-        className="absolute inset-0 h-full w-full object-cover"
-        src={media.src}
-        muted
-        loop
-        playsInline
-        autoPlay
-        preload="metadata"
-      />
+      <>
+        {/* Gradient under video so failed/loading frames never look blank black */}
+        <div className={`absolute inset-0 bg-gradient-to-br ${posterClassName}`} />
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full object-cover"
+          src={media.src}
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="auto"
+        />
+      </>
     );
   }
 
@@ -238,8 +286,8 @@ export function LinkedInScreen({ media, status }: ScreenProps) {
       <p className="px-3.5 pb-3 text-[11px] leading-relaxed text-white/90">{m.caption}</p>
 
       <div className="relative mx-3.5 mb-3 flex-1 overflow-hidden rounded-lg">
-        <div className={`absolute inset-0 bg-gradient-to-br ${m.posterClassName}`} />
-        <div className="absolute inset-0 flex items-end p-3">
+        <MediaBackdrop media={m} posterClassName={m.posterClassName!} />
+        <div className="absolute inset-0 flex items-end p-3 pointer-events-none">
           <span className="rounded-full bg-black/40 px-2 py-0.5 text-[9px] backdrop-blur-sm">
             Brand kit applied
           </span>
@@ -335,6 +383,7 @@ export function PlatformBadge({
 type PhoneShowcaseProps = {
   platforms?: PlatformKey[];
   statuses?: Partial<Record<PlatformKey, PublishStatus>>;
+  mediaConfig?: Partial<Record<PlatformKey, Partial<PhoneMedia>>>;
   className?: string;
   /** Primary phone index — larger / centered on mobile */
   primary?: number;
@@ -359,6 +408,7 @@ const GLOW: Record<PlatformKey, NonNullable<PhoneFrameProps["glow"]>> = {
 export function PhoneShowcase({
   platforms = ["instagram", "linkedin", "youtube"],
   statuses = { instagram: "live", linkedin: "scheduled", youtube: "draft" },
+  mediaConfig = {},
   className = "",
   primary = 0,
 }: PhoneShowcaseProps) {
@@ -399,7 +449,7 @@ export function PhoneShowcase({
               glow={GLOW[platform]}
               float={isPrimary}
             >
-              <Screen status={statuses[platform]} />
+              <Screen status={statuses[platform]} media={mediaConfig[platform]} />
             </PhoneFrame>
             <div className="mt-3 flex justify-center">
               <PlatformBadge platform={platform} />
@@ -440,7 +490,14 @@ export function FeaturePhone({
 export function PhoneReels() {
   return (
     <PhoneFrame size="lg" glow="instagram" float>
-      <InstagramScreen status="live" />
+      <InstagramScreen 
+        status="live" 
+        media={{ 
+          src: '/videos/Pregnant_woman_taking_over_bed.mp4',
+          handle: '@nithindidigam',
+          caption: 'Automated 10x distribution 🚀',
+        }} 
+      />
     </PhoneFrame>
   );
 }

@@ -176,19 +176,44 @@ exports.getSocialConnectUrl = (0, https_1.onCall)({ cors: true, secrets: [export
     return { url };
 });
 exports.disconnectSocialAccount = (0, https_1.onCall)({ cors: true }, async (request) => {
-    var _a, _b;
+    var _a, _b, _c;
     const uid = (0, core_1.requireAuth)(request);
-    const id = (_a = request.data) === null || _a === void 0 ? void 0 : _a.accountId;
+    const id = ((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.accountId) !== null && _b !== void 0 ? _b : "").toString().trim();
     if (!id)
         throw new https_1.HttpsError("invalid-argument", "accountId is required");
-    const ref = core_1.db.collection("socialAccounts").doc(id);
-    const snap = await ref.get();
-    if (!snap.exists || ((_b = snap.data()) === null || _b === void 0 ? void 0 : _b.userId) !== uid) {
-        throw new https_1.HttpsError("not-found", "Account not found");
+    // Prefer direct doc id (deterministic: `{uid}_{provider}_{externalId}`).
+    let ref = core_1.db.collection("socialAccounts").doc(id);
+    let snap = await ref.get();
+    // Fallback: client may send an older/external id — resolve among this user's rows.
+    if (!snap.exists || ((_c = snap.data()) === null || _c === void 0 ? void 0 : _c.userId) !== uid) {
+        const owned = await core_1.db
+            .collection("socialAccounts")
+            .where("userId", "==", uid)
+            .get();
+        const match = owned.docs.find((d) => {
+            var _a, _b, _c;
+            return d.id === id ||
+                ((_a = d.data()) === null || _a === void 0 ? void 0 : _a.externalId) === id ||
+                `${(_b = d.data()) === null || _b === void 0 ? void 0 : _b.provider}` === id ||
+                `${(_c = d.data()) === null || _c === void 0 ? void 0 : _c.platform}` === id;
+        });
+        if (!match) {
+            console.warn("disconnectSocialAccount: not found", {
+                uid,
+                id,
+                owned: owned.docs.map((d) => d.id),
+            });
+            throw new https_1.HttpsError("not-found", "Account not found");
+        }
+        ref = match.ref;
+        snap = match;
     }
-    await core_1.db.collection("socialTokens").doc(id).delete().catch(() => { });
+    const accountId = snap.id;
+    await core_1.db.collection("socialTokens").doc(accountId).delete().catch(() => { });
+    // Soft-mark first so a partial failure still hides the channel in the UI.
+    await ref.set({ status: "disconnected" }, { merge: true }).catch(() => { });
     await ref.delete();
-    return { success: true };
+    return { success: true, accountId };
 });
 // --- provider token exchange + profile ---
 async function graphJson(url) {

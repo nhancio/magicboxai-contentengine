@@ -10,7 +10,7 @@ export default defineConfig({
       "@shared": path.resolve(__dirname, "../../shared"),
     },
   },
-  server: { port: 5173, host: true },
+  server: { port: 8173, host: true, strictPort: true },
   build: {
     sourcemap: true,
     rollupOptions: {

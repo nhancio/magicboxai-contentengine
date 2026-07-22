@@ -8,9 +8,16 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@shared": path.resolve(__dirname, "../../shared"),
+      // Generated Convex API (types + function refs) from packages/backend.
+      "@convex": path.resolve(__dirname, "../../packages/backend/convex"),
+      // Use the eval-free lottie build. The full lottie-web build uses direct
+      // eval() for After-Effects expressions (build warning + CSP/minify risk);
+      // the light build renders normal animations fine and drops only
+      // expressions, which our loaders don't use.
+      "lottie-web": "lottie-web/build/player/lottie_light",
     },
   },
-  server: { port: 5174, host: true },
+  server: { port: 8174, host: true, strictPort: true },
   build: {
     // Split heavy vendors into their own cacheable chunks so the entry stays
     // small and route-only libs (charts/remotion/lottie) load on demand.

@@ -1,15 +1,15 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
+import { APP_URL } from "@/lib/config";
 
 const navLinks = [
+  { name: "About", href: "#about-magicbox" },
   { name: "Supported", href: "#supported" },
   { name: "How it works", href: "#how-it-works" },
   { name: "Features", href: "#features" },
   { name: "Pricing", href: "#pricing" },
 ];
-
-const APP_URL = "https://app.magicboxai.in";
 
 export function Navigation() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -74,22 +74,14 @@ export function Navigation() {
 
           <div className="hidden md:flex items-center gap-4">
             {signedIn ? (
-              <>
-                <a
-                  href={`${APP_URL}/pricing`}
-                  className={`text-foreground/70 hover:text-foreground transition-all duration-500 ${isScrolled ? "text-xs" : "text-sm"}`}
-                >
-                  Payment plan
-                </a>
-                <Button
-                  asChild
-                  size="sm"
-                  variant="brand"
-                  className={`rounded-full transition-all duration-500 ${isScrolled ? "px-4 h-8 text-xs" : "px-6 h-9"}`}
-                >
-                  <a href={`${APP_URL}/`}>Go to dashboard</a>
-                </Button>
-              </>
+              <Button
+                asChild
+                size="sm"
+                variant="brand"
+                className={`rounded-full transition-all duration-500 ${isScrolled ? "px-4 h-8 text-xs" : "px-6 h-9"}`}
+              >
+                <a href={`${APP_URL}/`}>Go to dashboard</a>
+              </Button>
             ) : (
               <>
                 <a
@@ -150,14 +142,9 @@ export function Navigation() {
             style={{ transitionDelay: isMobileMenuOpen ? "300ms" : "0ms" }}
           >
             {signedIn ? (
-              <>
-                <Button asChild variant="outline" className="flex-1 rounded-full h-14 text-base">
-                  <a href={`${APP_URL}/pricing`}>Payment plan</a>
-                </Button>
-                <Button asChild variant="brand" className="flex-1 rounded-full h-14 text-base">
-                  <a href={`${APP_URL}/`}>Go to dashboard</a>
-                </Button>
-              </>
+              <Button asChild variant="brand" className="flex-1 rounded-full h-14 text-base">
+                <a href={`${APP_URL}/`}>Go to dashboard</a>
+              </Button>
             ) : (
               <>
                 <Button asChild variant="outline" className="flex-1 rounded-full h-14 text-base">

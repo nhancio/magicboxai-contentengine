@@ -108,9 +108,9 @@ export function IntegrationsSection() {
           }`}
         >
           <div className="relative flex w-full flex-wrap items-end justify-between gap-8 lg:gap-16">
-            <FeaturePhone platform="instagram" status="live" size="lg" className="mx-auto md:mx-0" />
-            <FeaturePhone platform="linkedin" status="scheduled" size="lg" className="mx-auto hidden md:flex md:mx-0" />
-            <FeaturePhone platform="youtube" status="draft" size="lg" className="mx-auto hidden lg:flex lg:mx-0" />
+            <FeaturePhone platform="instagram" status="live" size="lg" media={{ src: "/videos/Animated_characters_inside_ear_canal.mp4", handle: "@marketing", caption: "Ear canal visualization!" }} className="mx-auto md:mx-0" />
+            <FeaturePhone platform="linkedin" status="scheduled" size="lg" media={{ src: "/videos/Pregnant_woman_taking_over_bed.mp4", handle: "Brand Story" }} className="mx-auto hidden md:flex md:mx-0" />
+            <FeaturePhone platform="youtube" status="draft" size="lg" media={{ src: "/videos/sample2.mp4", handle: "Our Channel" }} className="mx-auto hidden lg:flex lg:mx-0" />
           </div>
         </div>
 

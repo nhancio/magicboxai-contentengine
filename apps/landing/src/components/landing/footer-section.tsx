@@ -1,6 +1,6 @@
 import { AnimatedWave } from "./animated-wave";
 
-const APP_URL = "https://app.magicboxai.in";
+import { APP_URL } from "@/lib/config";
 
 const footerLinks = {
   Product: [
@@ -41,8 +41,23 @@ export function FooterSection() {
                 <span className="text-2xl font-display">MagicBox</span>
               </a>
               <p className="text-muted-foreground leading-relaxed mb-8 max-w-xs">
-                On-brand copy and images, with reviewable scheduling for Instagram, LinkedIn, and YouTube.
+                MagicBox is AI marketing automation software for creating, approving,
+                scheduling, and publishing social posts to Instagram, LinkedIn, and YouTube.
               </p>
+              <div className="mb-6 flex flex-wrap gap-4 text-sm">
+                <a
+                  href="/privacy.html"
+                  className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/80"
+                >
+                  Privacy Policy
+                </a>
+                <a
+                  href="/terms.html"
+                  className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/80"
+                >
+                  Terms of Service
+                </a>
+              </div>
               <a href="mailto:support@magicboxai.in" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
                 support@magicboxai.in
               </a>

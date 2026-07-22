@@ -14,9 +14,9 @@ Become the #1 AI-powered UGC video creation platform for creators, brands, and a
 - [x] Landing page with viral-focused copy
 - [x] Google OAuth authentication
 - [x] Basic dashboard with video history
-- [ ] Video rendering pipeline (remotion/FFmpeg)
-- [ ] Firebase Cloud Functions for Gemini API proxy
-- [ ] Video export (720p/1080p)
+- [x] Video rendering pipeline (remotion/FFmpeg)
+- [x] Firebase Cloud Functions for Gemini API proxy (Ported to Convex)
+- [x] Video export (720p/1080p)
 
 ## Phase 2: Growth & Polish (Month 3-4)
 - [ ] **More Avatars**: Expand to 25+ pre-built avatars

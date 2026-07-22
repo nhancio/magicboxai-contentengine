@@ -1,9 +1,12 @@
-import { useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { useMutation, useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/components/ui/avatar";
 import { Button } from "@shared/components/ui/button";
 import { cn } from "@shared/lib/utils";
+import { api } from "@convex/_generated/api";
+import { isConvexConfigured } from "@/lib/convex";
 import { LEGACY_TOOLS_ENABLED } from "@/lib/flags";
 import {
   BarChart3,
@@ -12,13 +15,14 @@ import {
   CreditCard,
   Film,
   FolderOpen,
+  Layers,
   LayoutDashboard,
   LogOut,
-  Megaphone,
   Menu,
   Palette,
   PenTool,
   Settings,
+  Sparkles,
   User,
   Video,
   X,
@@ -29,11 +33,20 @@ const NAV_SECTIONS = [
     heading: null,
     items: [
       { label: "Dashboard", path: "/", icon: LayoutDashboard },
+      { label: "Maya", path: "/maya", icon: Sparkles },
       { label: "Automations", path: "/automations", icon: Bot },
       { label: "Calendar", path: "/calendar", icon: CalendarDays },
       { label: "Posts", path: "/posts", icon: FolderOpen },
       { label: "Brand Kit", path: "/brand", icon: Palette },
       { label: "Analytics", path: "/analytics", icon: BarChart3 },
+    ],
+  },
+  {
+    heading: "AI Video",
+    items: [
+      { label: "Avatar", path: "/avatars", icon: User },
+      { label: "Studio", path: "/studio", icon: Film },
+      { label: "Carousel", path: "/carousel", icon: Layers },
     ],
   },
   ...(LEGACY_TOOLS_ENABLED
@@ -43,9 +56,6 @@ const NAV_SECTIONS = [
           items: [
             { label: "Content Studio", path: "/content-studio", icon: PenTool },
             { label: "Video Creator", path: "/create-video", icon: Video },
-            { label: "Ad Generator", path: "/ad-generator", icon: Megaphone },
-            { label: "Avatar Builder", path: "/avatar-builder", icon: User },
-            { label: "Avatar Creator", path: "/avatar-creator", icon: Film },
           ],
         },
       ]
@@ -69,6 +79,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
+  const claimTrial = useMutation(api.credits.claimTrial);
+
+  useEffect(() => {
+    if (!isConvexConfigured || !credits?.needsTrialClaim) return;
+    claimTrial({}).catch(() => {
+      /* trial claim is best-effort on layout load */
+    });
+  }, [credits?.needsTrialClaim, claimTrial]);
 
   void location;
 
@@ -130,7 +150,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         ))}
       </div>
 
-      <div className="border-t border-border p-4">
+      <div className="border-t border-border p-4 space-y-3">
+        {isConvexConfigured && (
+          <Link
+            to="/pricing"
+            onClick={() => setSidebarOpen(false)}
+            className="flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary/60 px-2.5 py-2 text-[11px] transition-colors hover:border-brand/30 hover:bg-secondary"
+            title="View credits & pricing"
+          >
+            <span className="font-medium text-muted-foreground">Credits</span>
+            <span className="flex items-center gap-2 tabular-nums text-foreground">
+              <span>
+                <span className="text-brand">{credits?.iCredits ?? "—"}</span>
+                <span className="text-muted-foreground"> i</span>
+              </span>
+              <span className="text-border">·</span>
+              <span>
+                <span className="text-brand">{credits?.vCredits ?? "—"}</span>
+                <span className="text-muted-foreground"> v</span>
+              </span>
+            </span>
+          </Link>
+        )}
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9 border border-border">
             <AvatarImage src={user?.photoURL ?? undefined} />

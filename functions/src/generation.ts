@@ -13,6 +13,7 @@ import {
 import type { BrandProfileDoc, PostDoc, SocialPlatform } from "./core";
 import { buildContentPrompt, buildImagePrompt } from "./prompts/marketingPrompts";
 import { generateVeoVideo } from "./video/googleVeo";
+import { MODELS } from "./models";
 
 function parseJsonBlock(text: string): { caption: string; hashtags: string[] } {
   const cleaned = text
@@ -45,7 +46,7 @@ export async function generateCaptionForPlatform(args: {
     platform: args.platform,
   });
   const result = await ai.models.generateContent({
-    model: "gemini-2.0-flash-001",
+    model: MODELS.text,
     contents: prompt,
     config: { systemInstruction },
   });
