@@ -53,10 +53,9 @@ function AnalyticsTracker() {
 
   useEffect(() => {
     if (user) {
-      identifyUser(user.uid, {
-        email: user.email ?? undefined,
-        name: user.displayName ?? undefined,
-      });
+      // Firebase uid is the pseudonymous analytics identifier. Do not copy
+      // email or display name into product analytics.
+      identifyUser(user.uid, { app: "web" });
     } else {
       resetAnalytics();
     }

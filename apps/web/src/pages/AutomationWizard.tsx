@@ -20,6 +20,7 @@ import { Input } from"@shared/components/ui/input";
 import { Textarea } from"@shared/components/ui/textarea";
 import { Label } from"@shared/components/ui/label";
 import { cn } from"@shared/lib/utils";
+import { captureEvent } from"@shared/lib/analytics";
 import { api } from"@convex/_generated/api";
 import { isConvexConfigured } from"../lib/convex";
 import PlatformPreview from"../components/previews/PlatformPreview";
@@ -162,6 +163,10 @@ export default function AutomationWizard() {
 
  const brand = brands.find((b) => b.id === brandProfileId);
 
+ useEffect(() => {
+ if (!editId) captureEvent("automation_wizard_started", { source: "web" });
+ }, [editId]);
+
  const canNext = [
  name.trim().length > 0 && brief.trim().length > 10,
  selectedAccounts.length > 0,
@@ -220,6 +225,10 @@ export default function AutomationWizard() {
  toast.success("Automation updated");
  } else {
  await createAutomation(payload);
+ captureEvent("automation_created", {
+ platforms: selectedPlatforms.join(","),
+ requires_approval: requiresApproval,
+ });
  toast.success("Automation is live", {
  description: `First post ${daysOfWeek.length ?"on the next selected day" :"tomorrow"} at ${time}`,
  });

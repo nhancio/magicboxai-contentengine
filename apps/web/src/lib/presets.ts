@@ -12,25 +12,15 @@ export type UseCasePreset = {
 };
 
 export const USE_CASE_PRESETS: Record<string, UseCasePreset> = {
-  founder: {
-    label: "Founder",
-    platforms: ["linkedin", "instagram", "youtube"],
-    blurb: "Build in public and stay top-of-mind.",
-  },
   "solo-founder": {
     label: "Solo founder",
     platforms: ["linkedin", "instagram"],
     blurb: "One brief a week becomes a full calendar.",
   },
-  agency: {
-    label: "Marketing agency",
+  "lean-team": {
+    label: "Lean marketing team",
     platforms: ["instagram", "linkedin", "youtube"],
-    blurb: "Run multiple brands from one workspace.",
-  },
-  d2c: {
-    label: "D2C brand",
-    platforms: ["instagram", "youtube"],
-    blurb: "Turn products into scroll-stopping posts.",
+    blurb: "Create a reviewable publishing cadence for one brand.",
   },
 };
 

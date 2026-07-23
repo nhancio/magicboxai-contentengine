@@ -12,10 +12,10 @@ export const APP_URL =
   (import.meta.env.VITE_APP_URL as string | undefined)?.replace(/\/$/, "") ||
   (import.meta.env.DEV ? LOCAL_APP_URL : PROD_APP_URL);
 
-// Cloud Functions base — the public guest-checkout endpoint lives here.
-export const FUNCTIONS_URL =
-  (import.meta.env.VITE_FUNCTIONS_URL as string | undefined)?.replace(/\/$/, "") ||
-  "https://us-central1-magicboxai-50927.cloudfunctions.net";
+/** Send visitors through sign-in before any paid checkout can be created. */
+export function appLoginUrl(redirectTo = "/onboarding?preset=solo-founder") {
+  return `${APP_URL}/login?redirect=${encodeURIComponent(redirectTo)}`;
+}
 
 // A real scheduling link has not been provisioned, so sales CTAs use a working
 // support mailbox instead of sending visitors to a speculative Calendly URL.

@@ -7,7 +7,7 @@ const features: {
   description: string;
   platform: PlatformKey;
   status: PublishStatus;
-  media: { src: string; caption: string; handle: string };
+  media: { caption: string; handle: string };
 }[] = [
   {
     number: "01",
@@ -15,10 +15,9 @@ const features: {
     description:
       "Describe a campaign in a sentence. MagicBox writes the copy, generates the image, and prepares a post for each connected channel.",
     platform: "instagram",
-    status: "live",
+    status: "review",
     media: {
-      src: "/videos/Cute_baby_at_gym.mp4",
-      caption: "3 things nobody tells you about launching →",
+      caption: "A product update, ready for review",
       handle: "@yourbrand",
     },
   },
@@ -30,7 +29,6 @@ const features: {
     platform: "linkedin",
     status: "review",
     media: {
-      src: "/videos/Playful_cats_cuddling_on_bed.mp4",
       caption:
         "One brand kit. Consistent voice across every channel — without the copy-paste grind.",
       handle: "Your Brand",
@@ -44,8 +42,7 @@ const features: {
     platform: "youtube",
     status: "scheduled",
     media: {
-      src: "/videos/Cozy_cartoon_characters_bedroom.mp4",
-      caption: "How one weekly brief became three Shorts",
+      caption: "One brief, adapted to each connected channel",
       handle: "Your Brand",
     },
   },
@@ -55,10 +52,9 @@ const features: {
     description:
       "Direct publishing to Instagram, LinkedIn, and YouTube after you authorize each account — with formats each platform actually accepts.",
     platform: "instagram",
-    status: "uploading",
+    status: "scheduled",
     media: {
-      src: "/videos/Cute_fluffy_animated_hamster.mp4",
-      caption: "Queued for Reels · brand kit applied",
+      caption: "Scheduled with your approval settings",
       handle: "@yourbrand",
     },
   },
@@ -145,9 +141,9 @@ export function FeaturesSection() {
               isVisible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
             }`}
           >
-            Everything shown on the phone
+            A walkthrough of the workflow
             <br />
-            <span className="text-muted-foreground">is what MagicBox ships.</span>
+            <span className="text-muted-foreground">before anything is published.</span>
           </h2>
         </div>
 

@@ -28,6 +28,7 @@ import { Badge } from "@shared/components/ui/badge";
 import { cn } from "@shared/lib/utils";
 import { Link } from "react-router-dom";
 import { trialClock, trialStatusCopy } from "../lib/credits";
+import { LEGACY_TOOLS_ENABLED } from "../lib/flags";
 import {
   Settings as SettingsIcon,
   User,
@@ -224,6 +225,7 @@ function ConvexChannels() {
   const disconnect = useMutation(api.social.disconnect);
   const [busy, setBusy] = useState<string | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const launchPlatforms = new Set(["instagram", "linkedin", "youtube"]);
 
   const connected = (accounts ?? []).filter(
     (a: any) => a.status === "active" || a.status === "expired",
@@ -356,6 +358,7 @@ function ConvexChannels() {
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {(catalogue ?? [])
+          .filter((p: any) => launchPlatforms.has(p.id))
           // Hide Connect for platforms already linked — they appear in the list above
           // with Disconnect. Reconnect only when status is expired.
           .filter((p: any) => {
@@ -395,7 +398,7 @@ function ConvexChannels() {
 
       <p className="mt-2 text-xs text-muted-foreground">
         Instagram requires a Business/Creator account linked to a Facebook Page. YouTube connects
-        via Google. X (Twitter) and Reddit are coming soon (paid API access pending).
+        via Google. Supported channels are shown here when they are available to your account.
       </p>
     </div>
   );
@@ -476,10 +479,10 @@ export default function Settings() {
             </span>
             <h2 className="mt-2 font-display text-3xl text-foreground md:text-4xl">Settings</h2>
             <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
-              Profile, credits, preferences, and the channels you publish to.
+              Profile, preferences, and the channels you publish to.
             </p>
           </div>
-          {clock && !credits?.hasPaidPlan && (
+          {LEGACY_TOOLS_ENABLED && clock && !credits?.hasPaidPlan && (
             <div
               className={cn(
                 "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-medium",
@@ -542,7 +545,7 @@ export default function Settings() {
               </Button>
             </div>
 
-            {isConvexConfigured && (
+            {LEGACY_TOOLS_ENABLED && isConvexConfigured && (
               <div className="space-y-4 bg-secondary/40 p-5 sm:p-6">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -699,11 +702,8 @@ export default function Settings() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="instagram">Instagram</SelectItem>
-                    <SelectItem value="facebook">Facebook</SelectItem>
-                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                    <SelectItem value="tiktok">TikTok</SelectItem>
+                    <SelectItem value="linkedin">LinkedIn</SelectItem>
                     <SelectItem value="youtube">YouTube</SelectItem>
-                    <SelectItem value="google">Google</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

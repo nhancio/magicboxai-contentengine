@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
-import { APP_URL } from "@/lib/config";
+import { APP_URL, appLoginUrl } from "@/lib/config";
+import { captureEvent } from "@shared/lib/analytics";
 
 const navLinks = [
   { name: "About", href: "#about-magicbox" },
@@ -96,7 +97,12 @@ export function Navigation() {
                   variant="brand"
                   className={`rounded-full transition-all duration-500 ${isScrolled ? "px-4 h-8 text-xs" : "px-6 h-9"}`}
                 >
-                  <a href={`${APP_URL}/login`}>Start free</a>
+                  <a
+                    href={appLoginUrl()}
+                    onClick={() => captureEvent("landing_cta_clicked", { cta: "nav_create_plan", destination: "onboarding" })}
+                  >
+                    Create a plan
+                  </a>
                 </Button>
               </>
             )}
@@ -151,7 +157,12 @@ export function Navigation() {
                   <a href={`${APP_URL}/login`}>Sign in</a>
                 </Button>
                 <Button asChild variant="brand" className="flex-1 rounded-full h-14 text-base">
-                  <a href={`${APP_URL}/login`}>Start free</a>
+                  <a
+                    href={appLoginUrl()}
+                    onClick={() => captureEvent("landing_cta_clicked", { cta: "mobile_nav_create_plan", destination: "onboarding" })}
+                  >
+                    Create a plan
+                  </a>
                 </Button>
               </>
             )}

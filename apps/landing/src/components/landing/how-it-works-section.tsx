@@ -144,12 +144,12 @@ export function HowItWorksSection() {
           <ArrowRight className="hidden h-5 w-5 text-brand/60 lg:block animate-connector-pulse" />
 
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-end sm:gap-4">
-            <FeaturePhone platform="instagram" status="review" size="sm" media={{ src: "/videos/Cute_animated_children_talking.mp4" }} />
+            <FeaturePhone platform="instagram" status="review" size="sm" />
             <div className="hidden sm:block">
-              <FeaturePhone platform="linkedin" status="scheduled" size="sm" media={{ src: "/videos/Caring_partner_giving_massage.mp4" }} />
+              <FeaturePhone platform="linkedin" status="scheduled" size="sm" />
             </div>
             <div className="hidden md:block">
-              <FeaturePhone platform="youtube" status="draft" size="sm" media={{ src: "/videos/Toddlers_using_laptop.mp4" }} />
+              <FeaturePhone platform="youtube" status="draft" size="sm" />
             </div>
           </div>
         </div>

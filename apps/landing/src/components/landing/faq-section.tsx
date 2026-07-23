@@ -1,21 +1,15 @@
 const faqs = [
   {
-    question: "What is AI marketing automation?",
+    question: "What does MagicBox do?",
     answer:
-      "AI marketing automation uses software agents to create, approve, schedule, and publish marketing content with less manual busywork. MagicBox is AI marketing software that turns a brand brief into channel-ready posts for Instagram, LinkedIn, and YouTube.",
+      "MagicBox turns a brand brief into channel-ready social drafts, then keeps review, scheduling, and publishing in one workflow. It is designed for teams that want a consistent publishing system without losing final control.",
     related: { label: "See how it works", href: "#how-it-works" },
   },
   {
-    question: "What are automated marketing agents?",
+    question: "Which channels can I publish to?",
     answer:
-      "Automated marketing agents are AI workflows that draft copy, generate images, propose schedules, and help publish to social channels. MagicBox runs these agents with your brand kit and optional human approval before anything goes live.",
-    related: { label: "Explore the features", href: "#features" },
-  },
-  {
-    question: "What is an AI agent for marketing?",
-    answer:
-      "An AI agent for marketing turns a brand brief into repeatable work: drafting channel-specific copy, creating visual assets, scheduling campaigns, and tracking the publishing workflow. MagicBox keeps brand settings and optional human approval in that loop.",
-    related: { label: "See how it works", href: "#how-it-works" },
+      "MagicBox supports direct publishing to connected Instagram, LinkedIn, and YouTube accounts. Supported formats vary by platform, and each connection still depends on the platform permissions and API approval available to your account.",
+    related: { label: "View supported channels", href: "#supported" },
   },
   {
     question: "How is marketing with AI different from a basic scheduler?",
@@ -24,10 +18,10 @@ const faqs = [
     related: { label: "Explore the features", href: "#features" },
   },
   {
-    question: "Which marketing agents are included in MagicBox?",
+    question: "Do I need a paid plan to publish?",
     answer:
-      "MagicBox currently coordinates agents for brand-aware copy, images, scheduling, and direct publishing. Short-form video is a gated beta and is disabled by default. Instagram, LinkedIn, and YouTube are the supported direct-publishing channels; each connection still depends on platform approval and API permissions.",
-    related: { label: "View supported channels", href: "#supported" },
+      "You can create and save drafts on the Free plan. A paid plan is required when you are ready to schedule or publish to a connected channel. The pricing page shows the current allowance and billing terms before checkout.",
+    related: { label: "Compare plans", href: "#pricing" },
   },
   {
     question: "Can I review content before it is published?",

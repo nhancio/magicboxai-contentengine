@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@shared/lib/auth";
 import { getUserSubscription, type SubscriptionRecord } from "@shared/lib/firestore";
 import { createDodoCheckout, createDodoPortal } from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@shared/lib/utils";
+import { captureEvent } from "@shared/lib/analytics";
 import {
   Check,
   Crown,
@@ -27,6 +28,7 @@ interface PlanConfig {
   description: string;
   monthly: number | null; // USD dollars; null = custom
   annual: number | null; // USD dollars/mo billed annually
+  annualTotal?: number;
   features: string[];
   icon: React.ElementType;
   popular?: boolean;
@@ -42,10 +44,10 @@ const PLANS: PlanConfig[] = [
     monthly: 0,
     annual: 0,
     features: [
-      "50 i-credits + 100 v-credits · 7-day trial",
-      "1 i-credit = 1 text or image post",
-      "1 v-credit = 1 second of video",
-      "Instagram, LinkedIn, and YouTube",
+      "Create and save content drafts",
+      "Explore brand and content tools",
+      "Preview the automation workflow",
+      "Publishing requires a paid plan",
     ],
     icon: Camera,
   },
@@ -55,6 +57,7 @@ const PLANS: PlanConfig[] = [
     description: "Great for solo founders testing the waters",
     monthly: 29,
     annual: 23,
+    annualTotal: 276,
     features: [
       "60 scheduled posts/month",
       "Brand-aware captions and images",
@@ -68,30 +71,29 @@ const PLANS: PlanConfig[] = [
   {
     id: "max",
     name: "Max",
-    description: "For power users and agencies",
+    description: "For high-volume teams",
     monthly: 149,
     annual: 118,
+    annualTotal: 1416,
     features: [
       "300 scheduled posts/month",
       "Everything in Pro",
-      "Higher-volume automation",
-      "Multiple connected channels",
-      "Priority support",
+      "Higher-volume scheduling",
+      "More monthly publishing capacity",
+      "Email support",
     ],
     icon: Crown,
   },
   {
     id: "custom",
     name: "Custom",
-    description: "For larger organizations",
+    description: "For teams with needs beyond the current plans",
     monthly: null,
     annual: null,
     features: [
-      "Custom features",
-      "Custom integrations",
-      "Custom reporting",
-      "SLAs",
-      "Priority support",
+      "Discuss current product fit",
+      "Plan a supported workflow",
+      "Request launch support",
     ],
     icon: Building2,
     custom: true,
@@ -104,6 +106,14 @@ export default function Pricing() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [isAnnual, setIsAnnual] = useState(true);
+  const [requestedPlan, setRequestedPlan] = useState<"pro" | "max" | null>(null);
+  const hasTrackedView = useRef(false);
+
+  useEffect(() => {
+    if (hasTrackedView.current) return;
+    hasTrackedView.current = true;
+    captureEvent("pricing_viewed", { surface: "app" });
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -117,7 +127,10 @@ export default function Pricing() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const checkout = params.get("checkout");
+    const plan = params.get("plan");
+    if (plan === "pro" || plan === "max") setRequestedPlan(plan);
     if (checkout === "returned") {
+      captureEvent("checkout_returned", { source: "dodo" });
       toast.info("Checkout returned. Your plan will appear after payment is verified.");
       if (user) getUserSubscription(user.uid).then(setSubscriptionState).catch(() => {});
     }
@@ -128,6 +141,7 @@ export default function Pricing() {
   const handleSubscribe = async (plan: PlanConfig) => {
     if (plan.id === "free") return;
     if (plan.custom) {
+      captureEvent("support_contact_requested", { surface: "pricing" });
       window.open(CALENDLY_URL, "_blank", "noopener,noreferrer");
       return;
     }
@@ -135,6 +149,10 @@ export default function Pricing() {
       toast.error("Please sign in first");
       return;
     }
+    captureEvent("checkout_started", {
+      plan: plan.id,
+      billing: isAnnual ? "annual" : "monthly",
+    });
     setProcessing(plan.id);
     try {
       const { url } = await createDodoCheckout({
@@ -223,7 +241,8 @@ export default function Pricing() {
                 key={plan.id}
                 className={cn(
                   "relative bg-background p-8 flex flex-col",
-                  plan.popular && "lg:-my-4 lg:py-12 border-2 border-brand"
+                  plan.popular && "lg:-my-4 lg:py-12 border-2 border-brand",
+                  requestedPlan === plan.id && "ring-2 ring-brand ring-offset-2 ring-offset-background"
                 )}
               >
                 {plan.popular && (
@@ -263,6 +282,9 @@ export default function Pricing() {
                       <span className="font-display text-5xl text-foreground">${price}</span>
                       {price > 0 && <span className="text-sm text-muted-foreground">/mo</span>}
                     </div>
+                  )}
+                  {isAnnual && plan.annualTotal && (
+                    <p className="mt-2 text-xs text-muted-foreground">${plan.annualTotal} billed annually</p>
                   )}
                 </div>
 
@@ -313,7 +335,7 @@ export default function Pricing() {
                       </>
                     ) : (
                       <>
-                        {plan.custom ? "Contact us" : "Get started"}
+                        {plan.custom ? "Contact support" : requestedPlan === plan.id ? `Continue with ${plan.name}` : "Get started"}
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}

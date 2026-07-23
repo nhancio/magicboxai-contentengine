@@ -1,18 +1,19 @@
 import { useState } from "react";
 import { ArrowRight, Check } from "lucide-react";
-import { APP_URL, CALENDLY_URL, FUNCTIONS_URL } from "@/lib/config";
+import { CALENDLY_URL, appLoginUrl } from "@/lib/config";
+import { captureEvent } from "@shared/lib/analytics";
 
 type Plan = {
   name: string;
   description: string;
-  price: { monthly: number | null; annual: number | null };
+  price: { monthly: number | null; annual: number | null; annualTotal?: number };
   features: string[];
   cta: string;
   href: string;
   popular?: boolean;
   custom?: boolean;
-  /** Paid plan: route the CTA through the public guest-checkout endpoint. */
-  checkout?: "pro" | "max";
+  /** Paid plans always enter the authenticated checkout flow. */
+  planId?: "pro" | "max";
 };
 
 const plans: Plan[] = [
@@ -27,12 +28,12 @@ const plans: Plan[] = [
       "Publishing requires a paid plan",
     ],
     cta: "Start free",
-    href: `${APP_URL}/login`,
+    href: appLoginUrl(),
   },
   {
     name: "Pro",
     description: "Great for solo founders testing the waters",
-    price: { monthly: 29, annual: 23 },
+    price: { monthly: 29, annual: 23, annualTotal: 276 },
     features: [
       "60 scheduled posts/month",
       "Brand-aware captions and images",
@@ -41,37 +42,35 @@ const plans: Plan[] = [
       "Email support",
     ],
     cta: "Get started",
-    href: `${APP_URL}/pricing`,
-    checkout: "pro",
+    href: appLoginUrl("/pricing"),
+    planId: "pro",
     popular: true,
   },
   {
     name: "Max",
-    description: "For power users and agencies",
-    price: { monthly: 149, annual: 118 },
+    description: "For high-volume teams",
+    price: { monthly: 149, annual: 118, annualTotal: 1416 },
     features: [
       "300 scheduled posts/month",
       "Everything in Pro",
-      "Higher-volume automation",
-      "Multiple connected channels",
-      "Priority support",
+      "Higher-volume scheduling",
+      "More monthly publishing capacity",
+      "Email support",
     ],
     cta: "Get started",
-    href: `${APP_URL}/pricing`,
-    checkout: "max",
+    href: appLoginUrl("/pricing"),
+    planId: "max",
   },
   {
     name: "Custom",
-    description: "For larger organizations",
+    description: "For teams with needs beyond the current plans",
     price: { monthly: null, annual: null },
     features: [
-      "Custom features",
-      "Custom integrations",
-      "Custom reporting",
-      "SLAs",
-      "Priority support",
+      "Discuss current product fit",
+      "Plan a supported workflow",
+      "Request launch support",
     ],
-    cta: "Contact us",
+    cta: "Contact support",
     href: CALENDLY_URL,
     custom: true,
   },
@@ -128,6 +127,9 @@ export function PricingSection() {
                 ) : (
                   <span className="font-display text-3xl text-foreground">Custom</span>
                 )}
+                {isAnnual && plan.price.annualTotal && (
+                  <p className="mt-2 text-xs text-muted-foreground">${plan.price.annualTotal} billed annually</p>
+                )}
               </div>
               <ul className="space-y-3 mb-8 flex-1">
                 {plan.features.map((feature) => (
@@ -139,11 +141,12 @@ export function PricingSection() {
               </ul>
               <a
                 href={
-                  plan.checkout
-                    ? `${FUNCTIONS_URL}/createGuestCheckout?plan=${plan.checkout}&billing=${isAnnual ? "annual" : "monthly"}`
+                  plan.planId
+                    ? appLoginUrl(`/pricing?plan=${plan.planId}&billing=${isAnnual ? "annual" : "monthly"}`)
                     : plan.href
                 }
                 {...(plan.custom ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                onClick={() => captureEvent("pricing_cta_clicked", { plan: plan.name.toLowerCase(), billing: isAnnual ? "annual" : "monthly" })}
                 className={`w-full py-4 flex items-center justify-center gap-2 text-sm font-medium transition-all group ${
                   plan.popular
                     ? "bg-brand text-brand-foreground hover:bg-brand/90"

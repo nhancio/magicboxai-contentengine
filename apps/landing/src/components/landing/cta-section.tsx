@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Bot, CalendarClock, Send } from "lucide-react";
-import { APP_URL, CALENDLY_URL } from "@/lib/config";
+import { CALENDLY_URL, appLoginUrl } from "@/lib/config";
+import { captureEvent } from "@shared/lib/analytics";
 
 export function CtaSection() {
   const [isVisible, setIsVisible] = useState(false);
@@ -46,20 +47,30 @@ export function CtaSection() {
                 </h2>
                 <p className="text-xl text-muted-foreground mb-12 leading-relaxed max-w-xl">
                   Describe your brand, connect a supported channel, and build a reviewable
-                  first post. Start free — no card required.
+                  first post. Explore the workflow before choosing a paid publishing plan.
                 </p>
                 <div className="flex flex-col sm:flex-row items-start gap-4">
                   <Button asChild size="lg" variant="brand" className="px-8 h-14 text-base rounded-full group">
-                    <a href={`${APP_URL}/login`}>
-                      Start free
+                    <a
+                      href={appLoginUrl()}
+                      onClick={() => captureEvent("landing_cta_clicked", { cta: "footer_create_plan", destination: "onboarding" })}
+                    >
+                      Create this week&apos;s plan
                       <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
                     </a>
                   </Button>
                   <Button asChild size="lg" variant="outline" className="h-14 px-8 text-base rounded-full">
-                    <a href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">Talk to sales</a>
+                    <a
+                      href={CALENDLY_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => captureEvent("landing_cta_clicked", { cta: "footer_contact_support", destination: "support" })}
+                    >
+                      Contact support
+                    </a>
                   </Button>
                 </div>
-                <p className="text-sm text-muted-foreground mt-8 font-mono">No credit card required</p>
+                <p className="text-sm text-muted-foreground mt-8 font-mono">No card required to explore</p>
               </div>
 
               <div className="hidden h-[380px] w-[380px] shrink-0 items-center justify-center lg:flex" aria-hidden="true">

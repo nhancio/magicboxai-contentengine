@@ -237,11 +237,11 @@ export function InstagramScreen({ media, status }: ScreenProps) {
       <div className="absolute bottom-24 right-2.5 z-10 flex flex-col items-center gap-3.5 text-white">
         <div className="flex flex-col items-center gap-0.5">
           <Heart className="h-5 w-5" />
-          <span className="text-[9px] font-medium">12.4K</span>
+          <span className="text-[9px] font-medium">Like</span>
         </div>
         <div className="flex flex-col items-center gap-0.5">
           <MessageCircle className="h-5 w-5" />
-          <span className="text-[9px] font-medium">328</span>
+          <span className="text-[9px] font-medium">Comment</span>
         </div>
         <div className="flex flex-col items-center gap-0.5">
           <Send className="h-5 w-5" />
@@ -331,11 +331,11 @@ export function YouTubeScreen({ media, status }: ScreenProps) {
       <div className="absolute bottom-24 right-2.5 z-10 flex flex-col items-center gap-3.5">
         <div className="flex flex-col items-center gap-0.5">
           <Heart className="h-5 w-5" />
-          <span className="text-[9px]">8.2K</span>
+          <span className="text-[9px]">Like</span>
         </div>
         <div className="flex flex-col items-center gap-0.5">
           <MessageCircle className="h-5 w-5" />
-          <span className="text-[9px]">214</span>
+          <span className="text-[9px]">Comment</span>
         </div>
         <div className="flex flex-col items-center gap-0.5">
           <Share2 className="h-5 w-5" />

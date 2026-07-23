@@ -47,6 +47,32 @@ const STUB_METHODS =
     " "
   );
 
+export type AnalyticsProperty = string | number | boolean | null | undefined;
+export type AnalyticsProperties = Record<string, AnalyticsProperty>;
+
+const SAFE_EVENT_NAME = /^[a-zA-Z0-9_.:-]{1,80}$/;
+const SENSITIVE_PROPERTY = /(?:email|name|token|secret|password|oauth|authorization|caption|brief|prompt|content|url)/i;
+const MAX_PROPERTIES = 30;
+const MAX_STRING_LENGTH = 200;
+
+/**
+ * Product analytics should describe a workflow, never the customer's content
+ * or credentials. Keep event properties flat, bounded, and non-sensitive so a
+ * future call site cannot accidentally send an OAuth token, post copy, or PII.
+ */
+function safeProperties(props?: AnalyticsProperties): Record<string, string | number | boolean | null> | undefined {
+  if (!props) return undefined;
+
+  const safe: Record<string, string | number | boolean | null> = {};
+  for (const [key, value] of Object.entries(props)) {
+    if (Object.keys(safe).length >= MAX_PROPERTIES || SENSITIVE_PROPERTY.test(key)) continue;
+    if (typeof value === "string") safe[key] = value.slice(0, MAX_STRING_LENGTH);
+    else if (typeof value === "number" && Number.isFinite(value)) safe[key] = value;
+    else if (typeof value === "boolean" || value === null) safe[key] = value;
+  }
+  return safe;
+}
+
 export function initAnalytics(): void {
   if (started || !KEY || typeof window === "undefined") return;
   if (getConsent() !== "granted") return; // wait for the consent banner
@@ -88,12 +114,14 @@ export function capturePageview(): void {
   if (KEY && window.posthog) window.posthog.capture("$pageview");
 }
 
-export function captureEvent(event: string, props?: Record<string, unknown>): void {
-  if (KEY && window.posthog) window.posthog.capture(event, props);
+export function captureEvent(event: string, props?: AnalyticsProperties): void {
+  const eventName = event.trim();
+  if (!SAFE_EVENT_NAME.test(eventName)) return;
+  if (KEY && window.posthog) window.posthog.capture(eventName, safeProperties(props));
 }
 
-export function identifyUser(id: string, props?: Record<string, unknown>): void {
-  if (KEY && window.posthog) window.posthog.identify(id, props);
+export function identifyUser(id: string, props?: AnalyticsProperties): void {
+  if (KEY && window.posthog) window.posthog.identify(id, safeProperties(props));
 }
 
 export function resetAnalytics(): void {

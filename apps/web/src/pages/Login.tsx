@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/button";
@@ -7,103 +7,6 @@ import { Loader2 } from "lucide-react";
 import "./login.css";
 
 const LoginLottie = lazy(() => import("./LoginLottie"));
-
-/** Sample reels shipped with the app for the login stage. */
-const REELS = [
-  {
-    src: "/videos/Cute_winking_animated_girl.mp4",
-    handle: "@yourbrand",
-    caption: "Morning reel — drafted, approved, live.",
-    side: "left" as const,
-  },
-  {
-    src: "/videos/Playful_cats_cuddling_on_bed.mp4",
-    handle: "@magicbox",
-    caption: "Scheduled for peak engagement.",
-    side: "right" as const,
-  },
-];
-
-function ReelPhone({
-  src,
-  handle,
-  caption,
-  side,
-}: {
-  src: string;
-  handle: string;
-  caption: string;
-  side: "left" | "right";
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-
-    el.muted = true;
-    el.defaultMuted = true;
-    el.setAttribute("muted", "");
-    el.setAttribute("playsinline", "");
-    el.setAttribute("webkit-playsinline", "");
-
-    const tryPlay = () => {
-      void el.play().catch(() => {});
-    };
-
-    tryPlay();
-    el.addEventListener("loadeddata", tryPlay);
-    el.addEventListener("canplay", tryPlay);
-
-    const io =
-      typeof IntersectionObserver !== "undefined"
-        ? new IntersectionObserver(
-            (entries) => {
-              for (const entry of entries) {
-                if (entry.isIntersecting) tryPlay();
-                else el.pause();
-              }
-            },
-            { threshold: 0.2 },
-          )
-        : null;
-    io?.observe(el);
-
-    return () => {
-      el.removeEventListener("loadeddata", tryPlay);
-      el.removeEventListener("canplay", tryPlay);
-      io?.disconnect();
-    };
-  }, [src]);
-
-  return (
-    <div className={`lg-phone lg-phone--${side}`} aria-hidden>
-      <div className="lg-phone-bezel">
-        <div className="lg-phone-screen">
-          <div className="absolute inset-0 bg-gradient-to-br from-violet-900/80 via-zinc-900 to-fuchsia-950/70" />
-          <video
-            ref={videoRef}
-            src={src}
-            muted
-            loop
-            playsInline
-            autoPlay
-            preload="metadata"
-          />
-          <div className="lg-phone-notch" />
-          <div className="lg-phone-ui">
-            <div>
-              <div className="lg-phone-handle">{handle}</div>
-              <div className="lg-phone-live">Live reel</div>
-            </div>
-            <p className="lg-phone-caption">{caption}</p>
-          </div>
-          <div className="lg-phone-home" />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function Login() {
   const { user, loading, signInWithGoogle } = useAuth();
@@ -168,35 +71,17 @@ export default function Login() {
           >
             Your brand.
             <br />
-            Reels on autopilot.
+            Your weekly social plan.
           </h1>
 
           <p
             className="lg-reveal mt-5 max-w-lg text-base leading-7 text-muted-foreground md:text-lg"
             style={{ animationDelay: "0.22s" }}
           >
-            Sign in to generate on-brand posts and short-form video, then publish
-            to Instagram, LinkedIn, and YouTube — without starting from a blank
-            page.
+            Sign in to generate on-brand posts, review every draft, and schedule
+            publishing to your connected Instagram, LinkedIn, and YouTube accounts.
           </p>
 
-          <div
-            className="lg-reveal lg-stage"
-            style={{ animationDelay: "0.34s" }}
-            aria-hidden
-          >
-            <div className="lg-stage-glow" />
-            {REELS.map((reel) => (
-              <ReelPhone key={reel.side} {...reel} />
-            ))}
-          </div>
-
-          <p
-            className="lg-reveal mt-4 max-w-md font-mono text-[0.65rem] uppercase tracking-[0.16em] text-muted-foreground"
-            style={{ animationDelay: "0.48s" }}
-          >
-            Sample output · your workspace unlocks the real pipeline
-          </p>
         </section>
 
         <div className="lg-reveal relative" style={{ animationDelay: "0.28s" }}>

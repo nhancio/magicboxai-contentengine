@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { APP_URL } from "@/lib/config";
-import { FeaturePhone } from "./phone-system";
+import { appLoginUrl } from "@/lib/config";
+import { captureEvent } from "@shared/lib/analytics";
 import { InstagramLogo, LinkedInLogo, YouTubeLogo } from "./channel-logos";
 
 type FormatRow = {
@@ -101,19 +101,6 @@ export function IntegrationsSection() {
           </p>
         </div>
 
-        {/* Large phone trio directly on the page */}
-        <div
-          className={`relative mb-16 w-full py-4 transition-all duration-1000 lg:mb-20 lg:py-8 ${
-            isVisible ? "opacity-100" : "opacity-0"
-          }`}
-        >
-          <div className="relative flex w-full flex-wrap items-end justify-between gap-8 lg:gap-16">
-            <FeaturePhone platform="instagram" status="live" size="lg" media={{ src: "/videos/Animated_characters_inside_ear_canal.mp4", handle: "@marketing", caption: "Ear canal visualization!" }} className="mx-auto md:mx-0" />
-            <FeaturePhone platform="linkedin" status="scheduled" size="lg" media={{ src: "/videos/Pregnant_woman_taking_over_bed.mp4", handle: "Brand Story" }} className="mx-auto hidden md:flex md:mx-0" />
-            <FeaturePhone platform="youtube" status="draft" size="lg" media={{ src: "/videos/sample2.mp4", handle: "Our Channel" }} className="mx-auto hidden lg:flex lg:mx-0" />
-          </div>
-        </div>
-
         {/* Platform cards */}
         <div className="mb-14 grid gap-px bg-foreground/10 sm:grid-cols-3">
           {platforms.map((p, i) => (
@@ -190,7 +177,12 @@ export function IntegrationsSection() {
             Threads are not available for direct publishing yet.
           </p>
           <Button asChild size="lg" variant="brand" className="h-14 rounded-full px-8 text-base">
-            <a href={`${APP_URL}/login`}>Connect your channels</a>
+            <a
+              href={appLoginUrl()}
+              onClick={() => captureEvent("landing_cta_clicked", { cta: "supported_connect_channels", destination: "onboarding" })}
+            >
+              Connect your channels
+            </a>
           </Button>
         </div>
       </div>

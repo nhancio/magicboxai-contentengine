@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
-import { APP_URL } from "@/lib/config";
+import { appLoginUrl } from "@/lib/config";
+import { captureEvent } from "@shared/lib/analytics";
 import { PhoneShowcase } from "./phone-system";
 import { InstagramLogo, LinkedInLogo, YouTubeLogo } from "./channel-logos";
 
@@ -36,23 +37,21 @@ export function HeroSection() {
             isVisible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
           }`}
         >
-          {/* App name must match OAuth consent screen exactly: "MagicBox" */}
           <p className="mb-3 font-mono text-xs uppercase tracking-[0.22em] text-muted-foreground">
-            Application name: MagicBox
+            For solo founders and lean teams
           </p>
           <h1 className="mb-4 font-display text-[clamp(2.75rem,7vw,5.5rem)] leading-[0.92] tracking-tight">
             MagicBox
           </h1>
 
           <p className="mb-6 font-display text-[clamp(1.5rem,3.5vw,2.25rem)] leading-tight tracking-tight text-foreground/85">
-            AI marketing automation for social media
+            Turn one weekly brief into on-brand posts
           </p>
 
           <p className="mx-auto mb-6 max-w-2xl text-lg leading-relaxed text-muted-foreground lg:text-xl">
-            <strong className="font-medium text-foreground">MagicBox</strong> is a
-            web application from Nhancio Technologies Private Limited. It helps
-            marketers and creators generate on-brand social posts, approve them,
-            schedule publishing, and post to Instagram, LinkedIn, and{" "}
+            <strong className="font-medium text-foreground">MagicBox</strong> helps
+            lean teams generate on-brand social posts, review drafts, schedule publishing,
+            and post to Instagram, LinkedIn, and{" "}
             <strong className="font-medium text-foreground">YouTube</strong> from
             accounts you connect.
           </p>
@@ -73,8 +72,11 @@ export function HeroSection() {
 
           <div className="mb-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Button asChild size="lg" variant="brand" className="group h-14 rounded-full px-8 text-base">
-              <a href={`${APP_URL}/login`}>
-                Start free with MagicBox
+              <a
+                href={appLoginUrl()}
+                onClick={() => captureEvent("landing_cta_clicked", { cta: "hero_create_plan", destination: "onboarding" })}
+              >
+                Create this week&apos;s plan
                 <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
               </a>
             </Button>
@@ -106,14 +108,14 @@ export function HeroSection() {
         >
           <PhoneShowcase
             mediaConfig={{
-              instagram: { src: "/videos/Applying_a_wrist_brace.mp4", handle: "@yourbrand" },
-              linkedin: { src: "/videos/Cute_winking_animated_girl.mp4", handle: "Your Brand" },
-              youtube: { src: "/videos/Adorable_toddler_calling_someone.mp4", handle: "Your Brand" },
+              instagram: { handle: "@yourbrand", caption: "Draft ready for review" },
+              linkedin: { handle: "Your Brand", caption: "Approved for this week" },
+              youtube: { handle: "Your Brand", caption: "Video upload ready" },
             }}
             platforms={["instagram", "youtube", "linkedin"]}
             statuses={{
-              instagram: "live",
-              youtube: "uploading",
+              instagram: "review",
+              youtube: "draft",
               linkedin: "scheduled",
             }}
             primary={0}

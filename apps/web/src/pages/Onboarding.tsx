@@ -19,23 +19,21 @@ import { Button } from"@shared/components/ui/button";
 import { Input } from"@shared/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from"@shared/components/ui/avatar";
 import { cn } from"@shared/lib/utils";
+import { captureEvent } from"@shared/lib/analytics";
 import PreviewModule from"../components/previews/PreviewModule";
 import {
  ArrowRight,
  CalendarClock,
  Check,
  ChevronLeft,
- Facebook,
  Globe2,
  Instagram,
  Link2,
  Linkedin,
  Loader2,
- MessageCircle,
  PanelRight,
  Send,
  Sparkles,
- Twitter,
  Youtube,
 } from"lucide-react";
 
@@ -57,19 +55,14 @@ const PLATFORM_META: Record<
  { label: string; icon: typeof Instagram; tint: string }
 > = {
  instagram: { label:"Instagram", icon: Instagram, tint:"from-pink-500 to-orange-400" },
- facebook: { label:"Facebook", icon: Facebook, tint:"from-blue-600 to-indigo-500" },
- twitter: { label:"Twitter / X", icon: Twitter, tint:"from-sky-400 to-blue-500" },
  linkedin: { label:"LinkedIn", icon: Linkedin, tint:"from-blue-500 to-cyan-500" },
  youtube: { label:"YouTube", icon: Youtube, tint:"from-red-500 to-rose-500" },
- whatsapp: { label:"WhatsApp", icon: MessageCircle, tint:"from-emerald-500 to-teal-500" },
 };
 
-const CONNECTABLE: Array<"instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp"> = [
+const CONNECTABLE: Array<"instagram" | "linkedin" | "youtube"> = [
  "instagram",
  "linkedin",
  "youtube",
- "facebook",
- "whatsapp",
 ];
 
 function channelHandle(account: SocialAccount): string {
@@ -86,8 +79,6 @@ const PREVIEW_PLATFORMS: SocialPlatform[] = [
  "instagram",
  "linkedin",
  "youtube",
- "facebook",
- "whatsapp",
 ];
 
 type SamplePost = {
@@ -199,12 +190,17 @@ export default function Onboarding() {
  getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
  }, [user]);
 
+ useEffect(() => {
+ captureEvent("onboarding_started", { preset: preset?.label ?? "none" });
+ }, [preset?.label]);
+
  // Returning from the OAuth round-trip: surface the result and refresh.
  useEffect(() => {
  const params = new URLSearchParams(window.location.search);
  const social = params.get("social");
  if (!social) return;
  if (social === "connected") {
+ captureEvent("channel_connected", { channel: params.get("provider") ?? "unknown", source: "onboarding" });
  toast.success(`${params.get("provider") ?? "Channel"} connected`);
  if (user && !isConvexConfigured) {
  getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
@@ -223,6 +219,7 @@ export default function Onboarding() {
  const handleConnect = async (
  provider: "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp",
  ) => {
+ captureEvent("channel_connect_started", { channel: provider, source: "onboarding" });
  setConnecting(provider);
  try {
  if (!isConvexConfigured) {
@@ -312,6 +309,7 @@ export default function Onboarding() {
  setBrandProfileId(id);
  setBrandName(extracted.companyName || new URL(extractedUrl).hostname);
  setToneOfVoice(extracted.tone || "");
+ captureEvent("brand_kit_completed", { source: "onboarding", has_website: true });
  setStep(2);
  } catch (error) {
  toast.error(error instanceof Error ? error.message :"Could not save brand");
@@ -413,12 +411,15 @@ export default function Onboarding() {
  timezone,
  });
  if (mode === "now") {
+ captureEvent("post_publish_requested", { channel: previewPlatform, source: "onboarding" });
+ if (result.status === "posted") captureEvent("post_published", { channel: previewPlatform, source: "onboarding" });
  toast.success(
  result.status === "posted"
  ? `Posted to ${PLATFORM_META[previewPlatform].label}`
  : `Sending to ${PLATFORM_META[previewPlatform].label} now…`,
  );
  } else {
+ captureEvent("post_scheduled", { channel: previewPlatform, source: "onboarding" });
  const when = result.scheduledFor
  ? new Date(result.scheduledFor).toLocaleString(undefined, {
  weekday: "short",
@@ -446,6 +447,7 @@ export default function Onboarding() {
  { onboardingComplete: true },
  { merge: true },
  );
+ captureEvent("onboarding_completed", { next: goToWizard ? "automation_wizard" : "dashboard" });
  navigate(goToWizard ? "/automations/new" : "/");
  };
 
@@ -527,7 +529,7 @@ export default function Onboarding() {
  <h2 className="font-display text-2xl">{STEPS[0].title}</h2>
  <p className="mt-1 text-sm text-muted-foreground">
  Connect the accounts MagicBox should publish to. Instagram needs a Business or
- Creator account linked to a Facebook Page. X / Twitter is coming soon.
+ Creator account linked to a Facebook Page. You can skip and connect later in Settings.
  </p>
  </div>
 
