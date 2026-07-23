@@ -1,7 +1,7 @@
 # MagicBox — Launch Readiness
 
 Living checklist for going live. ✅ done · 🟡 needs your input · 🔴 blocked/todo.
-Last updated: 2026-07-14.
+Last updated: 2026-07-24.
 
 ## 1. Analytics & tracking
 - ✅ **PostHog** wired into web + landing (`shared/lib/analytics.ts`) with autocapture + SPA pageviews + identify.
@@ -21,8 +21,8 @@ Last updated: 2026-07-14.
 - ✅ Payments via Dodo (merchant of record); webhook signature verified.
 - ✅ **Storage rules audited** — writes restricted to `users/{uid}/**` with a 10 MB cap; generated post media is written server-side by functions (admin SDK); public assets read-only.
 - ✅ **Token expiry handled** — YouTube tokens auto-refresh; expired IG/LinkedIn accounts are marked `expired` so the UI can prompt reconnect.
-- 🔴 App Check (reCAPTCHA) on the callables — still recommended before scale.
-- 🔴 Rate limiting on the free generation callables (`generateImage`, `generateScript`).
+- 🔴 **App Check is required before production traffic** — configure the reCAPTCHA Enterprise site key in the web/admin hosting environments, grant the Token Verifier role, confirm valid traffic in Firebase metrics, then deploy Functions. Callables already enforce it.
+- ✅ **Per-account server-side limits** now protect provider-backed generation, analysis, brand extraction, preview generation, and post regeneration. Video generation also retains its paid-plan quota.
 - 🔴 Rotate the Vercel token shared earlier in chat (vercel.com/account/tokens).
 
 ## 4. Legal (terms, privacy, consent)
@@ -32,7 +32,7 @@ Last updated: 2026-07-14.
 - 🟡 Privacy policy must list all processors: Google/Firebase, Dodo, Brevo, PostHog, Meta, LinkedIn, Google/YouTube, Vertex AI (Gemini/Imagen/Veo).
 
 ## 5. Payments (Dodo)
-- ✅ Checkout (`createDodoCheckout`) + webhook (`dodoWebhook`) deployed; 4 products created.
+- ✅ Checkout (`createDodoCheckout`) + signed webhook (`dodoWebhook`) are implemented; 4 products are mapped in code.
 - 🟡 Create the webhook endpoint in the Dodo dashboard → URL `https://us-central1-magicboxai-50927.cloudfunctions.net/dodoWebhook` → put the signing secret in `DODO_WEBHOOK_SECRET` → redeploy. Without it, payments succeed but plans don't auto-activate.
 - 🔴 Verify the Dodo account is activated for live payments (KYC).
 
@@ -47,9 +47,9 @@ Last updated: 2026-07-14.
 1. Set `VITE_POSTHOG_KEY` (analytics).
 2. Dodo webhook secret + live activation.
 3. Confirm legal placeholder details; lawyer review.
-4. Enable App Check.
+4. Configure and verify App Check in the production Firebase project.
 5. Channels: complete Meta/LinkedIn/Google reviews — or launch with the Skip flow and enable later.
-6. Smoke test: sign up → onboarding → connect channel → automation → 3 ticks create/generate/publish → subscribe → plan active.
+6. Pass the production-preview browser smoke suite, then manually test: sign up → onboarding → connect channel → automation → create/generate/publish → subscribe → plan active.
 
 ## What I need from you now
 1. **PostHog Project API key** (+ US or EU host).

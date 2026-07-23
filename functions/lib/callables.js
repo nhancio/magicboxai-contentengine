@@ -506,6 +506,7 @@ exports.generatePreviewContent = (0, https_1.onCall)(Object.assign(Object.assign
         throw new https_1.HttpsError("invalid-argument", "Unsupported platform");
     }
     const brand = await getOwnedBrandProfile(uid, brandProfileId);
+    await (0, core_1.enforceCallableRateLimit)(uid, "preview-content", core_1.AI_RATE_LIMITS.textGeneration);
     try {
         const result = await (0, generation_1.generateCaptionForPlatform)({
             brand,
@@ -580,6 +581,7 @@ exports.regeneratePostContent = (0, https_1.onCall)(Object.assign(Object.assign(
         throw new https_1.HttpsError("failed-precondition", "Post content cannot be regenerated right now");
     }
     await assertOwnedPublishingResources(uid, post);
+    await (0, core_1.enforceCallableRateLimit)(uid, "post-regeneration", core_1.AI_RATE_LIMITS.postRegeneration);
     try {
         const update = await (0, generation_1.generatePostAssets)(request.data.postId, post);
         await ref.update(Object.assign(Object.assign({}, update), { updatedAt: FieldValue.serverTimestamp() }));

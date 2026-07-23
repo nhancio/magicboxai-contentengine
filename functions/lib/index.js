@@ -549,6 +549,7 @@ exports.generateImage = (0, https_1.onCall)(Object.assign(Object.assign({}, core
     if (type !== "influencer" && type !== "ad") {
         throw new https_1.HttpsError("invalid-argument", "Image type must be influencer or ad");
     }
+    await (0, core_1.enforceCallableRateLimit)(uid, "legacy-image-generation", core_1.AI_RATE_LIMITS.imageGeneration);
     try {
         const ai = getAI();
         const response = await ai.models.generateImages({
@@ -580,9 +581,10 @@ exports.generateImage = (0, https_1.onCall)(Object.assign(Object.assign({}, core
 });
 exports.generateScript = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { timeoutSeconds: 60, memory: "512MiB" }), async (request) => {
     var _a, _b;
-    requireAuth(request);
+    const uid = requireAuth(request);
     const prompt = requireBoundedText((_a = request.data) === null || _a === void 0 ? void 0 : _a.prompt, "Prompt", 8000);
     const systemInstruction = optionalBoundedText((_b = request.data) === null || _b === void 0 ? void 0 : _b.systemInstruction, "System instruction", 4000);
+    await (0, core_1.enforceCallableRateLimit)(uid, "legacy-text-generation", core_1.AI_RATE_LIMITS.textGeneration);
     try {
         const ai = getAI();
         const result = await ai.models.generateContent({
@@ -600,9 +602,10 @@ exports.generateScript = (0, https_1.onCall)(Object.assign(Object.assign({}, cor
 });
 exports.analyzeImage = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { timeoutSeconds: 60, memory: "512MiB" }), async (request) => {
     var _a, _b, _c;
-    requireAuth(request);
+    const uid = requireAuth(request);
     const image = parseInlineImage((_a = request.data) === null || _a === void 0 ? void 0 : _a.imageBase64, (_b = request.data) === null || _b === void 0 ? void 0 : _b.mimeType);
     const prompt = requireBoundedText((_c = request.data) === null || _c === void 0 ? void 0 : _c.prompt, "Prompt", 2000);
+    await (0, core_1.enforceCallableRateLimit)(uid, "legacy-image-analysis", core_1.AI_RATE_LIMITS.imageAnalysis);
     try {
         const ai = getAI();
         const result = await ai.models.generateContent({
@@ -637,6 +640,7 @@ exports.analyzeAvatarPhotos = (0, https_1.onCall)(Object.assign(Object.assign({}
     if (((_c = images === null || images === void 0 ? void 0 : images.length) !== null && _c !== void 0 ? _c : 0) > 10 || ((_d = storagePaths === null || storagePaths === void 0 ? void 0 : storagePaths.length) !== null && _d !== void 0 ? _d : 0) > 10) {
         throw new https_1.HttpsError("invalid-argument", "At most 10 images are allowed");
     }
+    await (0, core_1.enforceCallableRateLimit)(uid, "avatar-photo-analysis", core_1.AI_RATE_LIMITS.avatarPhotoAnalysis);
     try {
         const ai = getAI();
         const inlineImages = (storagePaths === null || storagePaths === void 0 ? void 0 : storagePaths.length)
@@ -688,6 +692,7 @@ exports.analyzeAvatarVideo = (0, https_1.onCall)(Object.assign(Object.assign({},
     if (requestedMimeType !== undefined && (typeof requestedMimeType !== "string" || !requestedMimeType.startsWith("video/"))) {
         throw new https_1.HttpsError("invalid-argument", "Video MIME type is invalid");
     }
+    await (0, core_1.enforceCallableRateLimit)(uid, "avatar-video-analysis", core_1.AI_RATE_LIMITS.avatarVideoAnalysis);
     try {
         const bucket = getBucket();
         const file = bucket.file(videoStoragePath);

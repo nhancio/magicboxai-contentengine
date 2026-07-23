@@ -492,8 +492,9 @@ function parseBrandJson(text) {
 }
 exports.extractBrandFromWebsite = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { timeoutSeconds: 60, memory: "512MiB" }), async (request) => {
     var _a, _b;
-    (0, core_1.requireAuth)(request);
+    const uid = (0, core_1.requireAuth)(request);
     const url = normalizeUrl((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.url) !== null && _b !== void 0 ? _b : "");
+    await (0, core_1.enforceCallableRateLimit)(uid, "brand-extraction", core_1.AI_RATE_LIMITS.brandExtraction);
     let html;
     let finalUrl;
     try {

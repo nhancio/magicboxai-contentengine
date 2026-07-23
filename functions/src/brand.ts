@@ -14,7 +14,14 @@ import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/
 import { Jimp } from "jimp";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { callableSecurity, getAI, requireAuth, stringifyError } from "./core";
+import {
+  AI_RATE_LIMITS,
+  callableSecurity,
+  enforceCallableRateLimit,
+  getAI,
+  requireAuth,
+  stringifyError,
+} from "./core";
 import { MODELS } from "./models";
 
 type ExtractReq = { url: string };
@@ -504,8 +511,9 @@ export function parseBrandJson(text: string): GeminiProfile {
 export const extractBrandFromWebsite = onCall(
   { ...callableSecurity, timeoutSeconds: 60, memory: "512MiB" },
   async (request: CallableRequest<ExtractReq>): Promise<BrandExtract> => {
-    requireAuth(request);
+    const uid = requireAuth(request);
     const url = normalizeUrl(request.data?.url ?? "");
+    await enforceCallableRateLimit(uid, "brand-extraction", AI_RATE_LIMITS.brandExtraction);
 
     let html: string;
     let finalUrl: string;

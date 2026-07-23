@@ -158,7 +158,7 @@ function PublishPhone() {
 
 function HeroPhoneStage({ isVisible }: { isVisible: boolean }) {
   return (
-    <div className="relative min-h-[520px] overflow-hidden bg-[#172a35] px-4 py-5 sm:min-h-[570px] lg:min-h-[680px] lg:px-8 lg:py-8">
+    <div data-testid="hero-phone-stage" className="relative min-h-[520px] overflow-hidden bg-[#172a35] px-4 py-5 sm:min-h-[570px] lg:min-h-[680px] lg:px-8 lg:py-8">
       <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.12) 1px, transparent 1px)", backgroundSize: "38px 38px" }} />
       <div className="absolute -right-28 top-20 h-72 w-72 rounded-full bg-[#7956cb]/30 blur-3xl" />
       <div className="absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-[#4ea987]/20 blur-3xl" />

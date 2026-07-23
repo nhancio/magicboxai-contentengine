@@ -37,11 +37,10 @@ def test_landing(browser: Browser):
     assert response and response.ok
     page.locator("h1").wait_for(state="visible")
 
-    assert page.title() == "AI Marketing Agent & Automation Platform | MagicBox"
+    assert page.title() == "AI Social Media Workflow for Lean Teams | MagicBox"
     assert page.locator('link[rel="canonical"]').get_attribute("href") == "https://magicboxai.in/"
-    assert "AI agent for marketing" in page.locator('meta[name="keywords"]').get_attribute("content")
-    assert "Create once" in page.locator("h1").inner_text()
-    assert "everywhere" in page.locator("h1").inner_text()
+    assert "AI social media workflow" in page.locator('meta[name="keywords"]').get_attribute("content")
+    assert page.locator("h1").inner_text() == "A calmer way to run social."
     assert page.locator("#faq details").count() >= 5
     page.locator("#faq details").first.click()
     assert "brand brief" in page.locator("#faq details").first.inner_text()
@@ -92,7 +91,12 @@ def test_landing(browser: Browser):
     mobile, mobile_errors = new_page(browser, width=390, height=844)
     mobile.goto(LANDING_URL, wait_until="domcontentloaded")
     mobile.locator("h1").wait_for(state="visible")
-    assert "Create once" in mobile.locator("h1").inner_text()
+    hero_stage = mobile.get_by_test_id("hero-phone-stage")
+    hero_stage.wait_for(state="visible")
+    stage_box = hero_stage.bounding_box()
+    heading_box = mobile.locator("h1").bounding_box()
+    assert stage_box and heading_box and stage_box["y"] < heading_box["y"]
+    assert mobile.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
     menu = mobile.get_by_role("button", name="Toggle menu")
     menu.click()
     pricing_link = mobile.get_by_role("link", name="Pricing").last

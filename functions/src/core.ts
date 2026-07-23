@@ -6,7 +6,11 @@ import {
 } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  evaluateFixedWindowRateLimit,
+  type FixedWindowRateLimit,
+} from "./rate-limit";
 
 // core.ts is the first module in the import graph (callables.ts imports it),
 // so this runs before any function is defined and applies to all of them.
@@ -57,6 +61,78 @@ export const callableSecurity: Pick<CallableOptions, "cors" | "enforceAppCheck">
   // VITE_FIREBASE_APPCHECK_SITE_KEY before serving browser traffic.
   enforceAppCheck: true,
 };
+
+const RATE_LIMIT_OPERATION = /^[a-z][a-z0-9-]{0,63}$/;
+
+/** Conservative ceilings for provider-backed work that is not covered by a paid-post quota. */
+export const AI_RATE_LIMITS = {
+  imageGeneration: { limit: 10, windowMs: 60 * 60 * 1_000 },
+  textGeneration: { limit: 30, windowMs: 60 * 60 * 1_000 },
+  imageAnalysis: { limit: 30, windowMs: 60 * 60 * 1_000 },
+  avatarPhotoAnalysis: { limit: 6, windowMs: 60 * 60 * 1_000 },
+  avatarVideoAnalysis: { limit: 3, windowMs: 60 * 60 * 1_000 },
+  brandExtraction: { limit: 10, windowMs: 60 * 60 * 1_000 },
+  postRegeneration: { limit: 12, windowMs: 60 * 60 * 1_000 },
+} as const satisfies Record<string, FixedWindowRateLimit>;
+
+/**
+ * Atomically reserve one request in a per-user, per-operation window. Rate
+ * limit records are server-only (there is no client Firestore rule for this
+ * collection), so callers cannot reset or consume another user's allowance.
+ */
+export async function enforceCallableRateLimit(
+  uid: string,
+  operation: string,
+  config: FixedWindowRateLimit,
+): Promise<void> {
+  if (!RATE_LIMIT_OPERATION.test(operation)) {
+    throw new Error("Invalid rate-limit operation");
+  }
+
+  const userKey = createHash("sha256").update(uid).digest("base64url");
+  const ref = db.collection("callableRateLimits").doc(userKey).collection("operations").doc(operation);
+  const nowMs = Date.now();
+  const decision = await db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    const data = snapshot.data() as
+      | { windowStartedAt?: admin.firestore.Timestamp; count?: unknown }
+      | undefined;
+    const storedWindowStart = data?.windowStartedAt;
+    const windowStartedAtMs =
+      storedWindowStart && typeof storedWindowStart.toMillis === "function"
+        ? storedWindowStart.toMillis()
+        : undefined;
+    const result = evaluateFixedWindowRateLimit(
+      {
+        windowStartedAtMs,
+        count: data?.count,
+      },
+      config,
+      nowMs,
+    );
+
+    if (result.allowed) {
+      tx.set(
+        ref,
+        {
+          count: result.count,
+          windowStartedAt: admin.firestore.Timestamp.fromMillis(result.windowStartedAtMs),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+    return result;
+  });
+
+  if (!decision.allowed) {
+    const retryAfterSeconds = Math.max(1, Math.ceil(decision.retryAfterMs / 1_000));
+    throw new HttpsError(
+      "resource-exhausted",
+      `Request limit reached. Try again in about ${retryAfterSeconds} seconds.`,
+    );
+  }
+}
 
 /**
  * Give a caller a Firebase Storage bearer URL without making the underlying

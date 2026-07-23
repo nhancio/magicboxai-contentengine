@@ -1,6 +1,14 @@
 import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-import { callableSecurity, db, getBucket, requireAuth, stringifyError } from "./core";
+import {
+  AI_RATE_LIMITS,
+  callableSecurity,
+  db,
+  enforceCallableRateLimit,
+  getBucket,
+  requireAuth,
+  stringifyError,
+} from "./core";
 import type {
   AutomationDoc,
   AutomationScheduleDoc,
@@ -769,6 +777,7 @@ export const generatePreviewContent = onCall(
     }
 
     const brand = await getOwnedBrandProfile(uid, brandProfileId);
+    await enforceCallableRateLimit(uid, "preview-content", AI_RATE_LIMITS.textGeneration);
 
     try {
       const result = await generateCaptionForPlatform({
@@ -857,6 +866,7 @@ export const regeneratePostContent = onCall(
       throw new HttpsError("failed-precondition", "Post content cannot be regenerated right now");
     }
     await assertOwnedPublishingResources(uid, post);
+    await enforceCallableRateLimit(uid, "post-regeneration", AI_RATE_LIMITS.postRegeneration);
     try {
       const update = await generatePostAssets(request.data.postId, post);
       await ref.update({

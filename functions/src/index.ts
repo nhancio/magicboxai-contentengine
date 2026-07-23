@@ -3,9 +3,11 @@ import * as admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
 import { v4 as uuidv4 } from "uuid";
 import {
+  AI_RATE_LIMITS,
   assertVeoGenerationEnabled,
   callableSecurity,
   createDownloadUrl,
+  enforceCallableRateLimit,
   PLAN_VIDEO_LIMIT,
 } from "./core";
 import { generateVeoVideo, type VeoDurationSeconds } from "./video/googleVeo";
@@ -692,6 +694,7 @@ export const generateImage = onCall(
     if (type !== "influencer" && type !== "ad") {
       throw new HttpsError("invalid-argument", "Image type must be influencer or ad");
     }
+    await enforceCallableRateLimit(uid, "legacy-image-generation", AI_RATE_LIMITS.imageGeneration);
 
     try {
       const ai = getAI();
@@ -729,13 +732,14 @@ export const generateImage = onCall(
 export const generateScript = onCall(
   { ...callableSecurity, timeoutSeconds: 60, memory: "512MiB" },
   async (request: CallableRequest<GenerateScriptData>) => {
-    requireAuth(request);
+    const uid = requireAuth(request);
     const prompt = requireBoundedText(request.data?.prompt, "Prompt", 8_000);
     const systemInstruction = optionalBoundedText(
       request.data?.systemInstruction,
       "System instruction",
       4_000,
     );
+    await enforceCallableRateLimit(uid, "legacy-text-generation", AI_RATE_LIMITS.textGeneration);
 
     try {
       const ai = getAI();
@@ -757,9 +761,10 @@ export const generateScript = onCall(
 export const analyzeImage = onCall(
   { ...callableSecurity, timeoutSeconds: 60, memory: "512MiB" },
   async (request: CallableRequest<AnalyzeImageData>) => {
-    requireAuth(request);
+    const uid = requireAuth(request);
     const image = parseInlineImage(request.data?.imageBase64, request.data?.mimeType);
     const prompt = requireBoundedText(request.data?.prompt, "Prompt", 2_000);
+    await enforceCallableRateLimit(uid, "legacy-image-analysis", AI_RATE_LIMITS.imageAnalysis);
 
     try {
       const ai = getAI();
@@ -799,6 +804,7 @@ export const analyzeAvatarPhotos = onCall(
     if ((images?.length ?? 0) > 10 || (storagePaths?.length ?? 0) > 10) {
       throw new HttpsError("invalid-argument", "At most 10 images are allowed");
     }
+    await enforceCallableRateLimit(uid, "avatar-photo-analysis", AI_RATE_LIMITS.avatarPhotoAnalysis);
 
     try {
       const ai = getAI();
@@ -861,6 +867,7 @@ export const analyzeAvatarVideo = onCall(
     if (requestedMimeType !== undefined && (typeof requestedMimeType !== "string" || !requestedMimeType.startsWith("video/"))) {
       throw new HttpsError("invalid-argument", "Video MIME type is invalid");
     }
+    await enforceCallableRateLimit(uid, "avatar-video-analysis", AI_RATE_LIMITS.avatarVideoAnalysis);
 
     try {
       const bucket = getBucket();
