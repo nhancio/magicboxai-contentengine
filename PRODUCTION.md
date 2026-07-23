@@ -29,9 +29,10 @@ them in `.env` files.
 | --- | --- |
 | Web + admin | Firebase public config, `VITE_FIREBASE_APPCHECK_SITE_KEY`, `VITE_CONVEX_URL` when Convex features are enabled |
 | Landing | `VITE_APP_URL=https://app.magicboxai.in`; PostHog values when analytics is approved |
-| Firebase Functions | Firebase secrets for Dodo, OAuth, Brevo, Post Bridge, and the OAuth-state secret; project/runtime settings required by Vertex AI |
+| Firebase Functions | Firebase secrets for Dodo, Brevo, and Post Bridge; project/runtime settings required by Vertex AI |
 | Firebase App Check | reCAPTCHA Enterprise registrations, site keys in both browser apps, and the Functions v2 runtime Token Verifier role |
-| OAuth providers | Exact production callback URL, authorized JavaScript domains, client credentials, and approved scopes for Google/YouTube, Meta/Instagram, and LinkedIn |
+| Convex channel OAuth | Channel client IDs/secrets, `APP_BASE_URL`, and the production Convex deployment configuration |
+| OAuth providers | Exact Convex production callback URL, authorized JavaScript domains, client credentials, and approved scopes for Google/YouTube, Meta/Instagram, and LinkedIn |
 
 Follow [`.env.example`](./.env.example) and
 [`functions/.env.example`](./functions/.env.example) for variable names only;
@@ -81,9 +82,11 @@ opening checkout:
 1. Dodo: create checkout as an authenticated user, complete payment, verify a
    signed webhook activates the correct Firebase subscription, visit the
    customer portal, then cancel/refund and verify access changes safely.
-2. OAuth: connect one test account for each marketed channel, publish only
-   disposable test content, verify token refresh/reconnect behavior, then
-   disconnect the account and confirm publishing is blocked.
+2. OAuth: configure the current Convex callback from
+   [`CHANNELS_SETUP.md`](./CHANNELS_SETUP.md), connect one test account for
+   each marketed channel, publish only disposable test content, verify token
+   refresh/reconnect behavior, then disconnect the account and confirm
+   publishing is blocked.
 3. Workflow: sign up, create a brand kit, generate a draft, approve it,
    schedule it, and verify only the selected account receives it.
 4. Security: confirm requests without App Check and unauthenticated callable

@@ -20,12 +20,36 @@ VITE_FIREBASE_APPCHECK_SITE_KEY=your_recaptcha_enterprise_site_key
 Use separate App Check registrations for the web and admin origins. Confirm
 valid App Check traffic before deploying Functions with enforcement enabled.
 
-## Authentication and OAuth
+## Authentication and channel OAuth
 
 Enable Google sign-in and allow only the intended production plus deliberate
-development domains. Configure Google/YouTube, Meta/Instagram, and LinkedIn
-OAuth clients with exact callback URLs from `CHANNELS_SETUP.md`; do not use
-wildcard redirect URIs.
+development domains.
+
+The current channel-connection path is **Convex**, not Firebase Functions.
+Configure Google/YouTube, Meta/Instagram, and LinkedIn with this exact
+production redirect URI, and do not use wildcard redirect URIs:
+
+```
+https://beloved-lyrebird-288.convex.site/oauth/callback
+```
+
+Store the current channel OAuth credentials in Convex from `packages/backend/`:
+
+```bash
+npx convex env set GOOGLE_OAUTH_CLIENT_ID
+npx convex env set GOOGLE_OAUTH_CLIENT_SECRET
+npx convex env set META_APP_ID
+npx convex env set META_APP_SECRET
+npx convex env set LINKEDIN_CLIENT_ID
+npx convex env set LINKEDIN_CLIENT_SECRET
+npx convex env set APP_BASE_URL https://app.magicboxai.in
+```
+
+Enter each value only at the prompt; never put a secret in a command line,
+commit, browser variable, or chat. See [`CHANNELS_SETUP.md`](./CHANNELS_SETUP.md)
+for provider-specific scopes and approval requirements. The Firebase social
+OAuth implementation is a legacy fallback and must not be configured for the
+current public launch.
 
 ## Rules and Functions
 
@@ -45,10 +69,8 @@ Configure server credentials with Firebase Secret Manager, never a browser
 ```bash
 firebase functions:secrets:set DODO_API_KEY
 firebase functions:secrets:set DODO_WEBHOOK_SECRET
-firebase functions:secrets:set META_APP_SECRET
-firebase functions:secrets:set LINKEDIN_CLIENT_SECRET
-firebase functions:secrets:set GOOGLE_OAUTH_CLIENT_SECRET
-firebase functions:secrets:set OAUTH_STATE_SECRET
+firebase functions:secrets:set BREVO_API_KEY
+firebase functions:secrets:set POST_BRIDGE_API_KEY
 ```
 
 Set the corresponding public client IDs and non-secret runtime values through
