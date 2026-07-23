@@ -38,21 +38,29 @@ Follow [`.env.example`](./.env.example) and
 [`functions/.env.example`](./functions/.env.example) for variable names only;
 they intentionally contain no values.
 
-## Deploy backend protection first
+## Activate App Check, then deploy backend protection
 
 1. Confirm Firebase Authentication only allows intended production and
    development domains.
-2. Register App Check, set the browser site keys, grant the runtime verifier
-   role, and confirm valid requests in Firebase metrics.
-3. Deploy the versioned rules and Functions together:
+2. Register App Check, set the browser site keys in both production browser
+   deployments, and grant the runtime verifier role.
+3. Deploy the browser applications so they can attach App Check tokens:
+
+   ```bash
+   ./deploy.sh
+   ```
+
+4. Confirm valid App Check requests in Firebase metrics before enforcing it on
+   browser callables.
+5. Deploy the versioned rules and Functions together:
 
    ```bash
    firebase deploy --only firestore:rules,storage,functions
    ```
 
-4. Confirm anonymous Firestore/Storage access is denied, private user media is
+6. Confirm anonymous Firestore/Storage access is denied, private user media is
    not publicly listed, and a signed-in user cannot read another user's data.
-5. Audit existing bucket objects before enabling uniform bucket-level access.
+7. Audit existing bucket objects before enabling uniform bucket-level access.
    Revoke or migrate any historical public object before accepting customer
    media.
 
