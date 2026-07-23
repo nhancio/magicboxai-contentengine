@@ -1,6 +1,6 @@
 import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-import { db, getBucket, requireAuth, stringifyError } from "./core";
+import { callableSecurity, db, getBucket, requireAuth, stringifyError } from "./core";
 import type {
   AutomationDoc,
   AutomationScheduleDoc,
@@ -471,7 +471,7 @@ function parseManualSchedule(value: unknown): Date {
 }
 
 export const createAutomation = onCall(
-  { cors: true, secrets: [brevoApiKey] },
+  { ...callableSecurity, secrets: [brevoApiKey] },
   async (request: CallableRequest<AutomationInput>) => {
     const uid = requireAuth(request);
     const data = request.data;
@@ -535,7 +535,7 @@ export const createAutomation = onCall(
 );
 
 export const updateAutomation = onCall(
-  { cors: true, secrets: [brevoApiKey] },
+  { ...callableSecurity, secrets: [brevoApiKey] },
   async (request: CallableRequest<AutomationInput & { id: string }>) => {
     const uid = requireAuth(request);
     const data = request.data;
@@ -591,7 +591,7 @@ export const updateAutomation = onCall(
 
 /** Pause or safely resume an automation without exposing lifecycle writes. */
 export const setAutomationStatus = onCall(
-  { cors: true, secrets: [brevoApiKey] },
+  { ...callableSecurity, secrets: [brevoApiKey] },
   async (request: CallableRequest<{ id: string; status: "active" | "paused" }>) => {
     const uid = requireAuth(request);
     const { id, status } = request.data ?? {};
@@ -626,7 +626,7 @@ export const setAutomationStatus = onCall(
  * The postingTick publishes it within a minute. Primary demo/testing path.
  */
 export const runAutomationNow = onCall(
-  { cors: true, timeoutSeconds: 300, memory: "1GiB", secrets: [brevoApiKey] },
+  { ...callableSecurity, timeoutSeconds: 300, memory: "1GiB", secrets: [brevoApiKey] },
   async (request: CallableRequest<{ automationId: string }>) => {
     const uid = requireAuth(request);
     const { automationId } = request.data;
@@ -687,7 +687,7 @@ export const runAutomationNow = onCall(
 
 /** Create a quota-reserved manual post without granting the client pipeline writes. */
 export const createManualPost = onCall(
-  { cors: true, secrets: [brevoApiKey] },
+  { ...callableSecurity, secrets: [brevoApiKey] },
   async (request: CallableRequest<ManualPostInput>) => {
     const uid = requireAuth(request);
     const data = request.data;
@@ -749,7 +749,7 @@ export const createManualPost = onCall(
 
 /** Generate a one-off sample post (caption only) for wizard/onboarding previews. */
 export const generatePreviewContent = onCall(
-  { cors: true, timeoutSeconds: 120 },
+  { ...callableSecurity, timeoutSeconds: 120 },
   async (
     request: CallableRequest<{
       brief: string;
@@ -798,7 +798,7 @@ async function getOwnedPost(uid: string, postId: string) {
 }
 
 export const approvePost = onCall(
-  { cors: true },
+  { ...callableSecurity },
   async (request: CallableRequest<{ postId: string }>) => {
     const uid = requireAuth(request);
     const { ref, post } = await getOwnedPost(uid, request.data.postId);
@@ -816,7 +816,7 @@ export const approvePost = onCall(
 );
 
 export const retryPost = onCall(
-  { cors: true },
+  { ...callableSecurity },
   async (request: CallableRequest<{ postId: string }>) => {
     const uid = requireAuth(request);
     const { ref, post } = await getOwnedPost(uid, request.data.postId);
@@ -836,7 +836,7 @@ export const retryPost = onCall(
 );
 
 export const cancelPost = onCall(
-  { cors: true },
+  { ...callableSecurity },
   async (request: CallableRequest<{ postId: string }>) => {
     const uid = requireAuth(request);
     const { ref, post } = await getOwnedPost(uid, request.data.postId);
@@ -849,7 +849,7 @@ export const cancelPost = onCall(
 );
 
 export const regeneratePostContent = onCall(
-  { cors: true, timeoutSeconds: 300, memory: "1GiB" },
+  { ...callableSecurity, timeoutSeconds: 300, memory: "1GiB" },
   async (request: CallableRequest<{ postId: string }>) => {
     const uid = requireAuth(request);
     const { ref, post } = await getOwnedPost(uid, request.data.postId);
@@ -871,7 +871,7 @@ export const regeneratePostContent = onCall(
 );
 
 export const getQuota = onCall(
-  { cors: true },
+  { ...callableSecurity },
   async (request: CallableRequest<Record<string, never>>) => {
     const uid = requireAuth(request);
     return getPostQuota(uid);

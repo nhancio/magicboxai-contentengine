@@ -69,8 +69,7 @@ async function generatePostImage(args) {
     await file.save(Buffer.from(imageBytes, "base64"), {
         metadata: { contentType: "image/png", cacheControl: "public, max-age=31536000" },
     });
-    await file.makePublic();
-    return { url: (0, core_1.getPublicUrl)(storagePath), storagePath };
+    return { url: await (0, core_1.createDownloadUrl)(storagePath), storagePath };
 }
 async function generatePostVideo(args) {
     var _a;
@@ -98,9 +97,8 @@ async function generatePostVideo(args) {
     const [exists] = await file.exists();
     if (!exists)
         throw new Error("Generated video file not found in storage");
-    await file.makePublic();
     return {
-        url: (0, core_1.getPublicUrl)(generated.storagePath),
+        url: await (0, core_1.createDownloadUrl)(generated.storagePath),
         storagePath: generated.storagePath,
     };
 }

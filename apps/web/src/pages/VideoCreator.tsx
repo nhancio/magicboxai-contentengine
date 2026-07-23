@@ -1009,7 +1009,7 @@ export default function VideoCreator() {
  <Button
  onClick={async () => {
  if (generatedVideoUrl) {
- window.open(generatedVideoUrl,"_blank");
+ window.open(generatedVideoUrl,"_blank","noopener,noreferrer");
  return;
  }
 
@@ -1044,7 +1044,7 @@ export default function VideoCreator() {
 
  if (result.videoUrl) {
  toast.success("Video rendered successfully!");
- window.open(result.videoUrl,"_blank");
+ window.open(result.videoUrl,"_blank","noopener,noreferrer");
  }
  } catch (err: any) {
  console.error("Render error:", err);

@@ -30,6 +30,44 @@ const COPY_SCHEMA = {
   required: ["hook", "caption", "hashtags"],
 } as const;
 
+const MAX_CAPTION_LENGTH = 10_000;
+const MAX_URL_LENGTH = 4_096;
+const MAX_VIDEO_SECONDS = 30;
+
+/**
+ * Media is later fetched by publishing providers. Restrict it to Convex's own
+ * storage URLs so a user cannot coerce those server-side provider flows into
+ * fetching arbitrary internal URLs (SSRF).
+ */
+function trustedConvexStorageUrl(raw: string): string {
+  if (raw.length === 0 || raw.length > MAX_URL_LENGTH) {
+    throw new Error("Media URL is invalid");
+  }
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("Media URL is invalid");
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.port ||
+    !url.hostname.endsWith(".convex.cloud") ||
+    !url.pathname.startsWith("/api/storage/")
+  ) {
+    throw new Error("Media must be uploaded to MagicBox storage");
+  }
+  return url.toString();
+}
+
+function assertTextLength(value: string | undefined, label: string, maxLength: number): void {
+  if (value !== undefined && value.length > maxLength) {
+    throw new Error(`${label} must be at most ${maxLength} characters`);
+  }
+}
+
 /** The preset catalogue for the Studio picker. */
 export const presets = query({
   args: {},
@@ -246,6 +284,49 @@ export const createPost = action({
     of?: number;
   }> => {
     const uid = await requireUid(ctx);
+    if (!args.caption.trim() || args.caption.length > MAX_CAPTION_LENGTH) {
+      throw new Error(`Caption must be between 1 and ${MAX_CAPTION_LENGTH} characters`);
+    }
+    if (!args.platforms.length || args.platforms.length > 7 || new Set(args.platforms).size !== args.platforms.length) {
+      throw new Error("Select one or more unique platforms");
+    }
+    if ((args.hashtags?.length ?? 0) > 12 || args.hashtags?.some((tag) => !tag.trim() || tag.length > 100)) {
+      throw new Error("Use at most 12 hashtags of 100 characters or fewer");
+    }
+    assertTextLength(args.brief, "Brief", 4_000);
+    assertTextLength(args.brandProfileId, "Brand profile id", 256);
+    if (args.mediaUrl !== undefined && !args.mediaType) {
+      throw new Error("Media type is required when a media URL is provided");
+    }
+    if (args.mediaType && !args.mediaUrl) {
+      throw new Error("Media URL is required when a media type is provided");
+    }
+    if (
+      args.mediaSource !== undefined &&
+      !["upload", "imagen", "veo", "remotion"].includes(args.mediaSource)
+    ) {
+      throw new Error("Media source is invalid");
+    }
+    if (
+      args.durationSeconds !== undefined &&
+      (!Number.isFinite(args.durationSeconds) || args.durationSeconds < 1 || args.durationSeconds > MAX_VIDEO_SECONDS)
+    ) {
+      throw new Error(`Video duration must be between 1 and ${MAX_VIDEO_SECONDS} seconds`);
+    }
+    if (
+      args.scheduledFor !== undefined &&
+      (!Number.isFinite(args.scheduledFor) ||
+        args.scheduledFor < Date.now() - 5 * 60_000 ||
+        args.scheduledFor > Date.now() + 366 * 24 * 60 * 60_000)
+    ) {
+      throw new Error("Scheduled time must be between now and one year from now");
+    }
+    const timezone = args.timezone ?? "Asia/Kolkata";
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: timezone }).format();
+    } catch {
+      throw new Error("Timezone must be a valid IANA timezone");
+    }
 
     // Default to the user's active accounts for the target platforms.
     let accountIds = args.socialAccountIds ?? [];
@@ -255,11 +336,21 @@ export const createPost = action({
         platforms: args.platforms,
       });
       accountIds = accounts.map((a) => a._id);
+    } else {
+      accountIds = await ctx.runQuery(internal.studio.assertOwnedActiveAccounts, {
+        userId: uid,
+        accountIds,
+        platforms: args.platforms,
+      });
     }
 
     const media =
       args.mediaUrl && args.mediaType
-        ? [{ type: args.mediaType, url: args.mediaUrl, source: (args.mediaSource ?? "upload") as any }]
+        ? [{
+            type: args.mediaType,
+            url: trustedConvexStorageUrl(args.mediaUrl),
+            source: (args.mediaSource ?? "upload") as any,
+          }]
         : undefined;
 
     // Fail fast on platform limits before creating anything — a post that can
@@ -291,7 +382,14 @@ export const createPost = action({
       await ctx.runMutation(internal.credits.ensure, { userId: uid });
       if (args.mediaType === "video") {
         const source = args.mediaSource ?? "upload";
-        if (source !== "veo") {
+        const isOwnedVeoMedia =
+          source === "veo" && media?.[0]?.url
+            ? await ctx.runQuery(internal.media.isOwnedCompletedVideo, {
+                userId: uid,
+                url: media[0].url,
+              })
+            : false;
+        if (!isOwnedVeoMedia) {
           const seconds = Math.max(1, Math.ceil(args.durationSeconds ?? DEFAULT_VEO_SECONDS));
           await ctx.runMutation(internal.credits.spendV, {
             userId: uid,
@@ -319,7 +417,7 @@ export const createPost = action({
       brandProfileId: args.brandProfileId,
       mode: args.mode,
       scheduledFor: args.scheduledFor,
-      timezone: args.timezone ?? "Asia/Kolkata",
+      timezone,
       whatsapp: args.platforms.includes("whatsapp")
         ? {
             recipients: (args.whatsappRecipients ?? [])
@@ -348,6 +446,28 @@ export const activeAccounts = internalQuery({
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .collect();
     return accounts.filter((a) => a.status === "active" && platforms.includes(a.platform));
+  },
+});
+
+/** Verify caller-supplied account ids before a post can ever reach a provider. */
+export const assertOwnedActiveAccounts = internalQuery({
+  args: { userId: v.string(), accountIds: v.array(v.string()), platforms: v.array(v.string()) },
+  handler: async (ctx, { userId, accountIds, platforms }) => {
+    if (accountIds.length === 0 || accountIds.length > 20 || new Set(accountIds).size !== accountIds.length) {
+      throw new Error("Connected account selection is invalid");
+    }
+    const accounts = await ctx.db
+      .query("socialAccounts")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect();
+    const byId = new Map(accounts.map((account) => [account._id, account]));
+    for (const id of accountIds) {
+      const account = byId.get(id as Id<"socialAccounts">);
+      if (!account || account.status !== "active" || !platforms.includes(account.platform)) {
+        throw new Error("One or more connected accounts is unavailable");
+      }
+    }
+    return accountIds;
   },
 });
 

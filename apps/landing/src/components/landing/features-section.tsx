@@ -7,7 +7,7 @@ const features: {
   description: string;
   platform: PlatformKey;
   status: PublishStatus;
-  media: { caption: string; handle: string };
+  media: { src: string; caption: string; handle: string };
 }[] = [
   {
     number: "01",

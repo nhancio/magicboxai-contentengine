@@ -11,8 +11,10 @@
 // near-duplicates are collapsed by RGB distance.
 
 import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/https";
-import Jimp from "jimp";
-import { getAI, requireAuth, stringifyError } from "./core";
+import { Jimp } from "jimp";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { callableSecurity, getAI, requireAuth, stringifyError } from "./core";
 import { MODELS } from "./models";
 
 type ExtractReq = { url: string };
@@ -34,8 +36,9 @@ type LogoCandidate = { url: string; kind: "logo-img" | "apple-touch-icon" | "fav
 
 // ── URL safety ───────────────────────────────────────────────────────────────
 
-// Reject non-http(s) and obvious internal/loopback hosts (basic SSRF guard —
-// this runs server-side with the function's egress).
+// Every URL in this feature comes from an untrusted website. Validate the
+// initial URL *and every redirect/linked asset* before the function performs a
+// server-side request, otherwise this endpoint becomes an SSRF primitive.
 function normalizeUrl(raw: string): URL {
   let candidate = (raw ?? "").trim();
   if (!candidate) throw new HttpsError("invalid-argument", "Enter a website URL.");
@@ -50,10 +53,14 @@ function normalizeUrl(raw: string): URL {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new HttpsError("invalid-argument", "Only http(s) URLs are supported.");
   }
-  const host = url.hostname.toLowerCase();
+  if (url.username || url.password || (url.port && url.port !== "80" && url.port !== "443")) {
+    throw new HttpsError("invalid-argument", "That URL is not allowed.");
+  }
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
   const blocked =
     host === "localhost" ||
     host === "0.0.0.0" ||
+    host === "::1" ||
     host.endsWith(".local") ||
     host.endsWith(".internal") ||
     /^127\./.test(host) ||
@@ -67,14 +74,106 @@ function normalizeUrl(raw: string): URL {
 
 const BOT_HEADERS = { "User-Agent": "MagicBoxBot/1.0 (+https://magicboxai.in)" };
 
+function isPrivateAddress(address: string): boolean {
+  const value = address.toLowerCase();
+  if (isIP(value) === 4) {
+    const octets = value.split(".").map(Number);
+    return (
+      octets[0] === 0 ||
+      octets[0] === 10 ||
+      octets[0] === 127 ||
+      (octets[0] === 169 && octets[1] === 254) ||
+      (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+      (octets[0] === 192 && octets[1] === 168) ||
+      (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) ||
+      octets[0] >= 224
+    );
+  }
+  if (isIP(value) !== 6) return true;
+  if (value === "::" || value === "::1") return true;
+  if (/^(fc|fd|fe[89ab])/.test(value)) return true; // unique-local + link-local
+  const mapped = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  return mapped ? isPrivateAddress(mapped[1]) : false;
+}
+
+async function assertPublicHost(url: URL): Promise<void> {
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  const directIp = isIP(host);
+  if (directIp) {
+    if (isPrivateAddress(host)) {
+      throw new HttpsError("invalid-argument", "That host isn't reachable.");
+    }
+    return;
+  }
+
+  let addresses: { address: string }[];
+  try {
+    addresses = await lookup(host, { all: true, verbatim: true });
+  } catch {
+    throw new HttpsError("unavailable", "That host could not be resolved.");
+  }
+  if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
+    throw new HttpsError("invalid-argument", "That host isn't reachable.");
+  }
+}
+
+async function readLimitedBody(response: Response, maxBytes: number): Promise<Buffer> {
+  const declaredLength = Number(response.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new HttpsError("resource-exhausted", "The remote file is too large.");
+  }
+  if (!response.body) return Buffer.alloc(0);
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new HttpsError("resource-exhausted", "The remote file is too large.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+}
+
+async function fetchPublicUrl(
+  initialUrl: string,
+  signal: AbortSignal,
+): Promise<{ response: Response; finalUrl: string }> {
+  let current = normalizeUrl(initialUrl);
+  for (let redirects = 0; redirects <= 3; redirects++) {
+    await assertPublicHost(current);
+    const response = await fetch(current, {
+      redirect: "manual",
+      signal,
+      headers: BOT_HEADERS,
+    });
+    if (![301, 302, 303, 307, 308].includes(response.status)) {
+      return { response, finalUrl: current.toString() };
+    }
+    const location = response.headers.get("location");
+    if (!location) throw new HttpsError("unavailable", "The site returned an invalid redirect.");
+    current = normalizeUrl(new URL(location, current).toString());
+  }
+  throw new HttpsError("unavailable", "The site redirected too many times.");
+}
+
 async function fetchText(url: string, maxBytes: number, timeoutMs: number): Promise<{ body: string; contentType: string; finalUrl: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { redirect: "follow", signal: controller.signal, headers: BOT_HEADERS });
+    const { response: res, finalUrl } = await fetchPublicUrl(url, controller.signal);
     if (!res.ok) throw new HttpsError("unavailable", `Could not load the site (${res.status}).`);
-    const body = (await res.text()).slice(0, maxBytes);
-    return { body, contentType: res.headers.get("content-type") ?? "", finalUrl: res.url || url };
+    const body = (await readLimitedBody(res, maxBytes)).toString("utf8");
+    return { body, contentType: res.headers.get("content-type") ?? "", finalUrl };
   } finally {
     clearTimeout(timer);
   }
@@ -84,10 +183,12 @@ async function fetchBinary(url: string, maxBytes: number, timeoutMs: number): Pr
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { redirect: "follow", signal: controller.signal, headers: BOT_HEADERS });
+    const { response: res } = await fetchPublicUrl(url, controller.signal);
     if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    return buf.byteLength > maxBytes ? null : buf;
+    if (!/^image\/(?:avif|bmp|gif|jpeg|png|webp|x-icon)/i.test(res.headers.get("content-type") ?? "")) {
+      return null;
+    }
+    return await readLimitedBody(res, maxBytes);
   } catch {
     return null;
   } finally {
@@ -117,7 +218,8 @@ export function findTags(html: string, tagName: string): Array<Record<string, st
 function resolveHref(href: string | undefined, baseUrl: string): string {
   if (!href || href.startsWith("data:") || href.startsWith("javascript:")) return "";
   try {
-    return new URL(href, baseUrl).toString();
+    const url = new URL(href, baseUrl);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
   } catch {
     return "";
   }
@@ -215,7 +317,7 @@ function parseHex(raw: string): RGB | null {
 /** Quantize a logo/icon image to its dominant colors (alpha flattened onto white). */
 export async function colorsFromImageBuffer(buf: Buffer): Promise<RGB[]> {
   try {
-    const img = await Jimp.read(buf);
+    const img = await Jimp.fromBuffer(buf);
     const { data, width, height } = img.bitmap;
     const totalPx = width * height;
     if (!totalPx) return [];
@@ -400,7 +502,7 @@ export function parseBrandJson(text: string): GeminiProfile {
 }
 
 export const extractBrandFromWebsite = onCall(
-  { cors: true, timeoutSeconds: 60, memory: "512MiB" },
+  { ...callableSecurity, timeoutSeconds: 60, memory: "512MiB" },
   async (request: CallableRequest<ExtractReq>): Promise<BrandExtract> => {
     requireAuth(request);
     const url = normalizeUrl(request.data?.url ?? "");

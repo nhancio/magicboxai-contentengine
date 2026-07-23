@@ -82,13 +82,43 @@ function verifyState(token) {
     const [body, sig] = token.split(".");
     if (!body || !sig)
         throw new Error("Malformed state");
-    const expected = (0, node_crypto_1.createHmac)("sha256", exports.oauthStateSecret.value()).update(body).digest("base64url");
-    if (sig !== expected)
+    const expected = (0, node_crypto_1.createHmac)("sha256", exports.oauthStateSecret.value()).update(body).digest();
+    const provided = Buffer.from(sig, "base64url");
+    if (provided.length !== expected.length || !(0, node_crypto_1.timingSafeEqual)(provided, expected)) {
         throw new Error("Bad state signature");
+    }
     const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
-    if (payload.exp < Date.now())
-        throw new Error("State expired");
+    const now = Date.now();
+    if (typeof payload.uid !== "string" ||
+        payload.uid.length < 1 ||
+        payload.uid.length > 128 ||
+        (payload.provider !== "instagram" && payload.provider !== "linkedin" && payload.provider !== "youtube") ||
+        typeof payload.n !== "string" ||
+        !/^[a-f0-9]{32}$/i.test(payload.n) ||
+        !Number.isSafeInteger(payload.exp) ||
+        payload.exp < now ||
+        payload.exp > now + 11 * 60000 ||
+        (payload.returnTo !== undefined && !/^\/[A-Za-z0-9/_-]*$/.test(payload.returnTo))) {
+        throw new Error("State expired or invalid");
+    }
     return payload;
+}
+/** State is signed and single-use: burning the nonce closes OAuth callback replay. */
+async function consumeState(state) {
+    const ref = core_1.db.collection("oauthStates").doc(state.n);
+    await core_1.db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(ref);
+        const data = snap.data();
+        const expiresAt = data === null || data === void 0 ? void 0 : data.expiresAt;
+        if (!snap.exists ||
+            (data === null || data === void 0 ? void 0 : data.uid) !== state.uid ||
+            (data === null || data === void 0 ? void 0 : data.provider) !== state.provider ||
+            !expiresAt ||
+            expiresAt.toMillis() < Date.now()) {
+            throw new Error("State was already used or expired");
+        }
+        transaction.delete(ref);
+    });
 }
 // --- storage ---
 function accountId(uid, provider, externalId) {
@@ -116,7 +146,7 @@ async function storeAccount(uid, provider, profile, token) {
         : {})), (token.igUserId ? { igUserId: token.igUserId } : {})), (token.pageId ? { pageId: token.pageId } : {})), (token.channelId ? { channelId: token.channelId } : {})), { updatedAt: FieldValue.serverTimestamp() }), { merge: true });
 }
 // --- callables ---
-exports.getSocialConnectUrl = (0, https_1.onCall)({ cors: true, secrets: [exports.metaAppId, exports.linkedinClientId, exports.googleOAuthClientId, exports.oauthStateSecret] }, async (request) => {
+exports.getSocialConnectUrl = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { secrets: [exports.metaAppId, exports.linkedinClientId, exports.googleOAuthClientId, exports.oauthStateSecret] }), async (request) => {
     var _a, _b;
     const uid = (0, core_1.requireAuth)(request);
     const provider = (_a = request.data) === null || _a === void 0 ? void 0 : _a.provider;
@@ -126,8 +156,12 @@ exports.getSocialConnectUrl = (0, https_1.onCall)({ cors: true, secrets: [export
     // Only accept a same-app relative path to avoid open-redirects.
     const rawReturn = (_b = request.data) === null || _b === void 0 ? void 0 : _b.returnTo;
     const returnTo = rawReturn && /^\/[A-Za-z0-9/_-]*$/.test(rawReturn) ? rawReturn : undefined;
+    const nonce = (0, node_crypto_1.randomBytes)(16).toString("hex");
+    const expiresAt = Date.now() + 600000;
     const state = signState(Object.assign(Object.assign({ uid,
-        provider }, (returnTo ? { returnTo } : {})), { n: (0, node_crypto_1.randomBytes)(8).toString("hex"), exp: Date.now() + 600000 }));
+        provider }, (returnTo ? { returnTo } : {})), { n: nonce, exp: expiresAt }));
+    await core_1.db.collection("oauthStates").doc(nonce).create(Object.assign(Object.assign({ uid,
+        provider }, (returnTo ? { returnTo } : {})), { expiresAt: Timestamp.fromMillis(expiresAt), createdAt: FieldValue.serverTimestamp() }));
     const redirect = callbackUrl();
     let url;
     if (provider === "instagram") {
@@ -175,7 +209,7 @@ exports.getSocialConnectUrl = (0, https_1.onCall)({ cors: true, secrets: [export
     }
     return { url };
 });
-exports.disconnectSocialAccount = (0, https_1.onCall)({ cors: true }, async (request) => {
+exports.disconnectSocialAccount = (0, https_1.onCall)(Object.assign({}, core_1.callableSecurity), async (request) => {
     var _a, _b, _c;
     const uid = (0, core_1.requireAuth)(request);
     const id = ((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.accountId) !== null && _b !== void 0 ? _b : "").toString().trim();
@@ -340,11 +374,6 @@ async function connectYouTube(uid, code) {
         channelId: channel.id,
     });
 }
-// --- redirect handler ---
-function redirectHtml(target) {
-    const safe = target.replace(/"/g, "%22");
-    return `<!doctype html><meta http-equiv="refresh" content="0;url=${safe}"><a href="${safe}">Continue</a>`;
-}
 exports.socialOAuthCallback = (0, https_2.onRequest)({
     cors: false,
     secrets: [
@@ -360,15 +389,15 @@ exports.socialOAuthCallback = (0, https_2.onRequest)({
     var _a;
     const done = (params, path = "/settings") => {
         const q = new URLSearchParams(params).toString();
-        res.status(200).send(redirectHtml(`${APP_BASE_URL}${path}?${q}`));
+        res.redirect(303, `${APP_BASE_URL}${path}?${q}`);
     };
-    const err = req.query.error;
+    const err = typeof req.query.error === "string" ? req.query.error : undefined;
     if (err) {
         done({ social: "error", reason: String((_a = req.query.error_description) !== null && _a !== void 0 ? _a : err) });
         return;
     }
-    const code = req.query.code;
-    const stateRaw = req.query.state;
+    const code = typeof req.query.code === "string" ? req.query.code : undefined;
+    const stateRaw = typeof req.query.state === "string" ? req.query.state : undefined;
     if (!code || !stateRaw) {
         done({ social: "error", reason: "missing_code_or_state" });
         return;
@@ -376,6 +405,7 @@ exports.socialOAuthCallback = (0, https_2.onRequest)({
     let state;
     try {
         state = verifyState(stateRaw);
+        await consumeState(state);
     }
     catch (e) {
         done({ social: "error", reason: `invalid_state: ${(0, core_1.stringifyError)(e)}` });

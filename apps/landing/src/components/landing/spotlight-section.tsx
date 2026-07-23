@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { APP_URL } from "@/lib/config";
-import { PhoneReels } from "./phone-reels";
+import { PhoneShowcase } from "./phone-system";
 
 export function SpotlightSection() {
   const [isVisible, setIsVisible] = useState(false);

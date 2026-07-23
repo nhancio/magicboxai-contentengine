@@ -1,7 +1,12 @@
 import { setGlobalOptions } from "firebase-functions/v2";
-import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
+import {
+  HttpsError,
+  type CallableOptions,
+  type CallableRequest,
+} from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
+import { randomUUID } from "node:crypto";
 
 // core.ts is the first module in the import graph (callables.ts imports it),
 // so this runs before any function is defined and applies to all of them.
@@ -38,8 +43,37 @@ export const requireAuth = <T>(request: CallableRequest<T>): string => {
 
 export const getBucket = () => admin.storage().bucket();
 
-export const getPublicUrl = (filePath: string) =>
-  `https://storage.googleapis.com/${getBucket().name}/${filePath}`;
+/**
+ * Only the first-party applications and local development servers can invoke
+ * browser callables. Authentication still remains the authorization boundary.
+ */
+export const callableSecurity: Pick<CallableOptions, "cors" | "enforceAppCheck"> = {
+  cors: [
+    "https://app.magicboxai.in",
+    "https://admin.magicboxai.in",
+    /^http:\/\/(localhost|127\.0\.0\.1):\d+$/,
+  ],
+  // App Check is initialized by shared/lib/firebase.ts. Deployments must set
+  // VITE_FIREBASE_APPCHECK_SITE_KEY before serving browser traffic.
+  enforceAppCheck: true,
+};
+
+/**
+ * Give a caller a Firebase Storage bearer URL without making the underlying
+ * GCS object public. The URL is still sensitive and must only be persisted in
+ * tenant-owned records; bucket-level anonymous reads are never required.
+ */
+export async function createDownloadUrl(filePath: string): Promise<string> {
+  const bucket = getBucket();
+  const token = randomUUID();
+  await bucket.file(filePath).setMetadata({
+    metadata: { firebaseStorageDownloadTokens: token },
+  });
+  return (
+    `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name)}` +
+    `/o/${encodeURIComponent(filePath)}?alt=media&token=${encodeURIComponent(token)}`
+  );
+}
 
 /** Veo is opt-in so an incomplete deployment cannot incur generation spend. */
 export const isVeoGenerationEnabled = (): boolean =>

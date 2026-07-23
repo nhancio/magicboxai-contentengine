@@ -28,6 +28,7 @@ import {
  ArrowRight,
  CalendarClock,
  Check,
+ Globe2,
  Image as ImageIcon,
  Instagram,
  Linkedin,
@@ -36,6 +37,7 @@ import {
  ShieldCheck,
  Sparkles,
  Twitter,
+ MessageCircle,
  Type,
  Video,
  Youtube,
@@ -49,6 +51,8 @@ const PLATFORM_META: Record<
  twitter: { label:"Twitter / X", icon: Twitter, tint:"from-sky-400 to-blue-500" },
  linkedin: { label:"LinkedIn", icon: Linkedin, tint:"from-blue-500 to-cyan-500" },
  youtube: { label:"YouTube", icon: Youtube, tint:"from-red-500 to-rose-500" },
+ facebook: { label:"Facebook", icon: Globe2, tint:"from-blue-600 to-blue-400" },
+ whatsapp: { label:"WhatsApp", icon: MessageCircle, tint:"from-emerald-500 to-green-400" },
 };
 
 const PRESETS = [

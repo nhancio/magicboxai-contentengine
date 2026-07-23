@@ -33,12 +33,14 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.stringifyError = exports.PLAN_VIDEO_LIMIT = exports.assertVeoGenerationEnabled = exports.isVeoGenerationEnabled = exports.getPublicUrl = exports.getBucket = exports.requireAuth = exports.getAI = exports.db = void 0;
+exports.stringifyError = exports.PLAN_VIDEO_LIMIT = exports.assertVeoGenerationEnabled = exports.isVeoGenerationEnabled = exports.callableSecurity = exports.getBucket = exports.requireAuth = exports.getAI = exports.db = void 0;
+exports.createDownloadUrl = createDownloadUrl;
 exports.parsePositiveBoundedInteger = parsePositiveBoundedInteger;
 const v2_1 = require("firebase-functions/v2");
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const genai_1 = require("@google/genai");
+const node_crypto_1 = require("node:crypto");
 // core.ts is the first module in the import graph (callables.ts imports it),
 // so this runs before any function is defined and applies to all of them.
 // Region is pinned to match the deployed webhook URL + Vertex location.
@@ -71,8 +73,34 @@ const requireAuth = (request) => {
 exports.requireAuth = requireAuth;
 const getBucket = () => admin.storage().bucket();
 exports.getBucket = getBucket;
-const getPublicUrl = (filePath) => `https://storage.googleapis.com/${(0, exports.getBucket)().name}/${filePath}`;
-exports.getPublicUrl = getPublicUrl;
+/**
+ * Only the first-party applications and local development servers can invoke
+ * browser callables. Authentication still remains the authorization boundary.
+ */
+exports.callableSecurity = {
+    cors: [
+        "https://app.magicboxai.in",
+        "https://admin.magicboxai.in",
+        /^http:\/\/(localhost|127\.0\.0\.1):\d+$/,
+    ],
+    // App Check is initialized by shared/lib/firebase.ts. Deployments must set
+    // VITE_FIREBASE_APPCHECK_SITE_KEY before serving browser traffic.
+    enforceAppCheck: true,
+};
+/**
+ * Give a caller a Firebase Storage bearer URL without making the underlying
+ * GCS object public. The URL is still sensitive and must only be persisted in
+ * tenant-owned records; bucket-level anonymous reads are never required.
+ */
+async function createDownloadUrl(filePath) {
+    const bucket = (0, exports.getBucket)();
+    const token = (0, node_crypto_1.randomUUID)();
+    await bucket.file(filePath).setMetadata({
+        metadata: { firebaseStorageDownloadTokens: token },
+    });
+    return (`https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name)}` +
+        `/o/${encodeURIComponent(filePath)}?alt=media&token=${encodeURIComponent(token)}`);
+}
 /** Veo is opt-in so an incomplete deployment cannot incur generation spend. */
 const isVeoGenerationEnabled = () => process.env.ENABLE_VEO_GENERATION === "true";
 exports.isVeoGenerationEnabled = isVeoGenerationEnabled;

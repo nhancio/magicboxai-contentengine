@@ -15,6 +15,7 @@ import { cn } from "@shared/lib/utils";
 import {
   Bot,
   CalendarClock,
+  Globe2,
   Instagram,
   Linkedin,
   Loader2,
@@ -23,6 +24,7 @@ import {
   Plus,
   Trash2,
   Twitter,
+  MessageCircle,
   Youtube,
   Zap,
 } from "lucide-react";
@@ -32,6 +34,8 @@ const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
   twitter: Twitter,
   linkedin: Linkedin,
   youtube: Youtube,
+  facebook: Globe2,
+  whatsapp: MessageCircle,
 };
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

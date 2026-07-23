@@ -9,6 +9,19 @@ permissions:
   contents: read
 
 jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Fail on high or critical production dependency vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20

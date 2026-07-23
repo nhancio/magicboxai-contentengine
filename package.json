@@ -22,5 +22,10 @@
     "@swc/core": true,
     "fsevents": true,
     "protobufjs": true
+  },
+  "overrides": {
+    "fast-uri": "3.1.4",
+    "fast-xml-parser": "5.10.1",
+    "websocket-driver": "0.7.5"
   }
 }

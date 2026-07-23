@@ -2,7 +2,12 @@ import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/
 import * as admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
 import { v4 as uuidv4 } from "uuid";
-import { assertVeoGenerationEnabled, PLAN_VIDEO_LIMIT } from "./core";
+import {
+  assertVeoGenerationEnabled,
+  callableSecurity,
+  createDownloadUrl,
+  PLAN_VIDEO_LIMIT,
+} from "./core";
 import { generateVeoVideo, type VeoDurationSeconds } from "./video/googleVeo";
 import { MODELS } from "./models";
 
@@ -243,34 +248,6 @@ const requireAuth = <T>(request: CallableRequest<T>): string => {
 
 const getBucket = () => admin.storage().bucket();
 
-const getPublicUrl = (filePath: string) =>
-  `https://storage.googleapis.com/${getBucket().name}/${filePath}`;
-
-const getSubscription = async (uid: string): Promise<SubscriptionState> => {
-  const snap = await db.collection("subscriptions").doc(uid).get();
-  if (!snap.exists) {
-    return { plan: "free", videosUsed: 0, videosLimit: 0, status: "inactive" };
-  }
-
-  const data = snap.data() as Partial<SubscriptionState> | undefined;
-  const plan = data?.plan ?? "free";
-  const configuredLimit = plan === "free" ? 0 : PLAN_VIDEO_LIMIT[plan];
-  const storedLimit = data?.videosLimit ?? 0;
-  const videosLimit =
-    Number.isSafeInteger(storedLimit) && storedLimit > 0
-      ? Math.min(storedLimit, configuredLimit)
-      : 0;
-  return {
-    plan,
-    videosUsed: data?.videosUsed ?? 0,
-    // Cap legacy subscription documents that may still contain the old,
-    // financially unsafe 50/1000 allowances.
-    videosLimit,
-    status: data?.status ?? (data?.plan && data.plan !== "free" ? "active" : "inactive"),
-    currentPeriodEnd: data?.currentPeriodEnd,
-  };
-};
-
 const assertCanGenerateVideo = (subscription: SubscriptionState) => {
   if (subscription.plan === "free") {
     throw new HttpsError("permission-denied", "A paid subscription is required to generate videos");
@@ -283,6 +260,58 @@ const assertCanGenerateVideo = (subscription: SubscriptionState) => {
   if (subscription.videosUsed >= subscription.videosLimit) {
     throw new HttpsError("resource-exhausted", "Monthly video generation limit reached");
   }
+};
+
+/** Atomically reserve a paid video before calling Veo, preventing quota races. */
+const reserveVideoGeneration = async (uid: string): Promise<void> => {
+  const ref = db.collection("subscriptions").doc(uid);
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    const data = snap.data() as Partial<SubscriptionState> | undefined;
+    const plan = data?.plan ?? "free";
+    const storedLimit = data?.videosLimit ?? 0;
+    const configuredLimit = plan === "free" ? 0 : PLAN_VIDEO_LIMIT[plan];
+    const rawUsed = data?.videosUsed;
+    const subscription: SubscriptionState = {
+      plan,
+      videosUsed:
+        typeof rawUsed === "number" && Number.isSafeInteger(rawUsed) && rawUsed >= 0
+          ? rawUsed
+          : 0,
+      videosLimit:
+        Number.isSafeInteger(storedLimit) && storedLimit > 0
+          ? Math.min(storedLimit, configuredLimit)
+          : 0,
+      status: data?.status ?? (plan === "free" ? "inactive" : "active"),
+      currentPeriodEnd: data?.currentPeriodEnd,
+    };
+    assertCanGenerateVideo(subscription);
+    transaction.set(
+      ref,
+      {
+        videosUsed: subscription.videosUsed + 1,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+};
+
+/** Refund a failed reservation without ever taking a concurrent count negative. */
+const releaseVideoGeneration = async (uid: string): Promise<void> => {
+  const ref = db.collection("subscriptions").doc(uid);
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    const used = Number(snap.data()?.videosUsed ?? 0);
+    transaction.set(
+      ref,
+      {
+        videosUsed: Number.isSafeInteger(used) ? Math.max(0, used - 1) : 0,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
 };
 
 const stringifyError = (error: unknown): string => {
@@ -381,8 +410,7 @@ const generateVideoFromImage = async ({
   const [exists] = await file.exists();
   if (!exists) throw new Error("Generated video file not found in storage");
 
-  await file.makePublic();
-  const finalUrl = getPublicUrl(generated.storagePath);
+  const finalUrl = await createDownloadUrl(generated.storagePath);
   console.log("[generateVideoFromImage] Veo generation completed", {
     operationName: generated.operationName,
     storagePath: generated.storagePath,
@@ -443,11 +471,79 @@ type GenerateUGCVideoData = {
   productImageAnalysis?: string;
 };
 
+const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_STORED_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_STORED_VIDEO_BYTES = 200 * 1024 * 1024;
+
+function requireBoundedText(value: unknown, name: string, maxLength: number): string {
+  if (typeof value !== "string" || !value.trim() || value.length > maxLength) {
+    throw new HttpsError("invalid-argument", `${name} is required and must be at most ${maxLength} characters`);
+  }
+  return value.trim();
+}
+
+function optionalBoundedText(value: unknown, name: string, maxLength: number): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  return requireBoundedText(value, name, maxLength);
+}
+
+function requireOwnedStoragePath(uid: string, value: unknown, name: string): string {
+  if (
+    typeof value !== "string" ||
+    value.length < 1 ||
+    value.length > 1_024 ||
+    !value.startsWith(`users/${uid}/`) ||
+    value.includes("..")
+  ) {
+    throw new HttpsError("permission-denied", `${name} does not belong to the current user`);
+  }
+  return value;
+}
+
+async function assertStoredMedia(
+  storagePath: string,
+  mimePrefix: "image/" | "video/",
+  maxBytes: number,
+): Promise<void> {
+  let metadata: { contentType?: string; size?: string | number };
+  try {
+    [metadata] = await getBucket().file(storagePath).getMetadata();
+  } catch {
+    throw new HttpsError("not-found", "The requested media file was not found");
+  }
+  const size = Number(metadata.size ?? 0);
+  if (
+    !metadata.contentType?.startsWith(mimePrefix) ||
+    !Number.isFinite(size) ||
+    size <= 0 ||
+    size > maxBytes
+  ) {
+    throw new HttpsError("invalid-argument", "The requested media file is not an allowed type or size");
+  }
+}
+
+function parseInlineImage(value: unknown, mimeType: unknown): { data: string; mimeType: string } {
+  const allowedMime = typeof mimeType === "string" && /^(image\/(jpeg|png|webp))$/i.test(mimeType)
+    ? mimeType.toLowerCase()
+    : null;
+  if (typeof value !== "string" || !allowedMime || value.length === 0 || value.length > Math.ceil(MAX_INLINE_IMAGE_BYTES * 4 / 3) + 8) {
+    throw new HttpsError("invalid-argument", "Provide a JPEG, PNG, or WebP image no larger than 5 MB");
+  }
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+    throw new HttpsError("invalid-argument", "Image data must be base64 encoded");
+  }
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.length === 0 || bytes.length > MAX_INLINE_IMAGE_BYTES) {
+    throw new HttpsError("invalid-argument", "Image data is too large");
+  }
+  return { data: value, mimeType: allowedMime };
+}
+
 /** Sole MagicBox admin — keep this allowlist tight. */
 const SOLE_ADMIN_EMAILS = new Set(["nithindidigam@nhancio.com"]);
 
 export const setAdminRole = onCall(
-  { cors: true },
+  { ...callableSecurity },
   async (request: CallableRequest<SetAdminRoleData>) => {
     const uid = requireAuth(request);
     const callerRecord = await admin.auth().getUser(uid);
@@ -485,7 +581,7 @@ export const setAdminRole = onCall(
 );
 
 export const verifyAdminStatus = onCall(
-  { cors: true },
+  { ...callableSecurity },
   async (request: CallableRequest<VerifyAdminStatusData>) => {
     const uid = requireAuth(request);
     const userRecord = await admin.auth().getUser(uid);
@@ -519,7 +615,7 @@ export const verifyAdminStatus = onCall(
 // (createPolarCheckout + polarWebhook), exported at the top of this file.
 
 export const renderRemotionVideo = onCall(
-  { timeoutSeconds: 540, memory: "2GiB", cors: true },
+  { ...callableSecurity, timeoutSeconds: 540, memory: "2GiB" },
   async (request: CallableRequest<RenderRemotionVideoData>) => {
     const uid = requireAuth(request);
     const { templateId, props, videoId } = request.data;
@@ -555,8 +651,7 @@ export const renderRemotionVideo = onCall(
         { metadata: { contentType: "application/json" } }
       );
 
-      await projectFile.makePublic();
-      const projectUrl = getPublicUrl(projectFileName);
+      const projectUrl = await createDownloadUrl(projectFileName);
 
       await renderJobRef.update({
         status: "completed",
@@ -589,20 +684,20 @@ export const renderRemotionVideo = onCall(
 );
 
 export const generateImage = onCall(
-  { timeoutSeconds: 120, memory: "512MiB", cors: true },
+  { ...callableSecurity, timeoutSeconds: 120, memory: "512MiB" },
   async (request: CallableRequest<GenerateImageData>) => {
     const uid = requireAuth(request);
-    const { prompt, type } = request.data;
-
-    if (!prompt || typeof prompt !== "string") {
-      throw new HttpsError("invalid-argument", "Prompt is required");
+    const prompt = requireBoundedText(request.data?.prompt, "Prompt", 4_000);
+    const type = request.data?.type;
+    if (type !== "influencer" && type !== "ad") {
+      throw new HttpsError("invalid-argument", "Image type must be influencer or ad");
     }
 
     try {
       const ai = getAI();
       const response = await ai.models.generateImages({
         model: "imagen-3.0-generate-001",
-        prompt: prompt.slice(0, 4000),
+        prompt,
         config: {
           numberOfImages: 1,
           outputMimeType: "image/png",
@@ -624,8 +719,7 @@ export const generateImage = onCall(
         },
       });
 
-      await getBucket().file(fileName).makePublic();
-      return { imageUrl: getPublicUrl(fileName) };
+      return { imageUrl: await createDownloadUrl(fileName) };
     } catch (error: unknown) {
       throw new HttpsError("internal", parseError(error));
     }
@@ -633,10 +727,15 @@ export const generateImage = onCall(
 );
 
 export const generateScript = onCall(
-  { timeoutSeconds: 60, memory: "512MiB", cors: true },
+  { ...callableSecurity, timeoutSeconds: 60, memory: "512MiB" },
   async (request: CallableRequest<GenerateScriptData>) => {
     requireAuth(request);
-    const { prompt, systemInstruction } = request.data;
+    const prompt = requireBoundedText(request.data?.prompt, "Prompt", 8_000);
+    const systemInstruction = optionalBoundedText(
+      request.data?.systemInstruction,
+      "System instruction",
+      4_000,
+    );
 
     try {
       const ai = getAI();
@@ -656,10 +755,11 @@ export const generateScript = onCall(
 );
 
 export const analyzeImage = onCall(
-  { timeoutSeconds: 60, memory: "512MiB", cors: true },
+  { ...callableSecurity, timeoutSeconds: 60, memory: "512MiB" },
   async (request: CallableRequest<AnalyzeImageData>) => {
     requireAuth(request);
-    const { imageBase64, prompt, mimeType } = request.data;
+    const image = parseInlineImage(request.data?.imageBase64, request.data?.mimeType);
+    const prompt = requireBoundedText(request.data?.prompt, "Prompt", 2_000);
 
     try {
       const ai = getAI();
@@ -669,8 +769,8 @@ export const analyzeImage = onCall(
           prompt,
           {
             inlineData: {
-              data: imageBase64,
-              mimeType: mimeType || "image/jpeg",
+              data: image.data,
+              mimeType: image.mimeType,
             },
           },
         ],
@@ -684,20 +784,29 @@ export const analyzeImage = onCall(
 );
 
 export const analyzeAvatarPhotos = onCall(
-  { timeoutSeconds: 120, memory: "512MiB", cors: true },
+  { ...callableSecurity, timeoutSeconds: 120, memory: "512MiB" },
   async (request: CallableRequest<AnalyzeAvatarPhotosData>) => {
-    requireAuth(request);
-    const { images, storagePaths, prompt } = request.data;
+    const uid = requireAuth(request);
+    const { images, storagePaths } = request.data ?? {};
+    const prompt = optionalBoundedText(request.data?.prompt, "Prompt", 4_000);
 
     if (!images?.length && !storagePaths?.length) {
       throw new HttpsError("invalid-argument", "At least one image or storage path is required");
+    }
+    if ((images && !Array.isArray(images)) || (storagePaths && !Array.isArray(storagePaths))) {
+      throw new HttpsError("invalid-argument", "Images must be a list");
+    }
+    if ((images?.length ?? 0) > 10 || (storagePaths?.length ?? 0) > 10) {
+      throw new HttpsError("invalid-argument", "At most 10 images are allowed");
     }
 
     try {
       const ai = getAI();
       const inlineImages = storagePaths?.length
         ? await Promise.all(
-            storagePaths.slice(0, 10).map(async (path) => {
+            storagePaths.map(async (rawPath) => {
+              const path = requireOwnedStoragePath(uid, rawPath, "Image path");
+              await assertStoredMedia(path, "image/", MAX_STORED_IMAGE_BYTES);
               const file = getBucket().file(path);
               const [metadata] = await file.getMetadata();
               const [buffer] = await file.download();
@@ -709,12 +818,10 @@ export const analyzeAvatarPhotos = onCall(
               };
             })
           )
-        : (images ?? []).slice(0, 10).map((image: { imageBase64: string; mimeType: string }) => ({
-            inlineData: {
-              data: image.imageBase64,
-              mimeType: image.mimeType || "image/jpeg",
-            },
-          }));
+        : (images ?? []).map((rawImage) => {
+            const image = parseInlineImage(rawImage?.imageBase64, rawImage?.mimeType);
+            return { inlineData: image };
+          });
 
       const result = await ai.models.generateContent({
         model: MODELS.text,
@@ -742,28 +849,25 @@ Requirements:
 );
 
 export const analyzeAvatarVideo = onCall(
-  { timeoutSeconds: 300, memory: "512MiB", cors: true },
+  { ...callableSecurity, timeoutSeconds: 300, memory: "512MiB" },
   async (request: CallableRequest<AnalyzeAvatarVideoData>) => {
     const uid = requireAuth(request);
-    const { videoStoragePath, mimeType } = request.data;
-
-    if (!videoStoragePath) {
-      throw new HttpsError("invalid-argument", "videoStoragePath is required");
-    }
-    if (!videoStoragePath.startsWith(`users/${uid}/`)) {
-      throw new HttpsError("permission-denied", "Video does not belong to the current user");
+    const videoStoragePath = requireOwnedStoragePath(
+      uid,
+      request.data?.videoStoragePath,
+      "Video",
+    );
+    const requestedMimeType = request.data?.mimeType;
+    if (requestedMimeType !== undefined && (typeof requestedMimeType !== "string" || !requestedMimeType.startsWith("video/"))) {
+      throw new HttpsError("invalid-argument", "Video MIME type is invalid");
     }
 
     try {
       const bucket = getBucket();
       const file = bucket.file(videoStoragePath);
-      const [exists] = await file.exists();
-      if (!exists) {
-        throw new HttpsError("not-found", "Video was not found in storage");
-      }
-
+      await assertStoredMedia(videoStoragePath, "video/", MAX_STORED_VIDEO_BYTES);
       const [metadata] = await file.getMetadata();
-      const contentType = mimeType || metadata.contentType;
+      const contentType = requestedMimeType || metadata.contentType;
       if (!contentType?.startsWith("video/")) {
         throw new HttpsError("invalid-argument", "File is not a video");
       }
@@ -800,34 +904,28 @@ Requirements:
 );
 
 export const generateAvatarVideo = onCall(
-  { timeoutSeconds: 540, memory: "1GiB", cors: true },
+  { ...callableSecurity, timeoutSeconds: 540, memory: "1GiB" },
   async (request: CallableRequest<GenerateAvatarVideoData>) => {
-    console.log("[generateAvatarVideo] ONCALL INVOKED");
     const uid = requireAuth(request);
     assertVeoGenerationEnabled();
-    console.log(`[generateAvatarVideo] UID: ${uid}`);
-    const { photoStoragePath, frameStoragePaths, avatarName, personality } = request.data;
-    console.log(`[generateAvatarVideo] Input data:`, {
-      photoStoragePath,
-      frameCount: frameStoragePaths?.length ?? 0,
-      avatarName,
-      personality,
-    });
-
-    if (!photoStoragePath || !avatarName) {
-      console.error("[generateAvatarVideo] MISSING ARGS");
-      throw new HttpsError("invalid-argument", "photoStoragePath and avatarName are required");
+    const photoStoragePath = requireOwnedStoragePath(uid, request.data?.photoStoragePath, "Image");
+    const avatarName = requireBoundedText(request.data?.avatarName, "Avatar name", 120);
+    const personality = optionalBoundedText(request.data?.personality, "Personality", 240) ?? "";
+    const frameStoragePaths = request.data?.frameStoragePaths;
+    if (frameStoragePaths !== undefined && (!Array.isArray(frameStoragePaths) || frameStoragePaths.length > 10)) {
+      throw new HttpsError("invalid-argument", "At most 10 frame paths are allowed");
     }
-    if (!photoStoragePath.startsWith(`users/${uid}/`)) {
-      throw new HttpsError("permission-denied", "Image does not belong to the current user");
-    }
-    if (frameStoragePaths?.some((p) => !p.startsWith(`users/${uid}/`))) {
-      throw new HttpsError("permission-denied", "Frame path does not belong to the current user");
-    }
+    await assertStoredMedia(photoStoragePath, "image/", MAX_STORED_IMAGE_BYTES);
+    await Promise.all(
+      (frameStoragePaths ?? []).map(async (rawPath) => {
+        const path = requireOwnedStoragePath(uid, rawPath, "Frame");
+        await assertStoredMedia(path, "image/", MAX_STORED_IMAGE_BYTES);
+      }),
+    );
+    await reserveVideoGeneration(uid);
 
     try {
       const outputStoragePrefix = `users/${uid}/avatar-previews/${uuidv4()}/`;
-      console.log(`[generateAvatarVideo] outputStoragePrefix: ${outputStoragePrefix}`);
       const frameNote =
         frameStoragePaths && frameStoragePaths.length > 1
           ? ` Identity was sampled across ${frameStoragePaths.length} stills from the source clip; stay consistent with that person.`
@@ -837,29 +935,26 @@ export const generateAvatarVideo = onCall(
         personality,
       }) + frameNote;
 
-      console.log(`[generateAvatarVideo] previewPrompt: ${previewPrompt}`);
       const res = await generateVideoFromImage({
         prompt: previewPrompt,
         inputImagePath: photoStoragePath,
         outputStoragePrefix,
         durationSeconds: 8,
       });
-      console.log(`[generateAvatarVideo] FINISHED SUCCESSFULLY`, res);
       return res;
     } catch (error: unknown) {
-      console.error("[generateAvatarVideo] CATCH ERROR:", error);
+      await releaseVideoGeneration(uid);
+      console.error("[generateAvatarVideo] failed", stringifyError(error));
       throw new HttpsError("internal", parseError(error));
     }
   }
 );
 
 export const generateUGCVideo = onCall(
-  { timeoutSeconds: 540, memory: "1GiB", cors: true },
+  { ...callableSecurity, timeoutSeconds: 540, memory: "1GiB" },
   async (request: CallableRequest<GenerateUGCVideoData>) => {
-    console.log("[generateUGCVideo] ONCALL INVOKED");
     const uid = requireAuth(request);
     assertVeoGenerationEnabled();
-    console.log(`[generateUGCVideo] UID: ${uid}`);
     const {
       videoId,
       photoStoragePath,
@@ -871,52 +966,43 @@ export const generateUGCVideo = onCall(
       productName,
       productDescription,
       productImageAnalysis,
-    } = request.data;
-
-    console.log(`[generateUGCVideo] Input data:`, request.data);
-
-    if (!photoStoragePath || !script || !templateName || !productName) {
-      console.error("[generateUGCVideo] MISSING ARGS");
-      throw new HttpsError(
-        "invalid-argument",
-        "photoStoragePath, script, templateName, and productName are required"
-      );
-    }
-
-    console.log("[generateUGCVideo] Checking subscription...");
-    const subscription = await getSubscription(uid);
-    assertCanGenerateVideo(subscription);
-    console.log("[generateUGCVideo] Subscription OK.");
+    } = request.data ?? {};
+    const ownedPhotoStoragePath = requireOwnedStoragePath(uid, photoStoragePath, "Image");
+    await assertStoredMedia(ownedPhotoStoragePath, "image/", MAX_STORED_IMAGE_BYTES);
+    const boundedScript = requireBoundedText(script, "Script", 10_000);
+    const boundedTemplateName = requireBoundedText(templateName, "Template name", 120);
+    const boundedProductName = requireBoundedText(productName, "Product name", 240);
+    const boundedAvatarName = optionalBoundedText(avatarName, "Avatar name", 120);
+    const boundedSummary = optionalBoundedText(characterSummary, "Character summary", 2_000);
+    const boundedDescription = optionalBoundedText(productDescription, "Product description", 4_000);
+    const boundedImageAnalysis = optionalBoundedText(productImageAnalysis, "Product image analysis", 4_000);
+    const boundedTemplateId = optionalBoundedText(templateId, "Template id", 120);
+    await reserveVideoGeneration(uid);
 
     try {
-      console.log(`[generateUGCVideo] Updating video document ${videoId}...`);
       await updateVideoDocument(uid, videoId, {
         status: "generating",
         renderProvider: "veo",
       });
 
       const outputStoragePrefix = `users/${uid}/videos/ugc_${uuidv4()}/`;
-      console.log(`[generateUGCVideo] outputStoragePrefix: ${outputStoragePrefix}`);
       const prompt = buildUGCVideoPrompt({
-        avatarName,
-        characterSummary,
-        templateId,
-        templateName,
-        productName,
-        productDescription,
-        productImageAnalysis,
-        script,
+        avatarName: boundedAvatarName,
+        characterSummary: boundedSummary,
+        templateId: boundedTemplateId,
+        templateName: boundedTemplateName,
+        productName: boundedProductName,
+        productDescription: boundedDescription,
+        productImageAnalysis: boundedImageAnalysis,
+        script: boundedScript,
       });
-      console.log(`[generateUGCVideo] Prompt: \n${prompt}`);
 
-      console.log("[generateUGCVideo] Calling generateVideoFromImage...");
       const result = await generateVideoFromImage({
         prompt,
-        inputImagePath: photoStoragePath,
+        inputImagePath: ownedPhotoStoragePath,
         outputStoragePrefix,
         durationSeconds: 8,
       });
-      console.log("[generateUGCVideo] generateVideoFromImage SUCCESS:", result);
 
       await updateVideoDocument(uid, videoId, {
         status: "completed",
@@ -924,20 +1010,10 @@ export const generateUGCVideo = onCall(
         renderProvider: "veo",
         errorMessage: admin.firestore.FieldValue.delete(),
       });
-      console.log("[generateUGCVideo] Video doc updated as completed.");
-
-      await db.collection("subscriptions").doc(uid).set(
-        {
-          videosUsed: admin.firestore.FieldValue.increment(1),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      console.log("[generateUGCVideo] Subscription usage incremented. FINISHED.");
-
       return { videoUrl: result.videoUrl };
     } catch (error: unknown) {
-      console.error("[generateUGCVideo] CATCH ERROR:", error);
+      await releaseVideoGeneration(uid);
+      console.error("[generateUGCVideo] failed", stringifyError(error));
       await updateVideoDocument(uid, videoId, {
         status: "failed",
         errorMessage: parseError(error),

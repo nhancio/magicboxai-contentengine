@@ -10,8 +10,8 @@ import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
-import { createHmac, randomBytes } from "node:crypto";
-import { db, requireAuth, stringifyError } from "./core";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { callableSecurity, db, requireAuth, stringifyError } from "./core";
 import type { SocialProvider, SocialPlatform } from "./core";
 
 export const metaAppId = defineSecret("META_APP_ID");
@@ -65,11 +65,48 @@ function signState(payload: StatePayload): string {
 function verifyState(token: string): StatePayload {
   const [body, sig] = token.split(".");
   if (!body || !sig) throw new Error("Malformed state");
-  const expected = createHmac("sha256", oauthStateSecret.value()).update(body).digest("base64url");
-  if (sig !== expected) throw new Error("Bad state signature");
+  const expected = createHmac("sha256", oauthStateSecret.value()).update(body).digest();
+  const provided = Buffer.from(sig, "base64url");
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    throw new Error("Bad state signature");
+  }
   const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as StatePayload;
-  if (payload.exp < Date.now()) throw new Error("State expired");
+  const now = Date.now();
+  if (
+    typeof payload.uid !== "string" ||
+    payload.uid.length < 1 ||
+    payload.uid.length > 128 ||
+    (payload.provider !== "instagram" && payload.provider !== "linkedin" && payload.provider !== "youtube") ||
+    typeof payload.n !== "string" ||
+    !/^[a-f0-9]{32}$/i.test(payload.n) ||
+    !Number.isSafeInteger(payload.exp) ||
+    payload.exp < now ||
+    payload.exp > now + 11 * 60_000 ||
+    (payload.returnTo !== undefined && !/^\/[A-Za-z0-9/_-]*$/.test(payload.returnTo))
+  ) {
+    throw new Error("State expired or invalid");
+  }
   return payload;
+}
+
+/** State is signed and single-use: burning the nonce closes OAuth callback replay. */
+async function consumeState(state: StatePayload): Promise<void> {
+  const ref = db.collection("oauthStates").doc(state.n);
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    const data = snap.data();
+    const expiresAt = data?.expiresAt as admin.firestore.Timestamp | undefined;
+    if (
+      !snap.exists ||
+      data?.uid !== state.uid ||
+      data?.provider !== state.provider ||
+      !expiresAt ||
+      expiresAt.toMillis() < Date.now()
+    ) {
+      throw new Error("State was already used or expired");
+    }
+    transaction.delete(ref);
+  });
 }
 
 // --- storage ---
@@ -137,7 +174,10 @@ async function storeAccount(
 // --- callables ---
 
 export const getSocialConnectUrl = onCall(
-  { cors: true, secrets: [metaAppId, linkedinClientId, googleOAuthClientId, oauthStateSecret] },
+  {
+    ...callableSecurity,
+    secrets: [metaAppId, linkedinClientId, googleOAuthClientId, oauthStateSecret],
+  },
   async (request: CallableRequest<{ provider: SocialProvider; returnTo?: string }>) => {
     const uid = requireAuth(request);
     const provider = request.data?.provider;
@@ -152,12 +192,21 @@ export const getSocialConnectUrl = onCall(
     const rawReturn = request.data?.returnTo;
     const returnTo = rawReturn && /^\/[A-Za-z0-9/_-]*$/.test(rawReturn) ? rawReturn : undefined;
 
+    const nonce = randomBytes(16).toString("hex");
+    const expiresAt = Date.now() + 600_000;
     const state = signState({
       uid,
       provider,
       ...(returnTo ? { returnTo } : {}),
-      n: randomBytes(8).toString("hex"),
-      exp: Date.now() + 600_000,
+      n: nonce,
+      exp: expiresAt,
+    });
+    await db.collection("oauthStates").doc(nonce).create({
+      uid,
+      provider,
+      ...(returnTo ? { returnTo } : {}),
+      expiresAt: Timestamp.fromMillis(expiresAt),
+      createdAt: FieldValue.serverTimestamp(),
     });
     const redirect = callbackUrl();
 
@@ -209,7 +258,7 @@ export const getSocialConnectUrl = onCall(
 );
 
 export const disconnectSocialAccount = onCall(
-  { cors: true },
+  { ...callableSecurity },
   async (request: CallableRequest<{ accountId: string }>) => {
     const uid = requireAuth(request);
     const id = (request.data?.accountId ?? "").toString().trim();
@@ -439,13 +488,6 @@ async function connectYouTube(uid: string, code: string): Promise<void> {
   );
 }
 
-// --- redirect handler ---
-
-function redirectHtml(target: string): string {
-  const safe = target.replace(/"/g, "%22");
-  return `<!doctype html><meta http-equiv="refresh" content="0;url=${safe}"><a href="${safe}">Continue</a>`;
-}
-
 export const socialOAuthCallback = onRequest(
   {
     cors: false,
@@ -457,22 +499,22 @@ export const socialOAuthCallback = onRequest(
       googleOAuthClientId,
       googleOAuthClientSecret,
       oauthStateSecret,
-    ],
+  ],
   },
   async (req, res) => {
     const done = (params: Record<string, string>, path = "/settings") => {
       const q = new URLSearchParams(params).toString();
-      res.status(200).send(redirectHtml(`${APP_BASE_URL}${path}?${q}`));
+      res.redirect(303, `${APP_BASE_URL}${path}?${q}`);
     };
 
-    const err = req.query.error as string | undefined;
+    const err = typeof req.query.error === "string" ? req.query.error : undefined;
     if (err) {
       done({ social: "error", reason: String(req.query.error_description ?? err) });
       return;
     }
 
-    const code = req.query.code as string | undefined;
-    const stateRaw = req.query.state as string | undefined;
+    const code = typeof req.query.code === "string" ? req.query.code : undefined;
+    const stateRaw = typeof req.query.state === "string" ? req.query.state : undefined;
     if (!code || !stateRaw) {
       done({ social: "error", reason: "missing_code_or_state" });
       return;
@@ -481,6 +523,7 @@ export const socialOAuthCallback = onRequest(
     let state: StatePayload;
     try {
       state = verifyState(stateRaw);
+      await consumeState(state);
     } catch (e: unknown) {
       done({ social: "error", reason: `invalid_state: ${stringifyError(e)}` });
       return;

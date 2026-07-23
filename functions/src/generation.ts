@@ -4,10 +4,10 @@
 import { v4 as uuidv4 } from "uuid";
 import {
   assertVeoGenerationEnabled,
+  createDownloadUrl,
   db,
   getAI,
   getBucket,
-  getPublicUrl,
   stringifyError,
 } from "./core";
 import type { BrandProfileDoc, PostDoc, SocialPlatform } from "./core";
@@ -83,8 +83,7 @@ export async function generatePostImage(args: {
   await file.save(Buffer.from(imageBytes, "base64"), {
     metadata: { contentType: "image/png", cacheControl: "public, max-age=31536000" },
   });
-  await file.makePublic();
-  return { url: getPublicUrl(storagePath), storagePath };
+  return { url: await createDownloadUrl(storagePath), storagePath };
 }
 
 export async function generatePostVideo(args: {
@@ -119,9 +118,8 @@ export async function generatePostVideo(args: {
   const file = bucket.file(generated.storagePath);
   const [exists] = await file.exists();
   if (!exists) throw new Error("Generated video file not found in storage");
-  await file.makePublic();
   return {
-    url: getPublicUrl(generated.storagePath),
+    url: await createDownloadUrl(generated.storagePath),
     storagePath: generated.storagePath,
   };
 }

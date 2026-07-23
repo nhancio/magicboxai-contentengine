@@ -117,7 +117,7 @@ async function createDodoCheckoutSession(opts) {
         throw new Error("Dodo did not return a checkout URL");
     return url;
 }
-exports.createDodoCheckout = (0, https_1.onCall)({ cors: true, secrets: [exports.dodoApiKey] }, async (request) => {
+exports.createDodoCheckout = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { secrets: [exports.dodoApiKey] }), async (request) => {
     var _a, _b, _c, _d, _e;
     const uid = (0, core_1.requireAuth)(request);
     const planId = (_a = request.data) === null || _a === void 0 ? void 0 : _a.planId;
@@ -163,7 +163,7 @@ exports.createGuestCheckout = (0, https_1.onRequest)({ cors: true }, async (req,
     res.set("Cache-Control", "no-store");
     res.redirect(302, `${APP_BASE_URL}/login?redirect=${encodeURIComponent(destination)}`);
 });
-exports.createDodoPortal = (0, https_1.onCall)({ cors: true, secrets: [exports.dodoApiKey] }, async (request) => {
+exports.createDodoPortal = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { secrets: [exports.dodoApiKey] }), async (request) => {
     var _a;
     const uid = (0, core_1.requireAuth)(request);
     const snapshot = await core_1.db.collection("subscriptions").doc(uid).get();

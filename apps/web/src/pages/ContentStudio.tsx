@@ -323,7 +323,7 @@ export default function ContentStudio() {
                       <Button
                         size="sm"
                         className="w-full bg-brand/10 text-brand border border-brand/20 hover:bg-brand/20"
-                        onClick={() => window.open(video.videoUrl, "_blank")}
+                        onClick={() => window.open(video.videoUrl, "_blank", "noopener,noreferrer")}
                       >
                         <Video className="mr-1.5 h-3.5 w-3.5" />
                         Open Video

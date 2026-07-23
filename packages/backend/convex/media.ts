@@ -36,6 +36,8 @@ import { DEFAULT_VEO_SECONDS } from "./credits";
 
 const POLL_INTERVAL_MS = 15_000;
 const MAX_POLLS = 40; // ~10 min ceiling before we call a Veo render dead
+const MAX_GENERATION_PROMPT_LENGTH = 8_000;
+const MAX_VIDEO_SECONDS = 30;
 
 const VERTICAL = new Set(["instagram", "youtube", "facebook", "reddit"]);
 
@@ -104,6 +106,18 @@ export const patchJob = internalMutation({
 export const getJob = internalQuery({
   args: { jobId: v.id("mediaJobs") },
   handler: async (ctx, { jobId }) => ctx.db.get(jobId),
+});
+
+/** Only a completed Veo job owned by this user may skip a second post-time charge. */
+export const isOwnedCompletedVideo = internalQuery({
+  args: { userId: v.string(), url: v.string() },
+  handler: async (ctx, { userId, url }) => {
+    const jobs = await ctx.db
+      .query("mediaJobs")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect();
+    return jobs.some((job) => job.kind === "video" && job.status === "completed" && job.url === url);
+  },
 });
 
 /** Public: the Studio UI polls this while a video renders. Never leaks storage internals. */
@@ -175,6 +189,12 @@ export const generateImage = action({
   args: { prompt: v.string(), aspectRatio: v.optional(v.string()) },
   handler: async (ctx, { prompt, aspectRatio }): Promise<{ url: string; storageId: string }> => {
     const uid = await requireUid(ctx);
+    if (!prompt.trim() || prompt.length > MAX_GENERATION_PROMPT_LENGTH) {
+      throw new Error("Image prompt must be between 1 and 8,000 characters");
+    }
+    if (aspectRatio && !["1:1", "9:16", "16:9"].includes(aspectRatio)) {
+      throw new Error("Unsupported image aspect ratio");
+    }
     await ctx.runMutation(internal.credits.spendI, {
       userId: uid,
       amount: 1,
@@ -257,7 +277,17 @@ export const renderVideo = internalAction({
     durationSeconds: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<Id<"mediaJobs">> => {
-    const seconds = Math.max(1, Math.ceil(args.durationSeconds ?? DEFAULT_VEO_SECONDS));
+    if (!args.prompt.trim() || args.prompt.length > MAX_GENERATION_PROMPT_LENGTH) {
+      throw new Error("Video prompt must be between 1 and 8,000 characters");
+    }
+    if (!["1:1", "9:16", "16:9"].includes(args.aspectRatio)) {
+      throw new Error("Unsupported video aspect ratio");
+    }
+    const requestedSeconds = args.durationSeconds ?? DEFAULT_VEO_SECONDS;
+    if (!Number.isFinite(requestedSeconds) || requestedSeconds < 1 || requestedSeconds > MAX_VIDEO_SECONDS) {
+      throw new Error(`Video duration must be between 1 and ${MAX_VIDEO_SECONDS} seconds`);
+    }
+    const seconds = Math.ceil(requestedSeconds);
     await ctx.runMutation(internal.credits.spendV, {
       userId: args.userId,
       amount: seconds,

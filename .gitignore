@@ -4,8 +4,14 @@ node_modules/
 # Environment (never commit secrets)
 .env
 .env.local
+.env.*
 .env.*.local
 !.env.example
+*.pem
+*.key
+*-service-account.json
+*service-account*.json
+firebase-adminsdk*.json
 
 # Build output
 dist/

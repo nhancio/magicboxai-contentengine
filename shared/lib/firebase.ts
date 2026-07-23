@@ -3,6 +3,11 @@ import { getAuth, GoogleAuthProvider, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { getFunctions, type Functions } from "firebase/functions";
+import {
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+  type AppCheck,
+} from "firebase/app-check";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -20,6 +25,7 @@ let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
 let functions: Functions | null = null;
 let googleProvider: GoogleAuthProvider | null = null;
+let appCheck: AppCheck | null = null;
 
 if (firebaseConfig.apiKey && firebaseConfig.projectId) {
   try {
@@ -29,9 +35,20 @@ if (firebaseConfig.apiKey && firebaseConfig.projectId) {
     storage = getStorage(app);
     functions = getFunctions(app);
     googleProvider = new GoogleAuthProvider();
+    const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY as string | undefined;
+    if (appCheckSiteKey) {
+      appCheck = initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+    } else if (import.meta.env.PROD) {
+      console.error(
+        "Firebase App Check is required in production. Set VITE_FIREBASE_APPCHECK_SITE_KEY."
+      );
+    }
   } catch (error) {
     console.warn("Firebase initialization failed. Running in demo mode.", error);
   }
 }
 
-export { app, auth, db, storage, functions, googleProvider };
+export { app, auth, db, storage, functions, googleProvider, appCheck };

@@ -341,7 +341,7 @@ function parseManualSchedule(value) {
     }
     return date;
 }
-exports.createAutomation = (0, https_1.onCall)({ cors: true, secrets: [brevo_1.brevoApiKey] }, async (request) => {
+exports.createAutomation = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { secrets: [brevo_1.brevoApiKey] }), async (request) => {
     var _a, _b, _c, _d, _e, _f;
     const uid = (0, core_1.requireAuth)(request);
     const data = request.data;
@@ -370,7 +370,7 @@ exports.createAutomation = (0, https_1.onCall)({ cors: true, secrets: [brevo_1.b
     const ref = await core_1.db.collection("automations").add(Object.assign(Object.assign({}, automation), { createdAt: FieldValue.serverTimestamp() }));
     return { id: ref.id, nextRunAt: nextRunAt.toISOString() };
 });
-exports.updateAutomation = (0, https_1.onCall)({ cors: true, secrets: [brevo_1.brevoApiKey] }, async (request) => {
+exports.updateAutomation = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { secrets: [brevo_1.brevoApiKey] }), async (request) => {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const uid = (0, core_1.requireAuth)(request);
     const data = request.data;
@@ -400,7 +400,7 @@ exports.updateAutomation = (0, https_1.onCall)({ cors: true, secrets: [brevo_1.b
     return { id: data.id, nextRunAt: nextRunAt.toISOString() };
 });
 /** Pause or safely resume an automation without exposing lifecycle writes. */
-exports.setAutomationStatus = (0, https_1.onCall)({ cors: true, secrets: [brevo_1.brevoApiKey] }, async (request) => {
+exports.setAutomationStatus = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { secrets: [brevo_1.brevoApiKey] }), async (request) => {
     var _a, _b;
     const uid = (0, core_1.requireAuth)(request);
     const { id, status } = (_a = request.data) !== null && _a !== void 0 ? _a : {};
@@ -426,7 +426,7 @@ exports.setAutomationStatus = (0, https_1.onCall)({ cors: true, secrets: [brevo_
  * Create an immediate post from an automation and generate its content now.
  * The postingTick publishes it within a minute. Primary demo/testing path.
  */
-exports.runAutomationNow = (0, https_1.onCall)({ cors: true, timeoutSeconds: 300, memory: "1GiB", secrets: [brevo_1.brevoApiKey] }, async (request) => {
+exports.runAutomationNow = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { timeoutSeconds: 300, memory: "1GiB", secrets: [brevo_1.brevoApiKey] }), async (request) => {
     var _a;
     const uid = (0, core_1.requireAuth)(request);
     const { automationId } = request.data;
@@ -459,7 +459,7 @@ exports.runAutomationNow = (0, https_1.onCall)({ cors: true, timeoutSeconds: 300
     }
 });
 /** Create a quota-reserved manual post without granting the client pipeline writes. */
-exports.createManualPost = (0, https_1.onCall)({ cors: true, secrets: [brevo_1.brevoApiKey] }, async (request) => {
+exports.createManualPost = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { secrets: [brevo_1.brevoApiKey] }), async (request) => {
     var _a;
     const uid = (0, core_1.requireAuth)(request);
     const data = request.data;
@@ -496,7 +496,7 @@ exports.createManualPost = (0, https_1.onCall)({ cors: true, secrets: [brevo_1.b
     return { id: postRef.id, status };
 });
 /** Generate a one-off sample post (caption only) for wizard/onboarding previews. */
-exports.generatePreviewContent = (0, https_1.onCall)({ cors: true, timeoutSeconds: 120 }, async (request) => {
+exports.generatePreviewContent = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { timeoutSeconds: 120 }), async (request) => {
     const uid = (0, core_1.requireAuth)(request);
     const { brief, platform, preset, tone, brandProfileId } = request.data;
     if (!(brief === null || brief === void 0 ? void 0 : brief.trim()) || brief.trim().length > 4000) {
@@ -532,7 +532,7 @@ async function getOwnedPost(uid, postId) {
     }
     return { ref, post: snap.data() };
 }
-exports.approvePost = (0, https_1.onCall)({ cors: true }, async (request) => {
+exports.approvePost = (0, https_1.onCall)(Object.assign({}, core_1.callableSecurity), async (request) => {
     var _a;
     const uid = (0, core_1.requireAuth)(request);
     const { ref, post } = await getOwnedPost(uid, request.data.postId);
@@ -547,7 +547,7 @@ exports.approvePost = (0, https_1.onCall)({ cors: true }, async (request) => {
     });
     return { success: true };
 });
-exports.retryPost = (0, https_1.onCall)({ cors: true }, async (request) => {
+exports.retryPost = (0, https_1.onCall)(Object.assign({}, core_1.callableSecurity), async (request) => {
     var _a;
     const uid = (0, core_1.requireAuth)(request);
     const { ref, post } = await getOwnedPost(uid, request.data.postId);
@@ -564,7 +564,7 @@ exports.retryPost = (0, https_1.onCall)({ cors: true }, async (request) => {
     });
     return { success: true };
 });
-exports.cancelPost = (0, https_1.onCall)({ cors: true }, async (request) => {
+exports.cancelPost = (0, https_1.onCall)(Object.assign({}, core_1.callableSecurity), async (request) => {
     const uid = (0, core_1.requireAuth)(request);
     const { ref, post } = await getOwnedPost(uid, request.data.postId);
     if (["posted", "posting"].includes(post.status)) {
@@ -573,7 +573,7 @@ exports.cancelPost = (0, https_1.onCall)({ cors: true }, async (request) => {
     await ref.update({ status: "cancelled", updatedAt: FieldValue.serverTimestamp() });
     return { success: true };
 });
-exports.regeneratePostContent = (0, https_1.onCall)({ cors: true, timeoutSeconds: 300, memory: "1GiB" }, async (request) => {
+exports.regeneratePostContent = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { timeoutSeconds: 300, memory: "1GiB" }), async (request) => {
     const uid = (0, core_1.requireAuth)(request);
     const { ref, post } = await getOwnedPost(uid, request.data.postId);
     if (!["ready", "failed", "pending_approval", "scheduled", "draft"].includes(post.status)) {
@@ -589,7 +589,7 @@ exports.regeneratePostContent = (0, https_1.onCall)({ cors: true, timeoutSeconds
         throw new https_1.HttpsError("internal", (0, core_1.stringifyError)(error));
     }
 });
-exports.getQuota = (0, https_1.onCall)({ cors: true }, async (request) => {
+exports.getQuota = (0, https_1.onCall)(Object.assign({}, core_1.callableSecurity), async (request) => {
     const uid = (0, core_1.requireAuth)(request);
     return (0, quota_1.getPostQuota)(uid);
 });

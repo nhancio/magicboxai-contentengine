@@ -13,7 +13,14 @@ service firebase.storage {
     match /users/{userId}/{allPaths=**} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow write: if request.auth != null && request.auth.uid == userId
-        && request.resource.size < 10 * 1024 * 1024; // 10MB max
+        && request.resource.size < 10 * 1024 * 1024
+        // Do not turn user storage into an arbitrary executable/file-hosting
+        // surface. Large source videos have their own, narrower rule below.
+        && (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType.matches('video/.*') ||
+          request.resource.contentType == 'application/pdf'
+        );
     }
 
     // Avatar source videos (uploaded or webcam-recorded) exceed the general

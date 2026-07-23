@@ -5,7 +5,7 @@ import { onCall, HttpsError, onRequest, type CallableRequest } from "firebase-fu
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
-import { db, requireAuth, PLAN_VIDEO_LIMIT, type PlanId } from "./core";
+import { callableSecurity, db, requireAuth, PLAN_VIDEO_LIMIT, type PlanId } from "./core";
 import {
   parseIsoTimestamp,
   verifyStandardWebhook,
@@ -136,7 +136,7 @@ async function createDodoCheckoutSession(opts: {
 }
 
 export const createDodoCheckout = onCall(
-  { cors: true, secrets: [dodoApiKey] },
+  { ...callableSecurity, secrets: [dodoApiKey] },
   async (request: CallableRequest<{ planId: PlanId; billing?: Billing }>) => {
     const uid = requireAuth(request);
     const planId = request.data?.planId;
@@ -190,7 +190,7 @@ export const createGuestCheckout = onRequest({ cors: true }, async (req, res) =>
 });
 
 export const createDodoPortal = onCall(
-  { cors: true, secrets: [dodoApiKey] },
+  { ...callableSecurity, secrets: [dodoApiKey] },
   async (request: CallableRequest<Record<string, never>>) => {
     const uid = requireAuth(request);
     const snapshot = await db.collection("subscriptions").doc(uid).get();

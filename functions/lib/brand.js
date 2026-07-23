@@ -10,9 +10,6 @@
 // is quantized for its dominant colors (the mark defines the brand), CSS hex
 // frequency is the fallback signal, theme-color meta is weighted heavily, and
 // near-duplicates are collapsed by RGB distance.
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extractBrandFromWebsite = void 0;
 exports.findTags = findTags;
@@ -26,12 +23,15 @@ exports.buildPalette = buildPalette;
 exports.extractFonts = extractFonts;
 exports.parseBrandJson = parseBrandJson;
 const https_1 = require("firebase-functions/v2/https");
-const jimp_1 = __importDefault(require("jimp"));
+const jimp_1 = require("jimp");
+const promises_1 = require("node:dns/promises");
+const node_net_1 = require("node:net");
 const core_1 = require("./core");
 const models_1 = require("./models");
 // ── URL safety ───────────────────────────────────────────────────────────────
-// Reject non-http(s) and obvious internal/loopback hosts (basic SSRF guard —
-// this runs server-side with the function's egress).
+// Every URL in this feature comes from an untrusted website. Validate the
+// initial URL *and every redirect/linked asset* before the function performs a
+// server-side request, otherwise this endpoint becomes an SSRF primitive.
 function normalizeUrl(raw) {
     let candidate = (raw !== null && raw !== void 0 ? raw : "").trim();
     if (!candidate)
@@ -48,9 +48,13 @@ function normalizeUrl(raw) {
     if (url.protocol !== "http:" && url.protocol !== "https:") {
         throw new https_1.HttpsError("invalid-argument", "Only http(s) URLs are supported.");
     }
-    const host = url.hostname.toLowerCase();
+    if (url.username || url.password || (url.port && url.port !== "80" && url.port !== "443")) {
+        throw new https_1.HttpsError("invalid-argument", "That URL is not allowed.");
+    }
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
     const blocked = host === "localhost" ||
         host === "0.0.0.0" ||
+        host === "::1" ||
         host.endsWith(".local") ||
         host.endsWith(".internal") ||
         /^127\./.test(host) ||
@@ -63,32 +67,125 @@ function normalizeUrl(raw) {
     return url;
 }
 const BOT_HEADERS = { "User-Agent": "MagicBoxBot/1.0 (+https://magicboxai.in)" };
+function isPrivateAddress(address) {
+    const value = address.toLowerCase();
+    if ((0, node_net_1.isIP)(value) === 4) {
+        const octets = value.split(".").map(Number);
+        return (octets[0] === 0 ||
+            octets[0] === 10 ||
+            octets[0] === 127 ||
+            (octets[0] === 169 && octets[1] === 254) ||
+            (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+            (octets[0] === 192 && octets[1] === 168) ||
+            (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) ||
+            octets[0] >= 224);
+    }
+    if ((0, node_net_1.isIP)(value) !== 6)
+        return true;
+    if (value === "::" || value === "::1")
+        return true;
+    if (/^(fc|fd|fe[89ab])/.test(value))
+        return true; // unique-local + link-local
+    const mapped = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    return mapped ? isPrivateAddress(mapped[1]) : false;
+}
+async function assertPublicHost(url) {
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    const directIp = (0, node_net_1.isIP)(host);
+    if (directIp) {
+        if (isPrivateAddress(host)) {
+            throw new https_1.HttpsError("invalid-argument", "That host isn't reachable.");
+        }
+        return;
+    }
+    let addresses;
+    try {
+        addresses = await (0, promises_1.lookup)(host, { all: true, verbatim: true });
+    }
+    catch (_a) {
+        throw new https_1.HttpsError("unavailable", "That host could not be resolved.");
+    }
+    if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
+        throw new https_1.HttpsError("invalid-argument", "That host isn't reachable.");
+    }
+}
+async function readLimitedBody(response, maxBytes) {
+    var _a;
+    const declaredLength = Number((_a = response.headers.get("content-length")) !== null && _a !== void 0 ? _a : 0);
+    if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+        throw new https_1.HttpsError("resource-exhausted", "The remote file is too large.");
+    }
+    if (!response.body)
+        return Buffer.alloc(0);
+    const reader = response.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done)
+                break;
+            total += value.byteLength;
+            if (total > maxBytes) {
+                await reader.cancel();
+                throw new https_1.HttpsError("resource-exhausted", "The remote file is too large.");
+            }
+            chunks.push(value);
+        }
+    }
+    finally {
+        reader.releaseLock();
+    }
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+}
+async function fetchPublicUrl(initialUrl, signal) {
+    let current = normalizeUrl(initialUrl);
+    for (let redirects = 0; redirects <= 3; redirects++) {
+        await assertPublicHost(current);
+        const response = await fetch(current, {
+            redirect: "manual",
+            signal,
+            headers: BOT_HEADERS,
+        });
+        if (![301, 302, 303, 307, 308].includes(response.status)) {
+            return { response, finalUrl: current.toString() };
+        }
+        const location = response.headers.get("location");
+        if (!location)
+            throw new https_1.HttpsError("unavailable", "The site returned an invalid redirect.");
+        current = normalizeUrl(new URL(location, current).toString());
+    }
+    throw new https_1.HttpsError("unavailable", "The site redirected too many times.");
+}
 async function fetchText(url, maxBytes, timeoutMs) {
     var _a;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const res = await fetch(url, { redirect: "follow", signal: controller.signal, headers: BOT_HEADERS });
+        const { response: res, finalUrl } = await fetchPublicUrl(url, controller.signal);
         if (!res.ok)
             throw new https_1.HttpsError("unavailable", `Could not load the site (${res.status}).`);
-        const body = (await res.text()).slice(0, maxBytes);
-        return { body, contentType: (_a = res.headers.get("content-type")) !== null && _a !== void 0 ? _a : "", finalUrl: res.url || url };
+        const body = (await readLimitedBody(res, maxBytes)).toString("utf8");
+        return { body, contentType: (_a = res.headers.get("content-type")) !== null && _a !== void 0 ? _a : "", finalUrl };
     }
     finally {
         clearTimeout(timer);
     }
 }
 async function fetchBinary(url, maxBytes, timeoutMs) {
+    var _a;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const res = await fetch(url, { redirect: "follow", signal: controller.signal, headers: BOT_HEADERS });
+        const { response: res } = await fetchPublicUrl(url, controller.signal);
         if (!res.ok)
             return null;
-        const buf = Buffer.from(await res.arrayBuffer());
-        return buf.byteLength > maxBytes ? null : buf;
+        if (!/^image\/(?:avif|bmp|gif|jpeg|png|webp|x-icon)/i.test((_a = res.headers.get("content-type")) !== null && _a !== void 0 ? _a : "")) {
+            return null;
+        }
+        return await readLimitedBody(res, maxBytes);
     }
-    catch (_a) {
+    catch (_b) {
         return null;
     }
     finally {
@@ -117,7 +214,8 @@ function resolveHref(href, baseUrl) {
     if (!href || href.startsWith("data:") || href.startsWith("javascript:"))
         return "";
     try {
-        return new URL(href, baseUrl).toString();
+        const url = new URL(href, baseUrl);
+        return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
     }
     catch (_a) {
         return "";
@@ -213,7 +311,7 @@ function parseHex(raw) {
 async function colorsFromImageBuffer(buf) {
     var _a;
     try {
-        const img = await jimp_1.default.read(buf);
+        const img = await jimp_1.Jimp.fromBuffer(buf);
         const { data, width, height } = img.bitmap;
         const totalPx = width * height;
         if (!totalPx)
@@ -392,7 +490,7 @@ function parseBrandJson(text) {
             : [],
     };
 }
-exports.extractBrandFromWebsite = (0, https_1.onCall)({ cors: true, timeoutSeconds: 60, memory: "512MiB" }, async (request) => {
+exports.extractBrandFromWebsite = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { timeoutSeconds: 60, memory: "512MiB" }), async (request) => {
     var _a, _b;
     (0, core_1.requireAuth)(request);
     const url = normalizeUrl((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.url) !== null && _b !== void 0 ? _b : "");
