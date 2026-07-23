@@ -266,6 +266,60 @@ export function FacebookPreview({ content }: { content: PreviewContent }) {
  );
 }
 
+export function WhatsAppPreview({ content }: { content: PreviewContent }) {
+ const body = [
+ content.caption,
+ content.hashtags?.length ? formatHashtags(content.hashtags) : "",
+ ]
+ .filter(Boolean)
+ .join("\n\n");
+
+ return (
+ <div className="w-full max-w-sm overflow-hidden rounded-xl border border-border bg-[#0b141a] text-white shadow-2xl">
+ <div className="flex items-center gap-2.5 bg-[#1f2c34] px-3 py-2.5">
+ <BrandAvatar content={content} className="h-9 w-9 shrink-0 rounded-full" />
+ <div className="min-w-0 flex-1">
+ <div className="truncate text-[13px] font-semibold">
+ {content.brandName ?? "Your Brand"}
+ </div>
+ <div className="text-[10px] text-[#8696a0]">Business account</div>
+ </div>
+ </div>
+ <div
+ className="space-y-2 px-3 py-4"
+ style={{
+ backgroundImage:
+ "radial-gradient(circle at 20% 20%, rgba(255,255,255,0.03) 0, transparent 40%), radial-gradient(circle at 80% 60%, rgba(255,255,255,0.025) 0, transparent 35%)",
+ backgroundColor: "#0b141a",
+ }}
+ >
+ <div className="ml-auto max-w-[88%] overflow-hidden rounded-xl rounded-tr-sm bg-[#005c4b] shadow-sm">
+ {content.imageUrl ? (
+ <img
+ src={content.imageUrl}
+ alt=""
+ className="aspect-[4/3] w-full object-cover"
+ />
+ ) : (
+ <div
+ className="aspect-[4/3] w-full"
+ style={{
+ background: `linear-gradient(145deg, ${content.brandColors?.primary ?? "#128C7E"}, ${content.brandColors?.secondary ?? "#075E54"})`,
+ }}
+ />
+ )}
+ <div className="space-y-1 px-2.5 py-2">
+ <p className="whitespace-pre-line text-[13px] leading-snug text-white/95">
+ {body || "Your message"}
+ </p>
+ <div className="text-right text-[10px] text-white/55">Just now</div>
+ </div>
+ </div>
+ </div>
+ </div>
+ );
+}
+
 export default function PlatformPreview({
  platform,
  content,
@@ -284,6 +338,8 @@ export default function PlatformPreview({
  return <YouTubePreview content={content} />;
  case "facebook":
  return <FacebookPreview content={content} />;
+ case "whatsapp":
+ return <WhatsAppPreview content={content} />;
  default:
  return <LinkedInPreview content={content} />;
  }

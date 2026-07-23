@@ -61,6 +61,20 @@ exports.PLATFORM_PROMPTS = {
 - Tone: energetic and direct for Shorts; clear and informative for longer videos.
 - Hashtags: 2–4 relevant tags at the end (YouTube surfaces the first 3 above the title).
 - Never keyword-stuff; write for a human deciding whether to watch.`,
+    facebook: `Platform: Facebook.
+- Structure: strong opening line, then short paragraphs with line breaks for scanning; end with one clear CTA (comment, click, share, or visit).
+- Length: 40–80 words for feed posts; up to ~150 words when storytelling. Front-load value — only the first few lines show before "See more".
+- Tone: conversational and community-oriented; slightly warmer than LinkedIn, less visual-lifestyle than Instagram.
+- Emojis: 0–4, used as light emphasis or list markers, never clutter.
+- Hashtags: 0–3 relevant tags at the end (Facebook relies more on shares/comments than hashtag discovery).
+- Write for a friend-of-a-friend feed: clear, human, shareable — not a hard sell.`,
+    whatsapp: `Platform: WhatsApp (broadcast / status / community message).
+- Structure: one clear message — hook or greeting, the point, then a single next step (reply, tap link, or save).
+- Length: keep it short: ideally under 60 words; never a long essay. Prefer 2–4 short sentences or a tight bullet list.
+- Tone: personal and direct, like a trusted contact texting — not a brand blast. Use "you" language.
+- Emojis: 0–2 max, only if they clarify tone; avoid spammy emoji walls.
+- No hashtags. Links only when essential and placed at the end.
+- Assume the reader is mid-conversation or scanning a chat list — make the first line carry the whole point.`,
 };
 exports.PRESET_PROMPTS = {
     announcement: `Content preset: Announcement.

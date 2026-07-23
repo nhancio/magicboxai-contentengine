@@ -18,7 +18,8 @@ export type PlatformId =
   | "twitter"
   | "linkedin"
   | "youtube"
-  | "reddit";
+  | "reddit"
+  | "whatsapp";
 
 export type MediaItem = {
   type: "image" | "video";
@@ -49,6 +50,10 @@ export type ProviderToken = {
   pageId?: string;
   /** youtube: the channel */
   channelId?: string;
+  /** whatsapp: Cloud API phone_number_id (from-id for /messages) */
+  phoneNumberId?: string;
+  /** whatsapp: WhatsApp Business Account id */
+  wabaId?: string;
   scopes?: string[];
 };
 

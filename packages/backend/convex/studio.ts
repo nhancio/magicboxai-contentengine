@@ -129,6 +129,14 @@ export const insertPost = internalMutation({
     mode: v.union(v.literal("now"), v.literal("schedule"), v.literal("draft")),
     scheduledFor: v.optional(v.number()),
     timezone: v.string(),
+    /** WhatsApp A2P: opted-in E.164 recipients (+ optional approved template). */
+    whatsapp: v.optional(
+      v.object({
+        recipients: v.array(v.string()),
+        templateName: v.optional(v.string()),
+        templateLanguage: v.optional(v.string()),
+      }),
+    ),
   },
   handler: async (ctx, args): Promise<{ postId: Id<"posts">; scheduledFor: number; status: string }> => {
     const now = Date.now();
@@ -164,6 +172,17 @@ export const insertPost = internalMutation({
     const status =
       args.mode === "draft" || args.socialAccountIds.length === 0 ? "draft" : "scheduled";
 
+    const perPlatform =
+      args.whatsapp && args.platforms.includes("whatsapp")
+        ? {
+            whatsapp: {
+              recipients: args.whatsapp.recipients,
+              templateName: args.whatsapp.templateName,
+              templateLanguage: args.whatsapp.templateLanguage,
+            },
+          }
+        : undefined;
+
     const postId = await ctx.db.insert("posts", {
       userId: args.userId,
       brandProfileId: args.brandProfileId,
@@ -172,7 +191,11 @@ export const insertPost = internalMutation({
       timezone: args.timezone,
       status: status as any,
       brief: args.brief,
-      content: { caption: args.caption, hashtags: args.hashtags },
+      content: {
+        caption: args.caption,
+        hashtags: args.hashtags,
+        ...(perPlatform ? { perPlatform } : {}),
+      },
       media: args.media,
       platforms: args.platforms as any,
       socialAccountIds: args.socialAccountIds,
@@ -208,6 +231,9 @@ export const createPost = action({
     mode: v.union(v.literal("now"), v.literal("schedule"), v.literal("draft")),
     scheduledFor: v.optional(v.number()),
     timezone: v.optional(v.string()),
+    whatsappRecipients: v.optional(v.array(v.string())),
+    whatsappTemplateName: v.optional(v.string()),
+    whatsappTemplateLanguage: v.optional(v.string()),
   },
   handler: async (
     ctx,
@@ -248,6 +274,17 @@ export const createPost = action({
       }
     }
 
+    if (args.platforms.includes("whatsapp") && args.mode !== "draft") {
+      const recipients = (args.whatsappRecipients ?? [])
+        .map((n) => n.replace(/[^\d]/g, ""))
+        .filter((n) => n.length >= 8);
+      if (recipients.length === 0) {
+        throw new Error(
+          "WhatsApp needs at least one opted-in recipient phone (E.164, digits only).",
+        );
+      }
+    }
+
     // Credits: drafts are free. Posts cost 1 i-credit, or N v-credits for video
     // uploads. Veo-generated clips were already billed at generate time.
     if (args.mode !== "draft") {
@@ -283,6 +320,15 @@ export const createPost = action({
       mode: args.mode,
       scheduledFor: args.scheduledFor,
       timezone: args.timezone ?? "Asia/Kolkata",
+      whatsapp: args.platforms.includes("whatsapp")
+        ? {
+            recipients: (args.whatsappRecipients ?? [])
+              .map((n) => n.replace(/[^\d]/g, ""))
+              .filter((n) => n.length >= 8),
+            templateName: args.whatsappTemplateName,
+            templateLanguage: args.whatsappTemplateLanguage,
+          }
+        : undefined,
     });
 
     if (args.mode === "now" && status === "scheduled") {

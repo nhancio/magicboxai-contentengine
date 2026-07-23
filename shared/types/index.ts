@@ -97,9 +97,20 @@ export interface GeneratedVideo {
 
 // --- Marketing Automation Suite ---
 
-export type SocialPlatform = "instagram" | "twitter" | "linkedin" | "youtube";
+export type SocialPlatform =
+  | "instagram"
+  | "twitter"
+  | "linkedin"
+  | "youtube"
+  | "facebook"
+  | "whatsapp";
 /** Providers we connect directly via OAuth. Twitter/X is intentionally deferred. */
-export type SocialProvider = "instagram" | "linkedin" | "youtube";
+export type SocialProvider =
+  | "instagram"
+  | "linkedin"
+  | "youtube"
+  | "facebook"
+  | "whatsapp";
 
 export interface SocialAccount {
   id: string;

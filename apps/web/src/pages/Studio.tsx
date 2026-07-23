@@ -21,6 +21,7 @@ import {
   Linkedin,
   Youtube,
   Facebook,
+  MessageCircle,
   Link2,
   ImagePlus,
   Film,
@@ -41,9 +42,10 @@ const PLATFORM_ICON: Record<string, typeof Instagram> = {
   facebook: Facebook,
   linkedin: Linkedin,
   youtube: Youtube,
+  whatsapp: MessageCircle,
 };
 
-const VERTICAL = new Set(["instagram", "youtube", "facebook", "reddit"]);
+const VERTICAL = new Set(["instagram", "youtube", "facebook", "reddit", "whatsapp"]);
 const aspectFor = (p: string) => (VERTICAL.has(p) ? "9:16" : "1:1");
 
 const MEDIA_ICON = { video: Film, image: ImagePlus, none: Type } as const;
@@ -81,6 +83,8 @@ export default function Studio() {
   const [copy, setCopy] = useState<Copy | null>(null);
   const [caption, setCaption] = useState("");
   const [hashtags, setHashtags] = useState("");
+  const [whatsappRecipients, setWhatsappRecipients] = useState("");
+  const [whatsappTemplateName, setWhatsappTemplateName] = useState("");
 
   const [media, setMedia] = useState<{ type: "image" | "video"; url: string; source: string } | null>(
     null,
@@ -209,6 +213,16 @@ export default function Studio() {
       toast.error("Generate or upload media first (or save as draft).");
       return;
     }
+    if (platform === "whatsapp" && mode !== "draft") {
+      const recipients = whatsappRecipients
+        .split(/[\s,;]+/)
+        .map((n) => n.replace(/[^\d]/g, ""))
+        .filter((n) => n.length >= 8);
+      if (recipients.length === 0) {
+        toast.error("Add at least one opted-in WhatsApp number (E.164 digits).");
+        return;
+      }
+    }
     setPosting(mode);
     try {
       const r = await createPost({
@@ -224,6 +238,16 @@ export default function Studio() {
         brief: prompt || preset.name,
         mode,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...(platform === "whatsapp"
+          ? {
+              whatsappRecipients: whatsappRecipients
+                .split(/[\s,;]+/)
+                .map((n) => n.replace(/[^\d]/g, ""))
+                .filter((n) => n.length >= 8),
+              whatsappTemplateName: whatsappTemplateName.trim() || undefined,
+              whatsappTemplateLanguage: "en",
+            }
+          : {}),
       });
       if (mode === "now") {
         if (r.status === "posted") {
@@ -349,6 +373,33 @@ export default function Studio() {
                 );
               })}
             </div>
+
+            {platform === "whatsapp" && (
+              <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
+                <div className="space-y-1.5">
+                  <Label>WhatsApp recipients (opted-in)</Label>
+                  <Input
+                    value={whatsappRecipients}
+                    onChange={(e) => setWhatsappRecipients(e.target.value)}
+                    placeholder="9198xxxxxxxx, 14155552671"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    E.164 digits, comma-separated. Not a public feed — each send is A2P to these numbers.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Template name (optional)</Label>
+                  <Input
+                    value={whatsappTemplateName}
+                    onChange={(e) => setWhatsappTemplateName(e.target.value)}
+                    placeholder="Approved Marketing template for cold sends"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Required outside the 24h service window. Leave blank for session messages.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {preset.inputs.some((i) => i.key === "productName") && (
               <div className="space-y-1.5">

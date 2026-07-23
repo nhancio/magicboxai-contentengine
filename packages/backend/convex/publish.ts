@@ -188,13 +188,28 @@ export const runPost = internalAction({
         igUserId: dest.token.igUserId,
         pageId: dest.token.pageId,
         channelId: dest.token.channelId,
+        phoneNumberId: dest.token.phoneNumberId,
+        wabaId: dest.token.wabaId,
         scopes: dest.token.scopes,
       };
+
+      const perPlatform = (post.content?.perPlatform ?? {}) as Record<
+        string,
+        Record<string, unknown> | undefined
+      >;
+      const waOpts = (perPlatform.whatsapp ?? {}) as Record<string, unknown>;
 
       const input = {
         caption: post.content?.caption ?? "",
         hashtags: post.content?.hashtags ?? [],
         media: (post.media ?? []).map((m: any) => ({ type: m.type, url: m.url })),
+        options: {
+          ...waOpts,
+          recipients: waOpts.recipients,
+          to: waOpts.to,
+          templateName: waOpts.templateName,
+          templateLanguage: waOpts.templateLanguage,
+        },
       };
 
       const attemptPublish = async () => {

@@ -19,17 +19,20 @@ import { Button } from"@shared/components/ui/button";
 import { Input } from"@shared/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from"@shared/components/ui/avatar";
 import { cn } from"@shared/lib/utils";
-import PlatformPreview from"../components/previews/PlatformPreview";
+import PreviewModule from"../components/previews/PreviewModule";
 import {
  ArrowRight,
  CalendarClock,
  Check,
+ ChevronLeft,
  Facebook,
  Globe2,
  Instagram,
  Link2,
  Linkedin,
  Loader2,
+ MessageCircle,
+ PanelRight,
  Send,
  Sparkles,
  Twitter,
@@ -58,12 +61,15 @@ const PLATFORM_META: Record<
  twitter: { label:"Twitter / X", icon: Twitter, tint:"from-sky-400 to-blue-500" },
  linkedin: { label:"LinkedIn", icon: Linkedin, tint:"from-blue-500 to-cyan-500" },
  youtube: { label:"YouTube", icon: Youtube, tint:"from-red-500 to-rose-500" },
+ whatsapp: { label:"WhatsApp", icon: MessageCircle, tint:"from-emerald-500 to-teal-500" },
 };
 
-const CONNECTABLE: Array<"instagram" | "linkedin" | "youtube"> = [
+const CONNECTABLE: Array<"instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp"> = [
  "instagram",
  "linkedin",
  "youtube",
+ "facebook",
+ "whatsapp",
 ];
 
 function channelHandle(account: SocialAccount): string {
@@ -80,6 +86,8 @@ const PREVIEW_PLATFORMS: SocialPlatform[] = [
  "instagram",
  "linkedin",
  "youtube",
+ "facebook",
+ "whatsapp",
 ];
 
 type SamplePost = {
@@ -128,7 +136,9 @@ export default function Onboarding() {
  const preset = getPreset(searchParams.get("preset"));
  const [step, setStep] = useState(0);
  const [legacyAccounts, setLegacyAccounts] = useState<SocialAccount[]>([]);
- const [connecting, setConnecting] = useState<"instagram" | "linkedin" | "youtube" | null>(null);
+ const [connecting, setConnecting] = useState<
+ "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp" | null
+ >(null);
  const [saving, setSaving] = useState(false);
 
  // Convex channel path (same engine Studio / Maya / Settings use).
@@ -180,6 +190,7 @@ export default function Onboarding() {
  const [activeSampleId, setActiveSampleId] = useState<string>("sample-0");
  const [generating, setGenerating] = useState(false);
  const [posting, setPosting] = useState(false);
+ const [previewCollapsed, setPreviewCollapsed] = useState(false);
 
  const timezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
@@ -209,7 +220,9 @@ export default function Onboarding() {
  window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
  }, [user]);
 
- const handleConnect = async (provider: "instagram" | "linkedin" | "youtube") => {
+ const handleConnect = async (
+ provider: "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp",
+ ) => {
  setConnecting(provider);
  try {
  if (!isConvexConfigured) {
@@ -438,7 +451,12 @@ export default function Onboarding() {
 
  return (
  <div className="min-h-screen bg-background text-foreground">
- <div className="relative mx-auto max-w-2xl px-4 py-12">
+ <div
+ className={cn(
+ "relative mx-auto px-4 py-12",
+ step === 2 ? "max-w-6xl" : "max-w-2xl",
+ )}
+ >
  <div className="mb-10 text-center">
  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-foreground text-background">
  {step === 0 ? <Link2 className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
@@ -558,7 +576,9 @@ export default function Onboarding() {
  className="shrink-0 border-amber-500/30 text-amber-700"
  disabled={connecting !== null}
  onClick={() =>
- handleConnect(account.platform as "instagram" | "linkedin" | "youtube")
+ handleConnect(
+ account.platform as "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp",
+ )
  }
  >
  Reconnect
@@ -803,7 +823,20 @@ export default function Onboarding() {
  )}
 
  {step === 2 && (
- <div className="space-y-5">
+ <div
+ className={cn(
+ "grid gap-5",
+ previewCollapsed
+ ? "lg:grid-cols-[minmax(0,1fr)_3.5rem]"
+ : "lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]",
+ )}
+ >
+ <div
+ className={cn(
+ "min-w-0 space-y-5",
+ !previewCollapsed && "pb-[min(52vh,440px)] lg:pb-0",
+ )}
+ >
  <div className="glass-card p-6">
  <div className="flex flex-wrap items-start justify-between gap-3">
  <div>
@@ -813,6 +846,7 @@ export default function Onboarding() {
  channel is connected.
  </p>
  </div>
+ <div className="flex items-center gap-2">
  {(extracted?.logoUrl || brandName) && (
  <div className="flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1.5">
  {extracted?.logoUrl ? (
@@ -825,6 +859,19 @@ export default function Onboarding() {
  <span className="text-xs font-medium">{brandName || "Your brand"}</span>
  </div>
  )}
+ {previewCollapsed && (
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ className="lg:hidden"
+ onClick={() => setPreviewCollapsed(false)}
+ >
+ <PanelRight className="mr-1.5 h-3.5 w-3.5" />
+ Show preview
+ </Button>
+ )}
+ </div>
  </div>
 
  {samples.length > 1 && (
@@ -847,66 +894,17 @@ export default function Onboarding() {
  </div>
  )}
 
- <div className="mt-4 flex flex-wrap gap-2">
- {PREVIEW_PLATFORMS.map((platform) => {
- const meta = PLATFORM_META[platform];
- const connected = accounts.some(
- (a) => a.platform === platform && a.status === "active",
- );
- return (
- <button
- key={platform}
- type="button"
- onClick={() => handlePreviewPlatform(platform)}
- className={cn(
- "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
- previewPlatform === platform
- ? "border-brand/60 bg-brand/15 text-brand"
- : "border-border text-muted-foreground hover:bg-secondary",
- )}
- >
- <meta.icon className="h-3.5 w-3.5" /> {meta.label}
- {connected && (
- <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
- )}
- </button>
- );
- })}
- </div>
-
- <div className="mt-5 flex justify-center">
- {generating && !activeSample ? (
- <div className="flex h-64 flex-col items-center justify-center gap-3 text-muted-foreground">
- <Loader2 className="h-6 w-6 animate-spin text-brand" />
- <span className="text-sm">Writing samples in your brand voice…</span>
- </div>
- ) : activeSample ? (
- <div className="w-full max-w-sm space-y-3">
- <PlatformPreview
- platform={previewPlatform}
- content={{
- caption: activeSample.caption,
- hashtags: activeSample.hashtags,
- brandName: brandName || "Your Brand",
- handle: brandName
- ? brandName.toLowerCase().replace(/\s+/g, "")
- : "yourbrand",
- logoUrl: extracted?.logoUrl,
- brandColors: extracted?.colors,
- }}
- />
  {generating && (
- <p className="text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
- Polishing with AI…
+ <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+ {activeSample ? "Polishing with AI…" : "Writing samples in your brand voice…"}
  </p>
  )}
- </div>
- ) : (
- <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+
+ {!activeSample && !generating && (
+ <div className="mt-5 flex h-40 items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
  Go back and fetch a website to unlock branded samples.
  </div>
  )}
- </div>
 
  {activeSample && (
  <div className="mt-5 space-y-2">
@@ -966,6 +964,65 @@ export default function Onboarding() {
  <p className="text-center text-xs text-muted-foreground">
  Posting timezone: {timezone}
  </p>
+ </div>
+
+ {/* Right preview rail — desktop sticky; mobile bottom sheet */}
+ <div
+ className={cn(
+ "z-20 border-border bg-background/95 backdrop-blur-md",
+ "fixed inset-x-0 bottom-0 border-t p-3 shadow-[0_-8px_30px_rgba(0,0,0,0.12)]",
+ previewCollapsed && "hidden lg:block",
+ "lg:static lg:inset-auto lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none",
+ "lg:sticky lg:top-6 lg:self-start",
+ )}
+ >
+ {!previewCollapsed && (
+ <div className="mb-2 flex items-center justify-between lg:hidden">
+ <span className="text-xs font-medium text-muted-foreground">Live preview</span>
+ <button
+ type="button"
+ onClick={() => setPreviewCollapsed(true)}
+ className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+ >
+ <ChevronLeft className="h-3.5 w-3.5" />
+ Hide
+ </button>
+ </div>
+ )}
+ <PreviewModule
+ collapsible
+ collapsed={previewCollapsed}
+ onCollapsedChange={setPreviewCollapsed}
+ className={cn(
+ previewCollapsed
+ ? "min-h-[min(48vh,280px)] lg:min-h-[420px]"
+ : "max-h-[min(48vh,420px)] min-h-0 lg:min-h-[480px] lg:max-h-[min(80vh,720px)]",
+ )}
+ title="Post preview"
+ platform={previewPlatform}
+ onPlatformChange={handlePreviewPlatform}
+ allowedPlatforms={PREVIEW_PLATFORMS}
+ content={
+ activeSample
+ ? {
+ caption: activeSample.caption,
+ hashtags: activeSample.hashtags,
+ brandName: brandName || "Your Brand",
+ handle: brandName
+ ? brandName.toLowerCase().replace(/\s+/g, "")
+ : "yourbrand",
+ logoUrl: extracted?.logoUrl,
+ brandColors: extracted?.colors,
+ }
+ : null
+ }
+ emptyHint={
+ generating
+ ? "Writing samples in your brand voice…"
+ : "Go back and fetch a website to unlock branded samples."
+ }
+ />
+ </div>
  </div>
  )}
  </motion.div>

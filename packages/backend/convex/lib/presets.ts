@@ -40,7 +40,7 @@ export const PRESETS: Preset[] = [
     id: "talking-head-ugc",
     name: "Talking-head UGC",
     description: "Your avatar talks straight to camera. The format that still converts best.",
-    platforms: ["instagram", "youtube", "facebook"],
+    platforms: ["instagram", "youtube", "facebook", "whatsapp"],
     mediaType: "video",
     inputs: [
       { key: "avatar", required: true, label: "Avatar" },
@@ -89,7 +89,7 @@ export const PRESETS: Preset[] = [
     id: "product-demo",
     name: "Product demo",
     description: "Show the thing working. Best when the product is visual.",
-    platforms: ["instagram", "youtube", "facebook"],
+    platforms: ["instagram", "youtube", "facebook", "whatsapp"],
     mediaType: "video",
     inputs: [
       { key: "productName", required: true, label: "Product" },

@@ -26,6 +26,8 @@ import {
 } from "@shared/components/ui/dialog";
 import { Badge } from "@shared/components/ui/badge";
 import { cn } from "@shared/lib/utils";
+import { Link } from "react-router-dom";
+import { trialClock, trialStatusCopy } from "../lib/credits";
 import {
   Settings as SettingsIcon,
   User,
@@ -49,6 +51,11 @@ import {
   Facebook,
   MessageCircle,
   Link2,
+  Sparkles,
+  Clock,
+  ArrowRight,
+  Image as ImageIcon,
+  Clapperboard,
 } from "lucide-react";
 
 const PLATFORM_ICON: Record<string, typeof Instagram> = {
@@ -58,6 +65,7 @@ const PLATFORM_ICON: Record<string, typeof Instagram> = {
   youtube: Youtube,
   twitter: Twitter,
   reddit: MessageCircle,
+  whatsapp: MessageCircle,
 };
 
 type ChannelAccount = {
@@ -108,6 +116,10 @@ function webProfileUrl(account: ChannelAccount): string | null {
     case "facebook":
       if (externalId) return `https://www.facebook.com/${externalId}`;
       return handle ? `https://www.facebook.com/${encodeURIComponent(handle)}` : null;
+    case "whatsapp": {
+      const digits = (handle || externalId).replace(/[^\d]/g, "");
+      return digits ? `https://wa.me/${digits}` : "https://www.whatsapp.com/";
+    }
     case "twitter":
       return handle ? `https://x.com/${encodeURIComponent(handle)}` : null;
     case "reddit":
@@ -150,6 +162,10 @@ function appDeepLink(account: ChannelAccount): string | null {
         : handle
           ? `fb://profile/${encodeURIComponent(handle)}`
           : null;
+    case "whatsapp": {
+      const digits = (handle || externalId).replace(/[^\d]/g, "");
+      return digits ? `whatsapp://send?phone=${digits}` : "whatsapp://";
+    }
     case "twitter":
       return handle ? `twitter://user?screen_name=${encodeURIComponent(handle)}` : null;
     default:
@@ -397,6 +413,7 @@ export default function Settings() {
 
   const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const claimTrial = useMutation(api.credits.claimTrial);
+  const clock = trialClock(credits);
 
   useEffect(() => {
     if (!isConvexConfigured || !credits?.needsTrialClaim) return;
@@ -425,55 +442,97 @@ export default function Settings() {
         .toUpperCase()
     : "U";
 
+  const iCredits = credits?.needsTrialClaim ? "…" : (credits?.iCredits ?? "—");
+  const vCredits = credits?.needsTrialClaim ? "…" : (credits?.vCredits ?? "—");
+  const creditsFrozen = !!clock?.expired && !credits?.hasPaidPlan;
+
   return (
     <div className="w-full animate-fade-in space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <span className="eyebrow">Account</span>
-          <h2 className="mt-2 flex items-center gap-3 font-display text-3xl text-foreground md:text-4xl">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground text-background">
-              <SettingsIcon className="h-5 w-5" />
+      <div className="relative overflow-hidden rounded-xl border border-border bg-card">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 70% 80% at 0% 0%, rgb(var(--brand) / 0.12), transparent 55%), radial-gradient(ellipse 50% 60% at 100% 100%, rgb(23 22 20 / 0.04), transparent 50%)",
+          }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.35]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgb(var(--border) / 0.7) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--border) / 0.7) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+            maskImage: "linear-gradient(to bottom, black, transparent)",
+          }}
+        />
+        <div className="relative flex flex-col gap-4 px-5 py-6 sm:flex-row sm:items-end sm:justify-between sm:px-7">
+          <div>
+            <span className="eyebrow">
+              <SettingsIcon className="h-3.5 w-3.5" />
+              Account
+            </span>
+            <h2 className="mt-2 font-display text-3xl text-foreground md:text-4xl">Settings</h2>
+            <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
+              Profile, credits, preferences, and the channels you publish to.
+            </p>
+          </div>
+          {clock && !credits?.hasPaidPlan && (
+            <div
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-medium",
+                clock.expired
+                  ? "border-destructive/30 bg-destructive/10 text-destructive"
+                  : clock.daysLeft <= 2
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-800"
+                    : "border-brand/25 bg-brand/10 text-brand",
+              )}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              {trialStatusCopy(clock)}
+              {clock.endsOnLabel && !clock.expired && (
+                <span className="text-muted-foreground">· ends {clock.endsOnLabel}</span>
+              )}
             </div>
-            Settings
-          </h2>
-          <p className="mt-2 text-muted-foreground">
-            Manage your account, preferences, and notifications.
-          </p>
+          )}
         </div>
       </div>
 
-      {/* Profile + Preferences */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card className="glass-card h-full">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <User className="h-5 w-5 text-brand" />
-              Profile
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              Your personal information and account details.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-5">
-                <Avatar className="h-20 w-20 border border-border">
-                  <AvatarImage src={user?.photoURL ?? undefined} />
-                  <AvatarFallback className="bg-brand/10 text-xl text-brand">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="space-y-1">
-                  <h3 className="text-lg font-semibold text-foreground">
+      {/* Profile + Credits hero */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <Card className="glass-card overflow-hidden lg:col-span-3">
+          <CardContent className="p-0">
+            <div className="flex flex-col gap-5 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <Avatar className="h-16 w-16 border-2 border-background shadow-md ring-1 ring-border sm:h-20 sm:w-20">
+                    <AvatarImage src={user?.photoURL ?? undefined} />
+                    <AvatarFallback className="bg-brand/10 text-xl text-brand">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-background ring-2 ring-card">
+                    <User className="h-3 w-3" />
+                  </span>
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <h3 className="truncate font-display text-2xl text-foreground">
                     {user?.displayName ?? "User"}
                   </h3>
-                  <p className="text-sm text-muted-foreground">{user?.email ?? "No email"}</p>
+                  <p className="truncate text-sm text-muted-foreground">
+                    {user?.email ?? "No email"}
+                  </p>
+                  <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+                    Synced with Google
+                  </p>
                 </div>
               </div>
               <Button
                 size="sm"
                 variant="outline"
+                className="shrink-0"
                 onClick={() =>
                   toast.info("Profile editing coming soon! Your profile is synced with Google.")
                 }
@@ -484,47 +543,155 @@ export default function Settings() {
             </div>
 
             {isConvexConfigured && (
-              <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border pt-5">
-                <div className="rounded-lg border border-border bg-secondary/50 px-4 py-3">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    i-credits
-                  </p>
-                  <p className="mt-1 font-display text-2xl tabular-nums text-foreground">
-                    {credits?.needsTrialClaim ? "…" : (credits?.iCredits ?? "—")}
-                  </p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    1 = text / image post
-                  </p>
+              <div className="space-y-4 bg-secondary/40 p-5 sm:p-6">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-brand" />
+                    <p className="text-sm font-medium text-foreground">Credits</p>
+                  </div>
+                  <Link
+                    to="/pricing"
+                    className="inline-flex items-center gap-1 text-xs font-mono uppercase tracking-widest text-brand transition-colors hover:text-brand/80"
+                  >
+                    {creditsFrozen ? "Upgrade to unlock" : "Plans"}
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
                 </div>
-                <div className="rounded-lg border border-border bg-secondary/50 px-4 py-3">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    v-credits
-                  </p>
-                  <p className="mt-1 font-display text-2xl tabular-nums text-foreground">
-                    {credits?.needsTrialClaim ? "…" : (credits?.vCredits ?? "—")}
-                  </p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    1 = 1 second of video
-                  </p>
+
+                {clock && !credits?.hasPaidPlan && (
+                  <div
+                    className={cn(
+                      "rounded-lg border px-4 py-3",
+                      clock.expired
+                        ? "border-destructive/25 bg-destructive/5"
+                        : "border-brand/20 bg-card",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+                          Free trial · {credits?.trialDurationDays ?? 7} days
+                        </p>
+                        <p className="mt-1 font-display text-2xl tabular-nums text-foreground">
+                          {clock.expired ? "Expired" : trialStatusCopy(clock)}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {clock.expired
+                            ? "Trial credits are frozen. Upgrade to keep creating."
+                            : `Use your credits before ${clock.endsOnLabel ?? "the trial ends"}.`}
+                        </p>
+                      </div>
+                      {!clock.expired && (
+                        <div
+                          className="relative h-14 w-14 shrink-0"
+                          title={`${Math.round(clock.progress * 100)}% of trial remaining`}
+                        >
+                          <svg viewBox="0 0 36 36" className="-rotate-90 h-full w-full">
+                            <circle
+                              cx="18"
+                              cy="18"
+                              r="15.5"
+                              fill="none"
+                              className="stroke-border"
+                              strokeWidth="3"
+                            />
+                            <circle
+                              cx="18"
+                              cy="18"
+                              r="15.5"
+                              fill="none"
+                              className="stroke-brand transition-[stroke-dasharray] duration-700"
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                              strokeDasharray={`${clock.progress * 97.4} 97.4`}
+                            />
+                          </svg>
+                          <span className="absolute inset-0 flex items-center justify-center text-[11px] font-mono tabular-nums text-foreground">
+                            {clock.daysLeft}d
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {!clock.expired && (
+                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-secondary">
+                        <div
+                          className="h-full rounded-full bg-brand transition-[width] duration-700"
+                          style={{ width: `${Math.max(4, clock.progress * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {credits?.hasPaidPlan && (
+                  <div className="rounded-lg border border-brand/20 bg-card px-4 py-3">
+                    <p className="text-[11px] font-mono uppercase tracking-widest text-brand">
+                      Paid plan active
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Your credits stay available — no trial countdown.
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    className={cn(
+                      "relative overflow-hidden rounded-lg border border-border bg-card px-4 py-4",
+                      creditsFrozen && "opacity-60",
+                    )}
+                  >
+                    <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-brand/10 text-brand">
+                      <ImageIcon className="h-4 w-4" />
+                    </div>
+                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+                      i-credits
+                    </p>
+                    <p className="mt-1 font-display text-3xl tabular-nums text-foreground">
+                      {iCredits}
+                    </p>
+                    <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+                      1 = text / image post
+                    </p>
+                  </div>
+                  <div
+                    className={cn(
+                      "relative overflow-hidden rounded-lg border border-border bg-card px-4 py-4",
+                      creditsFrozen && "opacity-60",
+                    )}
+                  >
+                    <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-foreground/5 text-foreground">
+                      <Clapperboard className="h-4 w-4" />
+                    </div>
+                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+                      v-credits
+                    </p>
+                    <p className="mt-1 font-display text-3xl tabular-nums text-foreground">
+                      {vCredits}
+                    </p>
+                    <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+                      1 = 1 second of video
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="glass-card h-full">
+        <Card className="glass-card h-full lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-foreground">
               <Palette className="h-5 w-5 text-brand" />
               Preferences
             </CardTitle>
             <CardDescription className="text-muted-foreground">
-              Customize your default settings and appearance.
+              Defaults for platforms, style, and appearance.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="space-y-2">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
                 <Label className="text-foreground/80">Default Platform</Label>
                 <Select value={defaultPlatform} onValueChange={setDefaultPlatform}>
                   <SelectTrigger className="border-border bg-secondary">
@@ -533,6 +700,7 @@ export default function Settings() {
                   <SelectContent>
                     <SelectItem value="instagram">Instagram</SelectItem>
                     <SelectItem value="facebook">Facebook</SelectItem>
+                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
                     <SelectItem value="tiktok">TikTok</SelectItem>
                     <SelectItem value="youtube">YouTube</SelectItem>
                     <SelectItem value="google">Google</SelectItem>

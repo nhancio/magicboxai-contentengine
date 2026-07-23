@@ -10,6 +10,7 @@ import { Button } from "@shared/components/ui/button";
 import { cn } from "@shared/lib/utils";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
+import { trialClock, trialStatusCopy } from "../lib/credits";
 import {
   ArrowRight,
   Bot,
@@ -477,13 +478,33 @@ export default function Dashboard() {
               </div>
               {creditBalance.trialGranted && (
                 <p className="text-[11px] text-muted-foreground">
-                  Free trial includes {creditBalance.freeTrial.i} i + {creditBalance.freeTrial.v} v.
+                  Free trial includes {creditBalance.freeTrial.i} i + {creditBalance.freeTrial.v} v
+                  {creditBalance.freeTrial.days
+                    ? ` for ${creditBalance.freeTrial.days} days`
+                    : ""}
+                  .
                 </p>
               )}
+              {(() => {
+                const clock = trialClock(creditBalance);
+                if (!clock || creditBalance.hasPaidPlan) return null;
+                return (
+                  <p
+                    className={cn(
+                      "text-[11px] font-medium",
+                      clock.expired ? "text-destructive" : "text-brand",
+                    )}
+                  >
+                    {clock.expired
+                      ? "Trial ended — upgrade to keep creating."
+                      : `${trialStatusCopy(clock)}${clock.endsOnLabel ? ` · ends ${clock.endsOnLabel}` : ""}`}
+                  </p>
+                );
+              })()}
             </div>
           ) : (
             <div className="text-sm text-muted-foreground">
-              Free trial: 50 i-credits + 100 v-credits.{" "}
+              Free trial: 50 i-credits + 100 v-credits for 7 days.{" "}
               <Link to="/studio" className="text-brand hover:underline">
                 Start creating
               </Link>

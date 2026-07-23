@@ -9,7 +9,8 @@ import { requireUid } from "./lib/auth";
  *   1 i-credit  = 1 text / image / text+image post, or 1 AI image generation
  *   1 v-credit  = 1 second of video (Veo generate or uploaded video post)
  *
- * Free trial (once per user): 50 i + 100 v.
+ * Free trial (once per user): 50 i + 100 v, usable for FREE_TRIAL_DAYS only.
+ * After the window ends, remaining trial credits freeze until the user upgrades.
  *
  * Gemini API cost reference (paid tier, ~2026):
  *   Nano Banana 2 (gemini-3.1-flash-image) ≈ $0.045–$0.067 / image (0.5K–1K)
@@ -19,6 +20,9 @@ import { requireUid } from "./lib/auth";
 
 export const FREE_TRIAL_I = 50;
 export const FREE_TRIAL_V = 100;
+/** How long free-trial credits stay spendable. */
+export const FREE_TRIAL_DAYS = 7;
+export const FREE_TRIAL_MS = FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000;
 /** Veo clips are typically 8s when duration isn't specified. */
 export const DEFAULT_VEO_SECONDS = 8;
 
@@ -37,6 +41,42 @@ export class InsufficientCreditsError extends Error {
   }
 }
 
+export class TrialExpiredError extends Error {
+  constructor() {
+    super(
+      `Your ${FREE_TRIAL_DAYS}-day free trial has ended. Upgrade a plan to keep creating.`,
+    );
+    this.name = "TrialExpiredError";
+  }
+}
+
+function trialExpiresAt(grantedAt: number): number {
+  return grantedAt + FREE_TRIAL_MS;
+}
+
+async function hasActivePaidPlan(
+  ctx: MutationCtx | { db: MutationCtx["db"] },
+  userId: string,
+): Promise<boolean> {
+  const sub = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .unique();
+  if (!sub) return false;
+  if (sub.plan !== "pro" && sub.plan !== "max") return false;
+  return sub.status === "active" || sub.status === undefined;
+}
+
+/** True when the user may spend credits right now. */
+async function assertCanSpend(ctx: MutationCtx, userId: string): Promise<void> {
+  if (await hasActivePaidPlan(ctx, userId)) return;
+  const row = await getRow(ctx, userId);
+  if (!row?.trialGrantedAt) return;
+  if (Date.now() >= trialExpiresAt(row.trialGrantedAt)) {
+    throw new TrialExpiredError();
+  }
+}
+
 async function getRow(ctx: MutationCtx, userId: string) {
   return await ctx.db
     .query("creditBalances")
@@ -52,6 +92,13 @@ export async function ensureTrialBalance(
   const existing = await getRow(ctx, userId);
   const now = Date.now();
   if (existing) {
+    // Backfill trial clock for rows created before trialGrantedAt existed.
+    if (!existing.trialGrantedAt) {
+      await ctx.db.patch(existing._id, {
+        trialGrantedAt: existing.updatedAt || now,
+        updatedAt: now,
+      });
+    }
     return {
       iCredits: existing.iCredits,
       vCredits: existing.vCredits,
@@ -102,6 +149,7 @@ async function spend(
   }
 
   await ensureTrialBalance(ctx, args.userId);
+  await assertCanSpend(ctx, args.userId);
   const row = await getRow(ctx, args.userId);
   if (!row) throw new Error("credit balance missing after ensure");
 
@@ -210,22 +258,42 @@ export const balance = query({
       .query("creditBalances")
       .withIndex("by_userId", (q) => q.eq("userId", uid))
       .unique();
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", uid))
+      .unique();
+    const paid =
+      !!sub &&
+      (sub.plan === "pro" || sub.plan === "max") &&
+      (sub.status === "active" || sub.status === undefined);
+
     if (!row) {
       // Queries can't write — client should call `claimTrial` once.
+      // Do not use Date.now() here — client computes remaining days from expiresAt.
       return {
         iCredits: 0,
         vCredits: 0,
         trialGranted: false,
+        trialGrantedAt: null as number | null,
+        trialExpiresAt: null as number | null,
+        trialDurationDays: FREE_TRIAL_DAYS,
         needsTrialClaim: true,
-        freeTrial: { i: FREE_TRIAL_I, v: FREE_TRIAL_V },
+        hasPaidPlan: paid,
+        freeTrial: { i: FREE_TRIAL_I, v: FREE_TRIAL_V, days: FREE_TRIAL_DAYS },
       };
     }
+
+    const grantedAt = row.trialGrantedAt ?? row.updatedAt ?? null;
     return {
       iCredits: row.iCredits,
       vCredits: row.vCredits,
-      trialGranted: !!row.trialGrantedAt,
+      trialGranted: true,
+      trialGrantedAt: grantedAt,
+      trialExpiresAt: grantedAt ? trialExpiresAt(grantedAt) : null,
+      trialDurationDays: FREE_TRIAL_DAYS,
       needsTrialClaim: false,
-      freeTrial: { i: FREE_TRIAL_I, v: FREE_TRIAL_V },
+      hasPaidPlan: paid,
+      freeTrial: { i: FREE_TRIAL_I, v: FREE_TRIAL_V, days: FREE_TRIAL_DAYS },
     };
   },
 });

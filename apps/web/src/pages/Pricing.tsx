@@ -42,7 +42,7 @@ const PLANS: PlanConfig[] = [
     monthly: 0,
     annual: 0,
     features: [
-      "50 i-credits + 100 v-credits free trial",
+      "50 i-credits + 100 v-credits · 7-day trial",
       "1 i-credit = 1 text or image post",
       "1 v-credit = 1 second of video",
       "Instagram, LinkedIn, and YouTube",

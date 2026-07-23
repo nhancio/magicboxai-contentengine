@@ -15,5 +15,12 @@
     "apps/*",
     "functions",
     "packages/*"
-  ]
+  ],
+  "allowScripts": {
+    "@firebase/util": true,
+    "esbuild": true,
+    "@swc/core": true,
+    "fsevents": true,
+    "protobufjs": true
+  }
 }

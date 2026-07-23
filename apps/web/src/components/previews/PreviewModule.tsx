@@ -1,9 +1,13 @@
+import { useState, type ReactNode } from "react";
 import type { SocialPlatform } from "@shared/types";
 import { cn } from "@shared/lib/utils";
 import {
+  ChevronLeft,
+  ChevronRight,
   Facebook,
   Instagram,
   Linkedin,
+  MessageCircle,
   Smartphone,
   Twitter,
   Youtube,
@@ -20,6 +24,7 @@ const PLATFORM_META: {
   { id: "youtube", label: "YouTube", icon: Youtube },
   { id: "facebook", label: "Facebook", icon: Facebook },
   { id: "twitter", label: "X", icon: Twitter },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
 ];
 
 /**
@@ -33,6 +38,11 @@ export default function PreviewModule({
   title = "Preview",
   emptyHint = "Select a post to preview how it will look on each channel.",
   className,
+  collapsible = false,
+  defaultCollapsed = false,
+  collapsed: collapsedProp,
+  onCollapsedChange,
+  footer,
 }: {
   platform: SocialPlatform;
   onPlatformChange?: (p: SocialPlatform) => void;
@@ -41,12 +51,54 @@ export default function PreviewModule({
   title?: string;
   emptyHint?: string;
   className?: string;
+  /** Show a collapse control; panel becomes a thin right rail when closed. */
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
+  footer?: ReactNode;
 }) {
+  const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
+  const collapsed = collapsedProp ?? internalCollapsed;
+  const setCollapsed = (next: boolean) => {
+    if (collapsedProp === undefined) setInternalCollapsed(next);
+    onCollapsedChange?.(next);
+  };
+
   const tabs = allowedPlatforms?.length
     ? PLATFORM_META.filter((p) => allowedPlatforms.includes(p.id))
     : PLATFORM_META;
 
   const active = tabs.some((t) => t.id === platform) ? platform : (tabs[0]?.id ?? "linkedin");
+
+  if (collapsible && collapsed) {
+    return (
+      <aside
+        className={cn(
+          "flex h-full min-h-0 flex-col items-center rounded-2xl border border-border bg-card py-3",
+          className,
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          className="flex flex-col items-center gap-3 rounded-xl px-2 py-3 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          aria-expanded={false}
+          aria-label={`Expand ${title}`}
+          title={`Show ${title}`}
+        >
+          <ChevronLeft className="h-4 w-4" />
+          <Smartphone className="h-4 w-4 text-brand" />
+          <span
+            className="text-[10px] font-medium uppercase tracking-widest"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+          >
+            {title}
+          </span>
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside
@@ -60,6 +112,18 @@ export default function PreviewModule({
           <Smartphone className="h-4 w-4 text-brand" />
           <h2 className="text-sm font-medium text-foreground">{title}</h2>
         </div>
+        {collapsible && (
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-expanded={true}
+            aria-label={`Collapse ${title}`}
+            title="Hide preview"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {tabs.length > 1 && onPlatformChange && (
@@ -98,6 +162,10 @@ export default function PreviewModule({
           </div>
         )}
       </div>
+
+      {footer ? (
+        <div className="border-t border-border px-4 py-3">{footer}</div>
+      ) : null}
     </aside>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/components/ui/avatar";
@@ -8,6 +8,7 @@ import { cn } from "@shared/lib/utils";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "@/lib/convex";
 import { LEGACY_TOOLS_ENABLED } from "@/lib/flags";
+import { CreditsTrialCard } from "@/components/CreditsTrialCard";
 import {
   BarChart3,
   Bot,
@@ -72,7 +73,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
     isActive
       ? "bg-brand/10 text-brand border border-brand/20"
-      : "text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent"
+      : "text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent",
   );
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -90,7 +91,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     });
   }, [credits?.needsTrialClaim, claimTrial]);
 
-  void location;
+  // Close drawer on route change (mobile).
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
 
   const initials = user?.displayName
     ? user.displayName
@@ -101,27 +105,37 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         .toUpperCase()
     : "U";
 
+  const closeSidebar = () => setSidebarOpen(false);
+
   const sidebarContent = (
-    <div className="flex h-full flex-col">
-      <div className="flex h-16 items-center gap-3 px-5 border-b border-border">
-        <img src="/logo.png" alt="MagicBox" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 sm:h-16 sm:px-5">
+        <img
+          src="/logo.png"
+          alt="MagicBox"
+          className="h-8 w-8 shrink-0 rounded-lg object-contain sm:h-9 sm:w-9"
+        />
         <div className="min-w-0">
           <div className="truncate text-sm font-display text-foreground">MagicBox</div>
-          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Automation</div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            Automation
+          </div>
         </div>
         <button
-          className="ml-auto lg:hidden p-1.5 rounded-lg hover:bg-accent text-muted-foreground"
-          onClick={() => setSidebarOpen(false)}
+          type="button"
+          className="ml-auto rounded-lg p-1.5 text-muted-foreground hover:bg-accent lg:hidden"
+          onClick={closeSidebar}
+          aria-label="Close menu"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-3">
         {NAV_SECTIONS.map((section) => (
           <div key={section.heading ?? "main"}>
             {section.heading && (
-              <div className="px-3 pb-1 pt-4 text-[10px] font-mono font-semibold uppercase tracking-widest text-muted-foreground/70">
+              <div className="px-3 pb-1 pt-3 text-[10px] font-mono font-semibold uppercase tracking-widest text-muted-foreground/70">
                 {section.heading}
               </div>
             )}
@@ -130,7 +144,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 key={item.path}
                 to={item.path}
                 end={item.path === "/"}
-                onClick={() => setSidebarOpen(false)}
+                onClick={closeSidebar}
                 className={navLinkClass}
               >
                 <item.icon className="h-4 w-4 shrink-0" />
@@ -141,51 +155,41 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         ))}
       </nav>
 
-      <div className="border-t border-border px-3 py-3 space-y-1">
+      <div className="shrink-0 space-y-1 border-t border-border px-3 py-2">
         {BOTTOM_NAV.map((item) => (
-          <NavLink key={item.path} to={item.path} onClick={() => setSidebarOpen(false)} className={navLinkClass}>
+          <NavLink
+            key={item.path}
+            to={item.path}
+            onClick={closeSidebar}
+            className={navLinkClass}
+          >
             <item.icon className="h-4 w-4 shrink-0" />
             {item.label}
           </NavLink>
         ))}
       </div>
 
-      <div className="border-t border-border p-4 space-y-3">
+      <div className="shrink-0 space-y-3 border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {isConvexConfigured && (
-          <Link
-            to="/pricing"
-            onClick={() => setSidebarOpen(false)}
-            className="flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary/60 px-2.5 py-2 text-[11px] transition-colors hover:border-brand/30 hover:bg-secondary"
-            title="View credits & pricing"
-          >
-            <span className="font-medium text-muted-foreground">Credits</span>
-            <span className="flex items-center gap-2 tabular-nums text-foreground">
-              <span>
-                <span className="text-brand">{credits?.iCredits ?? "—"}</span>
-                <span className="text-muted-foreground"> i</span>
-              </span>
-              <span className="text-border">·</span>
-              <span>
-                <span className="text-brand">{credits?.vCredits ?? "—"}</span>
-                <span className="text-muted-foreground"> v</span>
-              </span>
-            </span>
-          </Link>
+          <CreditsTrialCard credits={credits} onNavigate={closeSidebar} />
         )}
-        <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9 border border-border">
+        <div className="flex items-center gap-2.5">
+          <Avatar className="h-9 w-9 shrink-0 border border-border">
             <AvatarImage src={user?.photoURL ?? undefined} />
-            <AvatarFallback className="text-xs bg-brand/10 text-brand">{initials}</AvatarFallback>
+            <AvatarFallback className="bg-brand/10 text-xs text-brand">{initials}</AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground truncate">{user?.displayName ?? "User"}</p>
-            <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-foreground">
+              {user?.displayName ?? "User"}
+            </p>
+            <p className="truncate text-[10px] text-muted-foreground">{user?.email}</p>
           </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => signOut()}
-            className="shrink-0 h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+            className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Sign out"
           >
             <LogOut className="h-4 w-4" />
           </Button>
@@ -197,13 +201,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm lg:hidden"
+          onClick={closeSidebar}
+          aria-hidden
+        />
       )}
 
       <aside
         className={cn(
-          "fixed top-0 left-0 z-50 h-full w-64 border-r border-border bg-card transition-transform duration-300 lg:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed top-0 left-0 z-50 flex h-dvh w-[min(18rem,88vw)] flex-col border-r border-border bg-card transition-transform duration-300 lg:w-64 lg:translate-x-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
         {sidebarContent}
@@ -211,22 +219,36 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       <div className="lg:pl-64">
         <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur lg:hidden">
-          <div className="flex h-14 items-center justify-between px-4">
-            <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-accent text-muted-foreground">
+          <div className="flex h-14 items-center gap-2 px-3 sm:px-4">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="rounded-lg p-2 text-muted-foreground hover:bg-accent"
+              aria-label="Open menu"
+            >
               <Menu className="h-5 w-5" />
             </button>
-            <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="MagicBox" className="h-8 w-8 rounded-lg object-contain" />
-              <span className="text-sm font-display text-foreground">MagicBox</span>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <img
+                src="/logo.png"
+                alt=""
+                className="h-7 w-7 shrink-0 rounded-lg object-contain"
+              />
+              <span className="truncate text-sm font-display text-foreground">MagicBox</span>
             </div>
-            <Avatar className="h-8 w-8">
+            {isConvexConfigured && (
+              <CreditsTrialCard credits={credits} compact className="mr-1" />
+            )}
+            <Avatar className="h-8 w-8 shrink-0">
               <AvatarImage src={user?.photoURL ?? undefined} />
-              <AvatarFallback className="text-xs bg-brand/10 text-brand">{initials}</AvatarFallback>
+              <AvatarFallback className="bg-brand/10 text-xs text-brand">{initials}</AvatarFallback>
             </Avatar>
           </div>
         </header>
 
-        <main className="px-4 py-6 md:px-8 lg:py-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-5 sm:py-6 md:px-8 lg:py-8">
+          {children}
+        </main>
       </div>
     </div>
   );

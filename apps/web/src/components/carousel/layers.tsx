@@ -157,7 +157,7 @@ export function ChevronsTopLayer({ brand }: { brand: CarouselBrand }) {
         fontFamily: "system-ui, sans-serif",
       }}
     >
-      >>>
+      {">>>"}
     </Layer>
   );
 }

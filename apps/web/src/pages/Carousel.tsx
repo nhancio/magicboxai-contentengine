@@ -154,21 +154,21 @@ export default function Carousel() {
 
   return (
     <div className="w-full animate-fade-in">
-      <div className="mb-6">
+      <div className="mb-5 sm:mb-6">
         <span className="eyebrow">Create</span>
-        <h1 className="mt-2 flex items-center gap-2 font-display text-3xl">
-          <Layers className="h-7 w-7 text-brand" />
+        <h1 className="mt-2 flex items-center gap-2 font-display text-2xl sm:text-3xl">
+          <Layers className="h-6 w-6 text-brand sm:h-7 sm:w-7" />
           Carousel
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Enter a topic. Gemini writes 4 slides; brand kit locks logo, colors, and name in the same
-          positions every time — ready for LinkedIn, Instagram, Facebook, and X.
+          Enter a topic. Gemini writes 4 slides; brand kit locks logo, colors, and name — ready for
+          LinkedIn, Instagram, Facebook, and X.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="space-y-5">
-          <div className="glass-card space-y-4 p-5">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_min(380px,36vw)]">
+        <div className="space-y-5 min-w-0">
+          <div className="glass-card space-y-4 p-4 sm:p-5">
             <div className="space-y-2">
               <Label>Topic / prompt</Label>
               <Textarea
@@ -207,7 +207,7 @@ export default function Carousel() {
 
               <div className="space-y-2">
                 <Label>Primary platform</Label>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap">
                   {PLATFORMS.map((p) => {
                     const Icon = p.icon;
                     const on = platform === p.id;
@@ -217,13 +217,13 @@ export default function Carousel() {
                         type="button"
                         onClick={() => setPlatform(p.id)}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium",
+                          "inline-flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium sm:justify-start sm:py-1.5",
                           on
                             ? "border-brand/40 bg-brand/15 text-brand"
                             : "border-border text-muted-foreground hover:bg-accent",
                         )}
                       >
-                        <Icon className="h-3.5 w-3.5" />
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
                         {p.label}
                       </button>
                     );
@@ -232,8 +232,12 @@ export default function Carousel() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => void onGenerate()} disabled={busy || !topic.trim()}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button
+                onClick={() => void onGenerate()}
+                disabled={busy || !topic.trim()}
+                className="w-full sm:w-auto"
+              >
                 {busy ? (
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
                 ) : (
@@ -242,7 +246,12 @@ export default function Carousel() {
                 Generate carousel
               </Button>
               {pack && (
-                <Button variant="outline" onClick={() => void onDownload()} disabled={exporting}>
+                <Button
+                  variant="outline"
+                  onClick={() => void onDownload()}
+                  disabled={exporting}
+                  className="w-full sm:w-auto"
+                >
                   {exporting ? (
                     <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
                   ) : (
@@ -252,12 +261,14 @@ export default function Carousel() {
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">Uses 1 i-credit · layering keeps brand marks locked</p>
+            <p className="text-xs text-muted-foreground">
+              Uses 1 i-credit · layering keeps brand marks locked
+            </p>
           </div>
 
           {/* Slide strip */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-medium">Slides</h2>
               {pack && (
                 <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -267,21 +278,21 @@ export default function Carousel() {
             </div>
 
             {!pack ? (
-              <div className="glass-card flex flex-col items-center gap-2 py-16 text-center">
+              <div className="glass-card flex flex-col items-center gap-2 px-4 py-12 text-center sm:py-16">
                 <Layers className="h-8 w-8 text-muted-foreground/40" />
-                <p className="text-sm text-muted-foreground">
+                <p className="max-w-sm text-sm text-muted-foreground">
                   Generate to see 4 branded slides with locked logo & name placement.
                 </p>
               </div>
             ) : (
-              <div className="flex gap-3 overflow-x-auto pb-2">
+              <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 snap-x snap-mandatory">
                 {pack.slides.map((slide, i) => (
                   <button
                     key={i}
                     type="button"
                     onClick={() => setActiveSlide(i)}
                     className={cn(
-                      "rounded-xl p-1 transition-shadow",
+                      "snap-start shrink-0 rounded-xl p-1 transition-shadow",
                       activeSlide === i ? "ring-2 ring-brand" : "opacity-90 hover:opacity-100",
                     )}
                   >
@@ -310,10 +321,10 @@ export default function Carousel() {
           </div>
         </div>
 
-        {/* Right preview module */}
-        <div className="lg:sticky lg:top-6 lg:self-start">
+        {/* Right preview — stacks under editor until xl */}
+        <div className="min-w-0 xl:sticky xl:top-6 xl:self-start">
           <PreviewModule
-            className="min-h-[480px]"
+            className="min-h-[360px] sm:min-h-[480px]"
             title="Post preview"
             platform={platform === "twitter" ? "twitter" : platform}
             onPlatformChange={(p) => {
@@ -339,7 +350,7 @@ export default function Carousel() {
             emptyHint="Generate a carousel to preview how the post will read on each channel."
           />
           {pack && (
-            <div className="mt-3 flex justify-center">
+            <div className="mt-3 flex justify-center overflow-x-auto">
               <BrandedSlide
                 slide={pack.slides[activeSlide] ?? pack.slides[0]}
                 brand={brand}

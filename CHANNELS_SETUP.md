@@ -1,10 +1,11 @@
-# Channel connections — Instagram, LinkedIn & YouTube
+# Channel connections — Instagram, Facebook, WhatsApp, LinkedIn & YouTube
 
 MagicBox connects channels via OAuth and publishes through their official APIs.
 The **live path is Convex** (`packages/backend/convex/`). Firebase Functions
 remain as a legacy fallback only.
 
 X / Twitter and Reddit are registered but deferred (paid commercial API tiers).
+Facebook Pages and WhatsApp share `META_APP_ID` / `META_APP_SECRET` (Facebook Login).
 
 ## Architecture (Convex — current)
 
@@ -13,7 +14,7 @@ X / Twitter and Reddit are registered but deferred (paid commercial API tiers).
 - `convex/http.ts` — `GET /oauth/callback` exchanges the code and redirects back
   into the app (`?social=connected` / `?social=error`).
 - `convex/lib/providers/*` — one module per platform (YouTube, Instagram,
-  Facebook, LinkedIn live; Twitter/Reddit deferred).
+  Facebook, WhatsApp, LinkedIn live; Twitter/Reddit deferred).
 - `convex/publish.ts` + `scheduler.ts` — publish engine + 1-minute drain cron.
 - UI: Settings + Onboarding call `api.social.connectUrl` / `api.social.accounts`.
 
@@ -148,10 +149,51 @@ rejected on new Meta apps.
    npx convex env set META_IG_APP_ID <instagram-app-id>
    npx convex env set META_IG_APP_SECRET <instagram-app-secret>
    ```
-   Do **not** reuse `META_APP_ID` here — that is the Facebook App ID (Pages).
+   Do **not** reuse `META_APP_ID` here — that is the Facebook App ID (Pages + WhatsApp).
 6. End users need an Instagram **Business or Creator** account (Page link
    not required for this login type).
 7. App Review / Advanced Access before live customer publish.
+
+## WhatsApp (Meta) — same app as Facebook Pages
+
+WhatsApp uses **Facebook Login** on the same Meta app / credentials as Pages
+(`META_APP_ID` / `META_APP_SECRET`). It is a separate connect button in Settings
+because a WABA phone number is a different publish destination than a Page.
+
+1. developers.facebook.com → your app → add the **WhatsApp** product (Cloud API).
+2. Permissions (Advanced Access for production):
+   - `whatsapp_business_management`
+   - `whatsapp_business_messaging`
+   - `business_management`
+3. Valid OAuth Redirect URI (same Convex callback as other channels):
+   `https://beloved-lyrebird-288.convex.site/oauth/callback`
+4. In Meta Business Suite → WhatsApp Manager: create a **WhatsApp Business Account**,
+   add/verify a business phone number, and ensure your Meta user can manage it.
+5. Env (already used for Facebook Pages — no new secrets):
+   ```bash
+   npx convex env set META_APP_ID <facebook-app-id>
+   npx convex env set META_APP_SECRET <facebook-app-secret>
+   ```
+6. Settings → **Connect WhatsApp** → Facebook Login with WhatsApp scopes → MagicBox
+   stores each discovered phone number as a channel (`phoneNumberId` + `wabaId`).
+7. Publishing is A2P (not a public feed). Each post needs opted-in recipients:
+   ```json
+   {
+     "content": {
+       "caption": "…",
+       "perPlatform": {
+         "whatsapp": {
+           "recipients": ["9198xxxxxxxx"],
+           "templateName": "optional_approved_template",
+           "templateLanguage": "en"
+         }
+       }
+     }
+   }
+   ```
+   - Session messages (image/video/text) only work inside an open 24h customer window.
+   - Outside that window, set an approved **Marketing** (or other) `templateName`.
+8. App Review for WhatsApp permissions before live customer send.
 
 ## LinkedIn
 
@@ -172,3 +214,6 @@ rejected on new Meta apps.
   Instagram/LinkedIn long-lived tokens (~60 days) cannot be refreshed
   server-side — when expired the account is marked `expired` and the user
   reconnects in Settings.
+- WhatsApp is not a public feed: every send needs opted-in E.164 recipients
+  (`perPlatform.whatsapp.recipients`). Session media/text only works inside
+  Meta's 24h customer-service window; otherwise use an approved template name.

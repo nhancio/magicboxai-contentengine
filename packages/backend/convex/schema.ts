@@ -20,6 +20,8 @@ import { v } from "convex/values";
 /**
  * Every destination MagicBox can publish to. `facebook` is a first-class target
  * (a Page), distinct from `instagram` even though both authenticate through Meta.
+ * `whatsapp` uses the same Meta app (`META_APP_ID`) as Facebook Pages, via
+ * WhatsApp Cloud API + a WABA phone number.
  */
 const socialPlatform = v.union(
   v.literal("instagram"),
@@ -28,6 +30,7 @@ const socialPlatform = v.union(
   v.literal("linkedin"),
   v.literal("youtube"),
   v.literal("reddit"),
+  v.literal("whatsapp"),
 );
 
 /**
@@ -139,9 +142,12 @@ export default defineSchema({
     //  - instagram: igUserId (Instagram User token; pageId unused for IG Login)
     //  - youtube:   channelId
     //  - facebook:  pageId
+    //  - whatsapp:  phoneNumberId + wabaId (user token from META_APP_*)
     igUserId: v.optional(v.string()),
     pageId: v.optional(v.string()),
     channelId: v.optional(v.string()),
+    phoneNumberId: v.optional(v.string()),
+    wabaId: v.optional(v.string()),
     scopes: v.optional(v.array(v.string())),
     updatedAt: v.optional(v.number()),
   })
@@ -559,7 +565,8 @@ export default defineSchema({
     .index("by_status", ["status"]),
 
   /**
-   * Spendable credit balances. Free trial seeds 50 i-credits + 100 v-credits once.
+   * Spendable credit balances. Free trial seeds 50 i-credits + 100 v-credits once,
+   * spendable for 7 days from trialGrantedAt (then frozen until upgrade).
    *   i-credit → 1 text / image / text+image post (or 1 AI image generation)
    *   v-credit → 1 second of video (Veo / uploaded video posts)
    */

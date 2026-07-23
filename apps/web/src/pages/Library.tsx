@@ -470,7 +470,7 @@ export default function Library() {
             allowedPlatforms={
               selected?.platforms?.length
                 ? selected.platforms
-                : (["linkedin", "instagram", "youtube", "facebook"] as SocialPlatform[])
+                : (["linkedin", "instagram", "youtube", "facebook", "whatsapp"] as SocialPlatform[])
             }
             content={previewContent}
             emptyHint="Select a post to preview it on each channel."

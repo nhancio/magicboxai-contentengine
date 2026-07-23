@@ -100,7 +100,13 @@ export const stringifyError = (error: unknown): string => {
 
 // --- Server-side models for the marketing automation suite ---
 
-export type SocialPlatform = "instagram" | "twitter" | "linkedin" | "youtube";
+export type SocialPlatform =
+  | "instagram"
+  | "twitter"
+  | "linkedin"
+  | "youtube"
+  | "facebook"
+  | "whatsapp";
 export type SocialProvider = "instagram" | "linkedin" | "youtube";
 
 /** Public-ish account record (client-readable, no secrets). */

@@ -85,7 +85,7 @@ function Card({
   return (
     <motion.div
       className={cn(
-        "relative w-full rounded-2xl border border-border bg-card p-6 shadow-sm",
+        "relative w-full rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-6",
         isTop ? "cursor-grab active:cursor-grabbing" : "pointer-events-none",
       )}
       style={{ x, rotate, zIndex: 10 - depth }}
@@ -164,7 +164,7 @@ function Card({
         return null;
       })()}
 
-      <h3 className="mb-3 font-serif text-2xl leading-tight text-foreground">
+      <h3 className="mb-3 font-display text-xl leading-tight text-foreground sm:text-2xl">
         {s.hook ?? "Untitled"}
       </h3>
 
@@ -268,23 +268,27 @@ export default function Maya() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <header className="mb-8">
+    <div className="mx-auto w-full max-w-3xl">
+      <header className="mb-6 sm:mb-8">
         <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
           Daily deck · {deck?.batchDate ?? "—"}
         </p>
-        <h1 className="mt-2 font-serif text-4xl text-foreground">Maya</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <h1 className="mt-2 font-display text-3xl text-foreground sm:text-4xl">Maya</h1>
+        <p className="mt-2 max-w-xl text-sm text-muted-foreground">
           <span className="font-medium text-foreground">Post now</span> or{" "}
-          <span className="font-medium text-foreground">Next best time</span> — or swipe right for
-          next best time / left to skip.
+          <span className="font-medium text-foreground">Next best time</span>
+          <span className="hidden sm:inline">
+            {" "}
+            — swipe right for next best time / left to skip
+          </span>
+          <span className="sm:hidden">. Use the buttons below on mobile.</span>
         </p>
       </header>
 
       {!hasChannel && accounts !== undefined && (
-        <div className="mb-6 flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-          <Link2 className="h-4 w-4 shrink-0 text-amber-600" />
-          <p className="text-xs text-muted-foreground">
+        <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 sm:items-center">
+          <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 sm:mt-0" />
+          <p className="text-xs leading-relaxed text-muted-foreground">
             No channel connected — approvals will be saved as drafts.{" "}
             <Link to="/settings" className="font-medium text-brand underline underline-offset-2">
               Connect one
@@ -296,13 +300,13 @@ export default function Maya() {
       {/* Deck — only the top card is in flow so action buttons stay visible below */}
       <div className="relative">
         {deck === undefined ? (
-          <div className="flex h-80 items-center justify-center">
+          <div className="flex h-72 items-center justify-center sm:h-80">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : pending.length === 0 ? (
-          <div className="flex h-80 flex-col items-center justify-center rounded-2xl border border-dashed border-border text-center">
+          <div className="flex h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border px-4 text-center sm:h-80">
             <Sparkles className="mb-3 h-6 w-6 text-muted-foreground" />
-            <p className="font-serif text-xl text-foreground">
+            <p className="font-display text-xl text-foreground">
               {deck.decided > 0 ? "Deck cleared" : "No deck yet"}
             </p>
             <p className="mt-1 max-w-xs text-sm text-muted-foreground">
@@ -354,41 +358,48 @@ export default function Maya() {
 
       {/* Always-visible post actions */}
       {pending.length > 0 && (
-        <div className="sticky bottom-4 z-20 mt-6 flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-border bg-background/95 p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          <Button
-            variant="outline"
-            size="lg"
-            className="h-12 min-w-[6.5rem] gap-2 rounded-full border-red-500/30 hover:bg-red-500/10"
-            onClick={() => decide(pending[0], "left", 0)}
-            aria-label="Skip this post"
-          >
-            <X className="h-4 w-4 text-red-500" />
-            Skip
-          </Button>
-          <span className="px-1 font-mono text-xs text-muted-foreground">{pending.length} left</span>
-          <Button
-            variant="outline"
-            size="lg"
-            className="h-12 min-w-[7.5rem] gap-2 rounded-full"
-            onClick={() => decide(pending[0], "right", 0, "schedule")}
-            aria-label="Queue at next best time"
-          >
-            <CalendarClock className="h-4 w-4" />
-            Next best time
-          </Button>
-          <Button
-            size="lg"
-            className="h-12 min-w-[7.5rem] gap-2 rounded-full"
-            onClick={() => decide(pending[0], "right", 0, "now")}
-            aria-label="Post now"
-          >
-            <Send className="h-4 w-4" />
-            Post now
-          </Button>
+        <div className="sticky bottom-3 z-20 mt-5 rounded-2xl border border-border bg-background/95 p-2.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:bottom-4 sm:mt-6 sm:p-3">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button
+              variant="outline"
+              size="lg"
+              className="h-11 flex-1 gap-2 rounded-full border-red-500/30 hover:bg-red-500/10 sm:h-12 sm:min-w-[6.5rem] sm:flex-none"
+              onClick={() => decide(pending[0], "left", 0)}
+              aria-label="Skip this post"
+            >
+              <X className="h-4 w-4 text-red-500" />
+              <span>Skip</span>
+            </Button>
+            <span className="order-first w-full text-center font-mono text-[11px] text-muted-foreground sm:order-none sm:w-auto sm:px-1">
+              {pending.length} left
+            </span>
+            <Button
+              variant="outline"
+              size="lg"
+              className="h-11 flex-1 gap-1.5 rounded-full px-3 sm:h-12 sm:min-w-[7.5rem] sm:flex-none"
+              onClick={() => decide(pending[0], "right", 0, "schedule")}
+              aria-label="Queue at next best time"
+            >
+              <CalendarClock className="h-4 w-4 shrink-0" />
+              <span className="truncate">
+                <span className="sm:hidden">Schedule</span>
+                <span className="hidden sm:inline">Next best time</span>
+              </span>
+            </Button>
+            <Button
+              size="lg"
+              className="h-11 flex-[1.2] gap-2 rounded-full sm:h-12 sm:min-w-[7.5rem] sm:flex-none"
+              onClick={() => decide(pending[0], "right", 0, "now")}
+              aria-label="Post now"
+            >
+              <Send className="h-4 w-4" />
+              Post now
+            </Button>
+          </div>
         </div>
       )}
 
-      <div className="mt-8 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+      <div className="mt-6 flex items-center justify-center gap-4 pb-2 text-xs text-muted-foreground sm:mt-8">
         <Link to="/schedule" className="inline-flex items-center gap-1.5 hover:text-foreground">
           <CalendarClock className="h-3.5 w-3.5" /> See what's scheduled
         </Link>

@@ -295,6 +295,8 @@ export const storeAccounts = internalMutation({
         igUserId: p.token.igUserId,
         pageId: p.token.pageId,
         channelId: p.token.channelId,
+        phoneNumberId: p.token.phoneNumberId,
+        wabaId: p.token.wabaId,
         scopes: p.token.scopes,
         updatedAt: now,
       };

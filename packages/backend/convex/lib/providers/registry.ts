@@ -5,6 +5,7 @@ import { linkedin } from "./linkedin";
 import { youtube } from "./youtube";
 import { twitter } from "./twitter";
 import { reddit } from "./reddit";
+import { whatsapp } from "./whatsapp";
 
 /**
  * The one place platforms are enumerated.
@@ -20,6 +21,7 @@ const REGISTRY: Record<PlatformId, SocialProvider> = {
   youtube,
   twitter,
   reddit,
+  whatsapp,
 };
 
 export function getProvider(id: string): SocialProvider {

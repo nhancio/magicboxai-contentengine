@@ -20,7 +20,8 @@ export type Platform =
   | "twitter"
   | "linkedin"
   | "youtube"
-  | "reddit";
+  | "reddit"
+  | "whatsapp";
 
 /**
  * Seeded defaults from published platform-engagement guidance. These are
@@ -61,6 +62,12 @@ export const DEFAULT_SLOTS: Record<Platform, Slot[]> = {
     { dayOfWeek: 1, hour: 8, minute: 0 },
     { dayOfWeek: 3, hour: 8, minute: 0 },
     { dayOfWeek: 6, hour: 9, minute: 0 },
+  ],
+  // Mid-morning + early evening — high open rates for WhatsApp A2P.
+  whatsapp: [
+    { dayOfWeek: 1, hour: 10, minute: 0 },
+    { dayOfWeek: 3, hour: 11, minute: 0 },
+    { dayOfWeek: 5, hour: 18, minute: 30 },
   ],
 };
 
