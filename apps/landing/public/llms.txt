@@ -1,6 +1,6 @@
 # MagicBox
 
-> MagicBox is AI marketing automation software and an automated marketing agent from Nhancio Technologies Private Limited.
+> MagicBox is an AI marketing automation platform — AI marketing automation software and an automated marketing agent from Nhancio Technologies Private Limited.
 
 - Canonical site: [magicboxai.in](https://magicboxai.in/)
 - Application: [app.magicboxai.in](https://app.magicboxai.in/)
