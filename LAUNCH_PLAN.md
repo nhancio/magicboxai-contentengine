@@ -67,7 +67,7 @@ Ordered by the sequence in your runbook. Each row links to its detailed section.
 
 | # | Gate | Owner | Status | Blocking? |
 | --- | --- | --- | --- | --- |
-| G0 | **CI green on latest `main`** (see §2) | 🤖 → 👤 push | 🔴 fix ready, needs push | Yes |
+| G0 | **CI green on latest `main`** (see §2) | 🤖 | ✅ green (run passed on commit `2121c24`) | Yes |
 | G1 | **Repo / docs are one source of truth** (§3) | 🤖 | 🟡 in progress | Yes |
 | G2 | **App Check deployed + verified** (§4) | 🤝 | 🔴 | Yes |
 | G3 | **Dodo live payments end-to-end** (§5) | 👤 | 🔴 | Yes |
@@ -82,7 +82,9 @@ Ordered by the sequence in your runbook. Each row links to its detailed section.
 
 ## 2. G0 — CI green (🤖 Claude, then 👤 push)
 
-**Current state:** CI is **red** on the last 5 commits. Root cause found and fixed locally.
+**Current state:** ✅ **GREEN.** Was red on the last 5 commits; two independent failures were found and fixed (see below). All three jobs (`security`, `verify`, `browser-smoke`) now pass on `main`.
+
+There were **two** failures — the second was masked by the first:
 
 - **Cause:** `packages/backend/.gitignore` ignored `convex/_generated/`, so the Convex-generated
   types were never committed. CI has no Convex codegen step (and `convex codegen` needs a deploy key),
@@ -98,9 +100,9 @@ Ordered by the sequence in your runbook. Each row links to its detailed section.
 | Task | Owner | Status |
 | --- | --- | --- |
 | Root-cause the red CI | 🤖 | ✅ |
-| Commit untracked `packages/backend/convex/_generated/` | 🤖 | 🟡 staged, awaiting your OK to push |
-| Push to `main` and confirm all required workflows pass | 👤 (or 🤖 with your OK) | 🔴 |
-| If any workflow still fails, capture the redacted log and fix | 🤖 | — |
+| Fix #1: un-ignore + commit `packages/backend/convex/_generated/` (fixed `verify`/`build`) | 🤖 | ✅ pushed |
+| Fix #2: align `apps/landing/public/llms.txt` with the smoke-test contract (fixed `browser-smoke`) | 🤖 | ✅ pushed |
+| Confirm all required workflows pass on `main` | 🤖 | ✅ green |
 
 ---
 
