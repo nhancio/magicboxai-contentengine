@@ -24,6 +24,25 @@ const steps = [
   },
 ];
 
+const previewMedia = {
+  instagram: {
+    src: "/videos/Cute_winking_animated_girl.mp4",
+    handle: "@yourbrand",
+    caption: "One brief, turned into a scroll-stopping Reel.",
+  },
+  linkedin: {
+    src: "/videos/sample1.mp4",
+    handle: "Your Brand",
+    title: "Founder",
+    caption: "A channel-ready update, shaped to your brand voice.",
+  },
+  youtube: {
+    src: "/videos/Cute_baby_at_gym.mp4",
+    handle: "Your Brand",
+    caption: "A polished Short, ready for review.",
+  },
+} as const;
+
 function BriefCard() {
   return (
     <div className="w-full max-w-[280px] rounded-2xl border border-foreground/10 bg-background p-5 shadow-lg">
@@ -144,12 +163,27 @@ export function HowItWorksSection() {
           <ArrowRight className="hidden h-5 w-5 text-brand/60 lg:block animate-connector-pulse" />
 
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-end sm:gap-4">
-            <FeaturePhone platform="instagram" status="review" size="sm" />
+            <FeaturePhone
+              platform="instagram"
+              status="review"
+              size="sm"
+              media={previewMedia.instagram}
+            />
             <div className="hidden sm:block">
-              <FeaturePhone platform="linkedin" status="scheduled" size="sm" />
+              <FeaturePhone
+                platform="linkedin"
+                status="scheduled"
+                size="sm"
+                media={previewMedia.linkedin}
+              />
             </div>
             <div className="hidden md:block">
-              <FeaturePhone platform="youtube" status="draft" size="sm" />
+              <FeaturePhone
+                platform="youtube"
+                status="draft"
+                size="sm"
+                media={previewMedia.youtube}
+              />
             </div>
           </div>
         </div>

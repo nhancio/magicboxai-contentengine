@@ -36,28 +36,30 @@ Deep operational runbooks are **not** duplicated here — this plan links to the
 
 ---
 
-## 0. Product decision that must be confirmed first (👤 You)
+## 0. Product and GTM decision (👤 You)
 
-Two directions are described across the old docs and they **contradict each other**. Everything
-below assumes the newer one. Please confirm:
+Current founder decision: **launch the full MagicBox ambition**, not a narrowed social-only wedge.
+MagicBox should be sold and tested as an AI marketing operating system that can help customers plan
+social content, generate brand-aware posts, create UGC-style/video assets, approve work, schedule,
+publish, and learn which workflow creates the strongest pull.
 
-- **Direction A — Social Automation (recommended, per `launchplan.md`, 24 Jul):** one brief →
-  on-brand Instagram / LinkedIn / YouTube drafts → approve → schedule → publish. Plans: Free
-  (draft only), **Pro $29/mo or $276/yr (60 posts/mo)**, **Max $149/mo or $1,416/yr (300 posts/mo)**.
-  Do **not** launch the legacy avatar/video product.
-- **Direction B — UGC video creator (older, per `PRICING.md` / `FUTURE_PLAN.md` / `socials.MD`):**
-  avatars, viral templates, watermark, credit packs, Creator $29 / Pro $79. This is the legacy
-  vision and is flagged as *not launch-safe*.
+This replaces the earlier "Direction A vs Direction B" framing. The go-to-market motion should
+show the full product surface, collect customer input aggressively, and then use the evidence to
+decide what to keep, remove, price separately, or make safer before scale.
 
-**Decision needed:** Confirm Direction A is the launch product (this plan assumes it). If yes,
-`PRICING.md` / `FUTURE_PLAN.md` / `socials.MD` are superseded (see §10) and the UGC-video pricing
-must not appear on the public site.
+Initial markets: **India, US, and UK**.
 
-Also confirm (from `launchplan.md` §"Decisions needed"):
-1. First ICP = solo B2B founders / one-person marketers on LinkedIn + Instagram.
-2. First paid motion = guided paid beta (recommended) vs immediate self-serve Pro.
-3. Named owner for support, refunds, and incident response.
-4. Remove the managed-accounts section now (recommended) vs build a real staffed service first.
+Initial customer groups:
+1. Solo founders and SaaS founders.
+2. D2C brands and owner-led ecommerce businesses.
+3. Consultants, agencies, and service businesses.
+4. Operators already writing on LinkedIn, Instagram, YouTube, X, or founder/community channels.
+
+Primary domain: **magicboxai.in**. There is no `.com` domain assumption.
+
+The gates below are operational release controls. They should not shrink the product ambition; they
+exist to keep payments, publishing, credentials, privacy, and support from breaking once customers
+start using the product.
 
 ---
 

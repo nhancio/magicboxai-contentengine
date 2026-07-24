@@ -9,7 +9,7 @@ Nhancio Technologies Private Limited ("we", "us"), Hyderabad, Telangana, India, 
 ## 1. Data we collect
 - **Account data:** name, email, profile photo (via Google Sign-In).
 - **Content you provide:** brand details, briefs, uploaded photos, generated posts/images/videos.
-- **Connected-account data:** tokens and profile info for social accounts you connect (Instagram, LinkedIn). Access tokens are stored encrypted and are never exposed to the browser.
+- **Connected-account data:** tokens and profile info for social accounts you connect (Instagram, LinkedIn, and YouTube). Access tokens are stored encrypted and are never exposed to the browser.
 - **Billing data:** handled by Dodo Payments (merchant of record). We do **not** store card numbers.
 - **Usage & device data:** pages, clicks, and events via product analytics (PostHog), plus standard log data.
 
@@ -19,6 +19,7 @@ To provide and improve the Service, generate and publish content you request, pr
 ## 3. Processors / third parties we share with
 - **Google / Firebase** — authentication, database, hosting, storage.
 - **Google Vertex AI (Gemini, Imagen, Veo)** — AI generation of text/images/video from your inputs.
+- **Google (YouTube Data API)** — only when you connect a YouTube channel, to read your channel identity and upload videos you approve.
 - **Dodo Payments** — subscription billing (merchant of record).
 - **Brevo** — transactional email.
 - **PostHog** — product analytics.

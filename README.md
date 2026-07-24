@@ -4,6 +4,7 @@ MagicBox is an AI marketing automation platform for brand-aware content generati
 
 - Canonical architecture, setup, product, SEO, payments, video, and Convex migration context: [`Context.MD`](./Context.MD)
 - Canonical launch plan, release gates, task ownership, and redundant-file inventory: [`LAUNCH_PLAN.md`](./LAUNCH_PLAN.md)
+- Go-to-market plan for `magicboxai.in`, target segments, outreach, and customer-learning loops: [`GTM_PLAN.md`](./GTM_PLAN.md)
 
 Quick verification:
 

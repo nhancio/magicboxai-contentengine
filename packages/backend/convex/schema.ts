@@ -442,6 +442,9 @@ export default defineSchema({
         reason: v.optional(v.string()),
         dwellMs: v.optional(v.number()),
         decidedAt: v.number(),
+        publishMode: v.optional(
+          v.union(v.literal("now"), v.literal("schedule")),
+        ),
       }),
     ),
     postId: v.optional(v.id("posts")), // set once approved -> scheduled
