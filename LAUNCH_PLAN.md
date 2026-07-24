@@ -111,9 +111,9 @@ The old docs drifted and pointed at a non-existent `NEXTSTEPS.md`. This section 
 | Task | Owner | Status |
 | --- | --- | --- |
 | Create this consolidated `LAUNCH_PLAN.md` | 🤖 | ✅ (this file) |
-| Repoint `README.md` and `nxtsteps.md` from missing `NEXTSTEPS.md` → `LAUNCH_PLAN.md` | 🤖 | 🟡 |
-| Reconcile / archive stale plans (`launchplan.md`, `LAUNCH.md`, `PRICING.md`, `FUTURE_PLAN.md`, `socials.MD`, `CORE_WORKFLOW_PLAN.md`, `PERFORMANCE_PLAN.md`) — see §10 map | 🤖 | 🔴 needs your archival preference |
-| Fix the `@RTK.md` pointer referenced by repo instructions (file doesn't exist) | 🤖 | 🔴 |
+| Repoint all references from missing `NEXTSTEPS.md` → `LAUNCH_PLAN.md` (`README.md`, `nxtsteps.md`, `Context.MD`, `PERFORMANCE_PLAN.md`, `packages/backend/README.md`) | 🤖 | ✅ |
+| Archive superseded plans to `docs/archive/` with banners (`launchplan.md`, `LAUNCH.md`, `PRICING.md`, `FUTURE_PLAN.md`, `socials.MD`) — see §15 map | 🤖 | ✅ |
+| Remove the stale `@RTK.md` pointer note (no such instruction exists in the repo) | 🤖 | ✅ |
 | Remove retained historical body from `README.md` | 🤖 | 🔴 |
 
 ---
@@ -330,15 +330,13 @@ after first publish and at day 7. Do not scale channels until one has verified p
 
 | Old doc | Disposition |
 | --- | --- |
-| `launchplan.md` | Folded into this plan → propose archive. |
-| `LAUNCH.md` | Folded (done-items + gates) → propose archive. |
-| `nxtsteps.md` | Broken pointer → repoint to this file. |
-| `CORE_WORKFLOW_PLAN.md` | Folded into §7 → keep for engineering detail or archive. |
-| `PERFORMANCE_PLAN.md` | Folded into §13 → keep as detailed perf/migration reference. |
-| `FUTURE_PLAN.md` | Legacy UGC roadmap → archive unless Direction B is chosen. |
-| `PRICING.md` | **Contradicts** launch pricing → archive/rewrite to Direction A. |
-| `socials.MD` | Legacy UGC social GTM → archive. |
+| `launchplan.md` | ✅ Folded into this plan → moved to `docs/archive/launchplan.md`. |
+| `LAUNCH.md` | ✅ Folded (done-items + gates) → moved to `docs/archive/LAUNCH.md`. |
+| `nxtsteps.md` | ✅ Broken pointer → repointed to this file (kept in root as a legacy pointer). |
+| `PRICING.md` | ✅ Legacy UGC pricing (contradicts launch pricing) → moved to `docs/archive/PRICING.md`. |
+| `FUTURE_PLAN.md` | ✅ Legacy UGC roadmap (Direction B) → moved to `docs/archive/FUTURE_PLAN.md`. |
+| `socials.MD` | ✅ Legacy UGC social GTM → moved to `docs/archive/socials.MD`. |
+| `CORE_WORKFLOW_PLAN.md` | Folded into §7 → **kept** for engineering detail. |
+| `PERFORMANCE_PLAN.md` | Folded into §13 → **kept** as detailed perf/migration reference. |
 | `PRODUCTION.md`, `FIREBASE_SETUP.md`, `CHANNELS_SETUP.md`, `SECURITY_AUDIT.md`, `Context.MD`, `SYSTEM_PROMPTS.md` | **Kept** — operational runbooks / reference, linked from here. |
-| `README.md` | Repoint canonical link here; trim historical body. |
-
-> **Archival preference needed:** delete, move to `docs/archive/`, or leave with a "superseded → see LAUNCH_PLAN.md" banner?
+| `README.md` | ✅ Canonical link repointed here; historical body trim still pending. |

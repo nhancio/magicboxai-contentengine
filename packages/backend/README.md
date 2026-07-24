@@ -1,6 +1,6 @@
 # @magicbox/backend — Convex foundation
 
-Month 2 of the Firebase → Convex migration (see `../../NEXTSTEPS.md`).
+Month 2 of the Firebase → Convex migration (see [`../../LAUNCH_PLAN.md`](../../LAUNCH_PLAN.md)).
 This runs **alongside** Firebase; nothing here changes the live Firestore backend yet.
 
 ## Decision: Convex Cloud (free Starter tier)
@@ -24,9 +24,10 @@ npx convex login                  # opens browser; authenticates to Convex Cloud
 npx convex dev                    # creates a dev deployment + writes convex/_generated
 ```
 
-`convex dev` generates `convex/_generated/` (typed API + server bindings). Until
-you run it once, `_generated` is absent and typecheck of this package is expected
-to fail — that is normal for a fresh checkout.
+`convex dev` generates `convex/_generated/` (typed API + server bindings). These
+files are **committed** to the repo (the web/admin apps import `@convex/_generated/api`
+and CI has no Convex deploy key), so a fresh checkout already has them. Re-run
+`convex dev` / `convex codegen` and commit the diff whenever the Convex functions change.
 
 Then wire the Firebase auth bridge:
 

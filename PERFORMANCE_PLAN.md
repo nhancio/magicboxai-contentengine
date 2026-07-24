@@ -1,7 +1,7 @@
 # MagicBox — Performance & Convex Migration Plan
 
 **Created:** 2026-07-14 · verified against actual code.
-Companion to `NEXTSTEPS.md` / `LAUNCH.md`. This doc covers speed + the backend migration; those cover launch ops.
+Companion to [`LAUNCH_PLAN.md`](./LAUNCH_PLAN.md). This doc covers speed + the backend migration; that covers launch ops.
 
 ---
 
@@ -52,7 +52,7 @@ Companion to `NEXTSTEPS.md` / `LAUNCH.md`. This doc covers speed + the backend m
 
 ### Phase 1 — Structural frontend (≈1 week)
 7. **Trim the Firebase SDK** — ensure only `firebase/app`, `firebase/auth`, `firebase/firestore`, `firebase/functions` are imported (no `firebase/analytics`, etc.); confirms tree-shaking of the 908 KB core.
-8. **Decide the fate of Remotion** (ties to `NEXTSTEPS.md` P2). If legacy avatar/UGC is cut, remove `remotion` + `@remotion/player` from `apps/web` entirely — largest single win.
+8. **Decide the fate of Remotion** (ties to `LAUNCH_PLAN.md` P2). If legacy avatar/UGC is cut, remove `remotion` + `@remotion/player` from `apps/web` entirely — largest single win.
 9. **Prerender the landing** — it's a static marketing SPA; add `vite-plugin-ssg`/prerender or move to a static export for real LCP + SEO (supports `LAUNCH.md` §2 SEO goals).
 10. **Route-level data prefetch** — kick off Firestore reads on route enter instead of after mount, to remove the request waterfall.
 
@@ -115,7 +115,7 @@ Convex supports Firebase Auth as an OIDC provider — **keep Firebase Auth**, po
 
 ## 5. Recommended sequencing
 
-1. **Now (pre/at launch):** Phase 0 quick wins + Phase 2 #11 (async video). High impact, low risk, no rewrite. Complements open `NEXTSTEPS.md` P1/P2 items (rate-limits, App Check).
+1. **Now (pre/at launch):** Phase 0 quick wins + Phase 2 #11 (async video). High impact, low risk, no rewrite. Complements open `LAUNCH_PLAN.md` P1/P2 items (rate-limits, App Check).
 2. **Post-launch:** Phase 1 frontend structural (Remotion decision, landing prerender).
 3. **When data/reactivity pain justifies it:** the Convex migration (§4), strangler-style, reads-first.
 

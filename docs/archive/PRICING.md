@@ -1,3 +1,6 @@
+> **ARCHIVED (2026-07-24) — superseded by [`LAUNCH_PLAN.md`](../../LAUNCH_PLAN.md).** Describes the legacy UGC-video pricing (Creator/Pro $79, credits) which is superseded by the Social Automation pricing (Pro $29 / Max $149). Do not use for the public site.
+> Retained for provenance only; do not treat as current.
+
 # MagicBox AI - Pricing Strategy
 
 ## Current Status: FREE (Limited Time Launch)

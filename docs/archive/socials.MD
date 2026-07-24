@@ -1,3 +1,6 @@
+> **ARCHIVED (2026-07-24) — superseded by [`LAUNCH_PLAN.md`](../../LAUNCH_PLAN.md).** Legacy UGC-video social GTM; not the launch product.
+> Retained for provenance only; do not treat as current.
+
 # Social Media Strategy — MagicBoxAI
 
 ## 1. Product Name & Category

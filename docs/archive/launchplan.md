@@ -1,3 +1,6 @@
+> **ARCHIVED (2026-07-24) — superseded by [`LAUNCH_PLAN.md`](../../LAUNCH_PLAN.md).** Folded into the canonical plan.
+> Retained for provenance only; do not treat as current.
+
 # MagicBox launch plan
 
 **Prepared:** 24 July 2026  

@@ -1,3 +1,6 @@
+> **ARCHIVED (2026-07-24) — superseded by [`LAUNCH_PLAN.md`](../../LAUNCH_PLAN.md).** Launch checklist folded into the canonical plan.
+> Retained for provenance only; do not treat as current.
+
 # MagicBox — Launch Readiness
 
 Living checklist for going live. ✅ done · 🟡 needs your input · 🔴 blocked/todo.

@@ -6,7 +6,7 @@
 **Company:** Nhancio Technologies Private Limited  
 **Product:** MagicBox (`magicboxai.in`)
 
-This document consolidates the verified product, architecture, operations, design, SEO, payments, video, and migration context that was previously spread across the repository. Open work belongs in `NEXTSTEPS.md`.
+This document consolidates the verified product, architecture, operations, design, SEO, payments, video, and migration context that was previously spread across the repository. Open work and release gates belong in [`LAUNCH_PLAN.md`](./LAUNCH_PLAN.md).
 
 ## Status vocabulary
 
@@ -48,7 +48,7 @@ legal/           Canonical legal-policy drafts used to publish static HTML
 tests/e2e/       Playwright production-build smoke suite
 ```
 
-Current package workspaces are `apps/*` and `functions`. `shared/` is reached through Vite aliases and is not yet a versioned workspace package. A safe future structure is recorded in `NEXTSTEPS.md`; mass-moving the current heavily modified worktree would add risk without fixing product behavior.
+Current package workspaces are `apps/*` and `functions`. `shared/` is reached through Vite aliases and is not yet a versioned workspace package. A safe future structure is recorded in [`LAUNCH_PLAN.md`](./LAUNCH_PLAN.md); mass-moving the current heavily modified worktree would add risk without fixing product behavior.
 
 ## 3. Stack and source of truth
 
@@ -332,7 +332,7 @@ Non-secret Functions config includes app/landing/callback URLs, Dodo mode/busine
 
 ## 13. Documentation policy
 
-`Context.MD` is the source of truth for verified context. `NEXTSTEPS.md` is the source of truth for work and release gates.
+`Context.MD` is the source of truth for verified context. [`LAUNCH_PLAN.md`](./LAUNCH_PLAN.md) is the source of truth for open work and release gates.
 
 The following are retained as exceptions rather than merged away:
 
@@ -340,6 +340,4 @@ The following are retained as exceptions rather than merged away:
 - `legal/*.md`: canonical, publishable legal source that needs counsel review.
 - `README.md`: a small repository entry point should point to these canonical documents.
 
-All other historical project Markdown files are superseded and listed as redundant candidates in `NEXTSTEPS.md`. They are intentionally not deleted.
-
-The repository instruction references `@RTK.md`, but no `RTK.md` was found in this project or inspected parent path. Restore it or remove the pointer if additional instructions are expected.
+All other historical project Markdown files are superseded and listed in [`LAUNCH_PLAN.md`](./LAUNCH_PLAN.md) §15. The superseded launch and legacy UGC-video plans now live in `docs/archive/`.
