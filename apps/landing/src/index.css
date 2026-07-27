@@ -69,6 +69,14 @@
     -webkit-text-fill-color: transparent;
   }
 
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .marquee {
     animation: marquee 30s linear infinite;
   }
