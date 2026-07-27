@@ -6,20 +6,78 @@ import {
   type ReactNode,
 } from "react";
 import {
+  getRedirectResult,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
   type User,
 } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db, googleProvider } from "./firebase";
+import { auth, db, googleProvider, isAuthDomainFirstParty } from "./firebase";
+
+/**
+ * `popup` opens Google in a child window and needs a real user gesture.
+ * `redirect` navigates the whole tab and is the only option without one — but
+ * it can only complete when the auth handler is first-party (see
+ * `isAuthDomainFirstParty`). `auto` picks per browser.
+ */
+export type SignInMode = "auto" | "popup" | "redirect";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
+  /** True while a `signInWithRedirect` navigation is being started or resolved. */
+  redirecting: boolean;
+  /** Whether a gesture-free redirect sign-in can actually complete here. */
+  canAutoRedirect: boolean;
+  signInWithGoogle: (mode?: SignInMode) => Promise<void>;
   signOut: () => Promise<void>;
 }
+
+/** Embedded webviews (Instagram, LinkedIn, Facebook, Gmail…) block `window.open` outright. */
+const IN_APP_BROWSER =
+  /\b(FBAN|FBAV|FB_IAB|Instagram|LinkedInApp|Line|MicroMessenger|Snapchat|Pinterest|TikTok|GSA)\b/i;
+
+function isEmbeddedBrowser(ua: string): boolean {
+  return IN_APP_BROWSER.test(ua);
+}
+
+function isHandheld(ua: string): boolean {
+  if (/Android|iPhone|iPad|iPod/i.test(ua)) return true;
+  // iPadOS defaults to a desktop UA string; touch points give it away.
+  return /Macintosh/.test(ua) && typeof navigator !== "undefined" && navigator.maxTouchPoints > 1;
+}
+
+/**
+ * Popups are unreliable on phones (blocked in webviews, and a stray tab even
+ * when allowed), so redirect is preferred there — but only where it can finish.
+ * With a cross-origin auth handler, redirect never resolves in Safari/Firefox,
+ * so popup stays the safer default until the handler is proxied onto this origin.
+ */
+function resolveMode(mode: SignInMode): "popup" | "redirect" {
+  if (mode !== "auto") return mode;
+  if (typeof navigator === "undefined") return "popup";
+  const ua = navigator.userAgent;
+  if (!isAuthDomainFirstParty()) return "popup";
+  return isEmbeddedBrowser(ua) || isHandheld(ua) ? "redirect" : "popup";
+}
+
+/** Popup failures that a full-page redirect can still recover from. */
+const POPUP_FALLBACK_CODES = new Set([
+  "auth/popup-blocked",
+  "auth/operation-not-supported-in-this-environment",
+  "auth/web-storage-unsupported",
+  "auth/internal-error",
+]);
+
+/** The user backed out on purpose — surfacing an error toast would be noise. */
+const POPUP_CANCELLED_CODES = new Set([
+  "auth/popup-closed-by-user",
+  "auth/cancelled-popup-request",
+  "auth/user-cancelled",
+]);
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -42,6 +100,17 @@ function setSessionHint(signedIn: boolean) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
+
+  // Drain any pending redirect sign-in on load. Firebase resolves it as part of
+  // auth initialization, but consuming it here is what surfaces a failed
+  // round-trip instead of silently dropping the user back on /login.
+  useEffect(() => {
+    if (!auth) return;
+    getRedirectResult(auth).catch((e) => {
+      console.warn("Redirect sign-in did not complete:", e);
+    });
+  }, []);
 
   useEffect(() => {
     if (!auth) {
@@ -72,9 +141,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const signInWithGoogle = async () => {
-    if (!auth || !googleProvider) throw new Error("Firebase not configured. Add your Firebase config to .env.");
-    await signInWithPopup(auth, googleProvider);
+  const signInWithGoogle = async (mode: SignInMode = "auto") => {
+    if (!auth || !googleProvider)
+      throw new Error("Firebase not configured. Add your Firebase config to .env.");
+
+    if (resolveMode(mode) === "redirect") {
+      setRedirecting(true);
+      try {
+        await signInWithRedirect(auth, googleProvider);
+      } catch (e) {
+        setRedirecting(false);
+        throw e;
+      }
+      // Navigation is underway; this promise intentionally never resolves
+      // further so callers don't flash a "done" state before the tab leaves.
+      return;
+    }
+
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (e) {
+      const code = e instanceof FirebaseError ? e.code : "";
+      if (POPUP_CANCELLED_CODES.has(code)) return;
+      if (!POPUP_FALLBACK_CODES.has(code)) throw e;
+      // Popup was refused by the browser. Redirect is the only remaining path,
+      // and we still hold the user's gesture, so take it even where the auth
+      // handler is cross-origin — a chance at signing in beats a dead button.
+      setRedirecting(true);
+      try {
+        await signInWithRedirect(auth, googleProvider);
+      } catch (redirectError) {
+        setRedirecting(false);
+        throw redirectError;
+      }
+    }
   };
 
   const signOut = async () => {
@@ -83,7 +183,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        redirecting,
+        canAutoRedirect: isAuthDomainFirstParty(),
+        signInWithGoogle,
+        signOut,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useAction } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { toast } from "sonner";
 import { useAuth } from "@shared/lib/auth";
 import { getBrandProfiles } from "@shared/lib/automations";
@@ -26,9 +26,11 @@ import {
 import {
   Download,
   Facebook,
+  FolderOpen,
   Instagram,
   Linkedin,
   Loader2,
+  MessageCircle,
   Sparkles,
   Twitter,
   Layers,
@@ -43,7 +45,47 @@ const PLATFORMS: {
   { id: "instagram", label: "Instagram", icon: Instagram },
   { id: "facebook", label: "Facebook", icon: Facebook },
   { id: "twitter", label: "X", icon: Twitter },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
 ];
+
+const CAROUSEL_TEMPLATES = [
+  {
+    id: "how-to",
+    name: "How-to guide",
+    description: "Teach one skill in 4 slides",
+    topic: "How to [skill] in 4 simple steps",
+  },
+  {
+    id: "myths",
+    name: "Myths vs facts",
+    description: "Debunk 3 myths, land the truth",
+    topic: "3 myths about [topic] — and the truth",
+  },
+  {
+    id: "list",
+    name: "Listicle",
+    description: "Numbered tips people save",
+    topic: "5 things every [audience] should know about [topic]",
+  },
+  {
+    id: "story",
+    name: "Before → After",
+    description: "Transformation story arc",
+    topic: "How we went from [before] to [after]",
+  },
+  {
+    id: "framework",
+    name: "Framework",
+    description: "Name a method and break it down",
+    topic: "The [Name] framework for [outcome]",
+  },
+  {
+    id: "faq",
+    name: "FAQ carousel",
+    description: "Answer the top questions",
+    topic: "People always ask me about [topic] — here's the answer",
+  },
+] as const;
 
 function brandFromProfile(p?: BrandProfile | null): CarouselBrand {
   if (!p) return defaultBrand();
@@ -60,17 +102,22 @@ function brandFromProfile(p?: BrandProfile | null): CarouselBrand {
   });
 }
 
-export default function Carousel() {
+export default function Carousel({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const generate = useAction(api.carousel.generate);
+  const createPost = useAction(api.studio.createPost);
+  const uploadUrl = useMutation(api.studio.uploadUrl);
+  const resolveUpload = useMutation(api.studio.resolveUpload);
 
   const [brands, setBrands] = useState<BrandProfile[]>([]);
   const [brandId, setBrandId] = useState<string>("");
   const [topic, setTopic] = useState("How AI is changing lives");
+  const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
   const [platform, setPlatform] = useState<CarouselPlatform>("linkedin");
   const [pack, setPack] = useState<CarouselPack | null>(null);
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [savingLibrary, setSavingLibrary] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
 
   const slideEls = useRef<(HTMLDivElement | null)[]>([]);
@@ -148,32 +195,110 @@ export default function Carousel() {
     }
   };
 
+  const onSaveToLibrary = async () => {
+    if (!pack) return;
+    if (!isConvexConfigured) {
+      toast.error("Convex is not configured");
+      return;
+    }
+    setSavingLibrary(true);
+    try {
+      let mediaUrl: string | undefined;
+      const urls = await exportSlidePngs(slideEls.current);
+      if (urls[0]) {
+        const blob = await (await fetch(urls[0])).blob();
+        const postUrl = await uploadUrl({});
+        const res = await fetch(postUrl, {
+          method: "POST",
+          headers: { "Content-Type": "image/png" },
+          body: blob,
+        });
+        if (!res.ok) throw new Error("Slide upload failed");
+        const { storageId } = (await res.json()) as { storageId: string };
+        const resolved = await resolveUpload({ storageId: storageId as any });
+        mediaUrl = resolved.url;
+      }
+      await createPost({
+        caption: pack.caption,
+        hashtags: pack.hashtags,
+        platforms: [platform === "twitter" ? "twitter" : platform],
+        mediaUrl,
+        mediaType: mediaUrl ? "image" : undefined,
+        mediaSource: mediaUrl ? "upload" : undefined,
+        brief: pack.topic,
+        brandProfileId: brandId || undefined,
+        mode: "draft",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      toast.success("Saved to Library as draft");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save to Library");
+    } finally {
+      setSavingLibrary(false);
+    }
+  };
+
   const previewCaption = pack
     ? `${pack.caption}\n\n${pack.hashtags.map((h) => `#${h}`).join(" ")}`
     : "";
 
   return (
-    <div className="w-full animate-fade-in">
-      <div className="mb-5 sm:mb-6">
-        <span className="eyebrow">Create</span>
-        <h1 className="mt-2 flex items-center gap-2 font-display text-2xl sm:text-3xl">
-          <Layers className="h-6 w-6 text-brand sm:h-7 sm:w-7" />
-          Carousel
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Enter a topic. Gemini writes 4 slides; brand kit locks logo, colors, and name — ready for
-          LinkedIn, Instagram, Facebook, and X.
-        </p>
-      </div>
+    <div className={cn("w-full", !embedded && "animate-fade-in")}>
+      {!embedded && (
+        <div className="mb-5 sm:mb-6">
+          <span className="eyebrow">Create</span>
+          <h1 className="mt-2 flex items-center gap-2 font-display text-2xl sm:text-3xl">
+            <Layers className="h-6 w-6 text-brand sm:h-7 sm:w-7" />
+            Carousel
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Enter a topic. Gemini writes 4 slides; brand kit locks logo, colors, and name — ready for
+            LinkedIn, Instagram, Facebook, and X.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_min(380px,36vw)]">
         <div className="space-y-5 min-w-0">
+          <div className="space-y-3">
+            <h2 className="text-sm font-mono uppercase tracking-widest text-muted-foreground">
+              Templates
+            </h2>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {CAROUSEL_TEMPLATES.map((t) => {
+                const active = activeTemplate === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveTemplate(t.id);
+                      setTopic(t.topic);
+                    }}
+                    className={cn(
+                      "rounded-xl border p-3 text-left transition-all",
+                      active
+                        ? "border-brand bg-brand/5 ring-1 ring-brand"
+                        : "border-border bg-card hover:border-brand/40",
+                    )}
+                  >
+                    <div className="text-sm font-medium text-foreground">{t.name}</div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{t.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="glass-card space-y-4 p-4 sm:p-5">
             <div className="space-y-2">
               <Label>Topic / prompt</Label>
               <Textarea
                 value={topic}
-                onChange={(e) => setTopic(e.target.value)}
+                onChange={(e) => {
+                  setTopic(e.target.value);
+                  setActiveTemplate(null);
+                }}
                 rows={3}
                 placeholder="e.g. How AI is changing lives"
                 className="resize-none"
@@ -246,19 +371,34 @@ export default function Carousel() {
                 Generate carousel
               </Button>
               {pack && (
-                <Button
-                  variant="outline"
-                  onClick={() => void onDownload()}
-                  disabled={exporting}
-                  className="w-full sm:w-auto"
-                >
-                  {exporting ? (
-                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="mr-1.5 h-4 w-4" />
-                  )}
-                  Download PNGs
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => void onSaveToLibrary()}
+                    disabled={savingLibrary || exporting}
+                    className="w-full sm:w-auto"
+                  >
+                    {savingLibrary ? (
+                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    ) : (
+                      <FolderOpen className="mr-1.5 h-4 w-4" />
+                    )}
+                    Save to Library
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => void onDownload()}
+                    disabled={exporting || savingLibrary}
+                    className="w-full sm:w-auto"
+                  >
+                    {exporting ? (
+                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-1.5 h-4 w-4" />
+                    )}
+                    Download PNGs
+                  </Button>
+                </>
               )}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -331,7 +471,7 @@ export default function Carousel() {
               if (p === "youtube") return;
               setPlatform(p as CarouselPlatform);
             }}
-            allowedPlatforms={["linkedin", "instagram", "facebook", "twitter"]}
+            allowedPlatforms={["linkedin", "instagram", "facebook", "twitter", "whatsapp"]}
             content={
               pack
                 ? {
@@ -343,22 +483,36 @@ export default function Carousel() {
                       secondary: brand.colors.secondary,
                       accent: brand.colors.accent,
                     },
-                    imageUrl: undefined,
+                    // Render the live active slide inside the phone frame.
+                    mediaNode: (
+                      <BrandedSlide
+                        slide={pack.slides[activeSlide] ?? pack.slides[0]}
+                        brand={brand}
+                        aspect={aspect}
+                        index={activeSlide}
+                        total={pack.slides.length}
+                        scale={340 / ASPECT_SIZE[aspect].w}
+                      />
+                    ),
                   }
                 : null
             }
             emptyHint="Generate a carousel to preview how the post will read on each channel."
           />
-          {pack && (
-            <div className="mt-3 flex justify-center overflow-x-auto">
-              <BrandedSlide
-                slide={pack.slides[activeSlide] ?? pack.slides[0]}
-                brand={brand}
-                aspect={aspect}
-                index={activeSlide}
-                total={pack.slides.length}
-                scale={Math.min(1, 340 / ASPECT_SIZE[aspect].w)}
-              />
+          {pack && pack.slides.length > 1 && (
+            <div className="mt-3 flex items-center justify-center gap-1.5">
+              {pack.slides.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`Preview slide ${i + 1}`}
+                  onClick={() => setActiveSlide(i)}
+                  className={cn(
+                    "h-1.5 rounded-full transition-all",
+                    activeSlide === i ? "w-5 bg-brand" : "w-1.5 bg-border hover:bg-brand/40",
+                  )}
+                />
+              ))}
             </div>
           )}
         </div>

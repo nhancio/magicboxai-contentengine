@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { ArrowRight, Check } from "lucide-react";
-import { CALENDLY_URL, appLoginUrl } from "@/lib/config";
+import { ArrowRight, CalendarDays, Check, Headphones, Sparkles } from "lucide-react";
+import { CALENDLY_URL, appLoginUrl, guestCheckoutUrl } from "@/lib/config";
 import { captureEvent } from "@shared/lib/analytics";
 
 type Plan = {
@@ -12,7 +12,7 @@ type Plan = {
   href: string;
   popular?: boolean;
   custom?: boolean;
-  /** Paid plans always enter the authenticated checkout flow. */
+  /** Paid plans go straight to Dodo guest checkout — no sign-in required first. */
   planId?: "pro" | "max";
 };
 
@@ -109,10 +109,10 @@ export function PricingSection() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-px bg-foreground/10">
           {plans.map((plan, idx) => (
-            <div key={plan.name} className={`relative p-8 bg-background flex flex-col ${plan.popular ? "lg:-my-4 lg:py-12 border-2 border-brand" : ""}`}>
-              {plan.popular && (
-                <span className="absolute -top-3 left-8 px-3 py-1 bg-brand text-brand-foreground text-xs font-mono uppercase tracking-widest">Most popular</span>
-              )}
+            <div
+              key={plan.name}
+              className="group/card relative p-8 bg-background flex flex-col border-2 border-transparent transition-all duration-300 hover:border-brand hover:lg:-my-4 hover:lg:py-12"
+            >
               <div className="mb-6">
                 <span className="font-mono text-xs text-muted-foreground">{String(idx + 1).padStart(2, "0")}</span>
                 <h3 className="font-display text-2xl text-foreground mt-2">{plan.name}</h3>
@@ -134,7 +134,7 @@ export function PricingSection() {
               <ul className="space-y-3 mb-8 flex-1">
                 {plan.features.map((feature) => (
                   <li key={feature} className="flex items-start gap-3">
-                    <Check className={`w-4 h-4 mt-0.5 shrink-0 ${plan.popular ? "text-brand" : "text-foreground"}`} />
+                    <Check className="w-4 h-4 mt-0.5 shrink-0 text-foreground transition-colors duration-300 group-hover/card:text-brand" />
                     <span className="text-sm text-muted-foreground">{feature}</span>
                   </li>
                 ))}
@@ -142,22 +142,72 @@ export function PricingSection() {
               <a
                 href={
                   plan.planId
-                    ? appLoginUrl(`/pricing?plan=${plan.planId}&billing=${isAnnual ? "annual" : "monthly"}`)
+                    ? guestCheckoutUrl(plan.planId, isAnnual ? "annual" : "monthly")
                     : plan.href
                 }
-                {...(plan.custom ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                 onClick={() => captureEvent("pricing_cta_clicked", { plan: plan.name.toLowerCase(), billing: isAnnual ? "annual" : "monthly" })}
-                className={`w-full py-4 flex items-center justify-center gap-2 text-sm font-medium transition-all group ${
-                  plan.popular
-                    ? "bg-brand text-brand-foreground hover:bg-brand/90"
-                    : "border border-foreground/20 text-foreground hover:border-foreground hover:bg-foreground/5"
-                }`}
+                className="w-full py-4 flex items-center justify-center gap-2 text-sm font-medium transition-all group border border-foreground/20 text-foreground group-hover/card:bg-brand group-hover/card:text-brand-foreground group-hover/card:border-brand"
               >
                 {plan.cta}
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
               </a>
             </div>
           ))}
+        </div>
+
+        <div className="mt-14">
+          <div className="relative overflow-hidden rounded-[1.75rem] border border-foreground/10 bg-secondary/70 px-6 py-6 sm:px-8 lg:px-10">
+            <div
+              className="pointer-events-none absolute inset-y-0 right-0 w-72 opacity-60"
+              aria-hidden="true"
+              style={{
+                background:
+                  "radial-gradient(circle at 70% 50%, rgb(var(--brand) / 0.14), transparent 66%)",
+              }}
+            />
+            <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-4xl">
+                <span className="mb-3 inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-brand">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Managed service
+                </span>
+                <p className="text-base leading-relaxed text-foreground sm:text-lg">
+                  Want more scale? We run an agency service where we manage everything for you{" "}
+                  <span className="font-medium text-brand">
+                    — buying accounts, warming, and done-for-you posting.
+                  </span>
+                </p>
+              </div>
+
+              <a
+                href={CALENDLY_URL}
+                onClick={() =>
+                  captureEvent("pricing_cta_clicked", {
+                    plan: "managed-service",
+                    billing: "custom",
+                  })
+                }
+                className="group inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-foreground/20 bg-background px-6 text-sm font-medium text-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+              >
+                Enquire here
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-mono text-[10px] text-muted-foreground sm:text-xs">
+            <span className="inline-flex items-center gap-1.5">
+              <CalendarDays className="h-3.5 w-3.5" />
+              Free plan
+            </span>
+            <span className="hidden text-foreground/20 sm:inline" aria-hidden="true">•</span>
+            <span>1 i-credit per image or post · 1 v-credit per second of video</span>
+            <span className="hidden text-foreground/20 sm:inline" aria-hidden="true">•</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Headphones className="h-3.5 w-3.5" />
+              24/7 support
+            </span>
+          </div>
         </div>
 
       </div>

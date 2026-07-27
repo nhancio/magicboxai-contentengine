@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { APP_URL } from "@/lib/config";
+import { appLoginUrl } from "@/lib/config";
 import { PhoneShowcase } from "./phone-system";
 
 export function SpotlightSection() {
@@ -50,7 +50,7 @@ export function SpotlightSection() {
 
             <div className="mt-8">
               <Button asChild size="lg" variant="brand" className="px-8 h-14 text-base rounded-full">
-                <a href={`${APP_URL}/login`}>Get started for free</a>
+                <a href={appLoginUrl()}>Get started for free</a>
               </Button>
             </div>
           </div>

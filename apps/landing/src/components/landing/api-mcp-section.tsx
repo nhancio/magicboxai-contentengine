@@ -64,7 +64,7 @@ export function ApiMcpSection() {
                 and platforms run the full engine as their own.
               </p>
               <Button asChild size="lg" variant="brand" className="px-8 h-14 text-base rounded-full group">
-                <a href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
+                <a href={CALENDLY_URL}>
                   Enquire
                   <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
                 </a>

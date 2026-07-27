@@ -89,6 +89,12 @@ export default function BrandedSlide({
           transformOrigin: "top left",
           overflow: "hidden",
           borderRadius: 4,
+          // Anchor the layout's "% of slide" font sizes to the slide width.
+          // CSS font-size:% resolves against the PARENT font-size, so without
+          // this the tokens in LAYOUT resolved against the ~16px root and text
+          // rendered ~1px (unreadable). Every text layer is a direct child, so
+          // e.g. title 5.6% × 1080 ≈ 60px. No compounding (siblings, not nested).
+          fontSize: w,
           fontFamily:
             '"Inter", "Segoe UI", system-ui, -apple-system, sans-serif',
         }}

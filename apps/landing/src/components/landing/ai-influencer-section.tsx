@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, SlidersHorizontal, ScanFace, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { APP_URL } from "@/lib/config";
+import { appLoginUrl } from "@/lib/config";
 
 const features = [
   { icon: Sparkles, title: "Photorealistic quality", description: "Realistic, iPhone-style AI influencers — generated from a single prompt." },
@@ -107,7 +107,7 @@ export function AIInfluencerSection() {
 
         <div className={`mt-14 flex justify-center transition-all duration-700 delay-300 ${isVisible ? "opacity-100" : "opacity-0"}`}>
           <Button asChild size="lg" variant="brand" className="px-8 h-14 text-base rounded-full">
-            <a href={`${APP_URL}/login`}>Build your influencer</a>
+            <a href={appLoginUrl()}>Build your influencer</a>
           </Button>
         </div>
       </div>

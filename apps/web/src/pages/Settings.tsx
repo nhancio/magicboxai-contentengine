@@ -24,17 +24,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@shared/components/ui/dialog";
-import { Badge } from "@shared/components/ui/badge";
 import { cn } from "@shared/lib/utils";
 import { Link } from "react-router-dom";
-import { trialClock, trialStatusCopy } from "../lib/credits";
-import { LEGACY_TOOLS_ENABLED } from "../lib/flags";
+import { trialClock } from "../lib/credits";
 import {
   Settings as SettingsIcon,
   User,
   Palette,
   Bell,
-  Shield,
   Download,
   Trash2,
   Moon,
@@ -42,7 +39,6 @@ import {
   Mail,
   Smartphone,
   FileBarChart,
-  Check,
   Instagram,
   Linkedin,
   Loader2,
@@ -54,7 +50,8 @@ import {
   Link2,
   Sparkles,
   Clock,
-  ArrowRight,
+  X,
+  Plus,
   Image as ImageIcon,
   Clapperboard,
 } from "lucide-react";
@@ -67,6 +64,17 @@ const PLATFORM_ICON: Record<string, typeof Instagram> = {
   twitter: Twitter,
   reddit: MessageCircle,
   whatsapp: MessageCircle,
+};
+
+/** Real platform brand colours for the connected-channel tiles. */
+const PLATFORM_BRAND: Record<string, string> = {
+  instagram: "linear-gradient(45deg,#F58529,#DD2A7B,#8134AF,#515BD4)",
+  youtube: "#FF0000",
+  linkedin: "#0A66C2",
+  facebook: "#1877F2",
+  twitter: "#000000",
+  whatsapp: "#25D366",
+  reddit: "#FF4500",
 };
 
 type ChannelAccount = {
@@ -118,6 +126,9 @@ function webProfileUrl(account: ChannelAccount): string | null {
       if (externalId) return `https://www.facebook.com/${externalId}`;
       return handle ? `https://www.facebook.com/${encodeURIComponent(handle)}` : null;
     case "whatsapp": {
+      // Click-to-chat with the business number — "open the bot's chat". Works
+      // for a REAL connected number; Meta's SANDBOX test number can't be opened
+      // this way (WhatsApp reports "isn't on WhatsApp"), which is a Meta limit.
       const digits = (handle || externalId).replace(/[^\d]/g, "");
       return digits ? `https://wa.me/${digits}` : "https://www.whatsapp.com/";
     }
@@ -164,6 +175,8 @@ function appDeepLink(account: ChannelAccount): string | null {
           ? `fb://profile/${encodeURIComponent(handle)}`
           : null;
     case "whatsapp": {
+      // Open the chat with the business number in the WhatsApp app (real
+      // numbers only; the sandbox test number can't be opened).
       const digits = (handle || externalId).replace(/[^\d]/g, "");
       return digits ? `whatsapp://send?phone=${digits}` : "whatsapp://";
     }
@@ -199,6 +212,41 @@ function openChannelProfile(account: ChannelAccount) {
   if (web) window.open(web, "_blank", "noopener,noreferrer");
 }
 
+function GoogleConnectorTile({ email }: { email?: string | null }) {
+  return (
+    <div
+      className="group relative flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-secondary p-2 text-center"
+      title={email ? `Signed in as ${email}` : "Google account"}
+    >
+      <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-border">
+        <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden>
+          <path
+            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+            fill="#4285F4"
+          />
+          <path
+            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+            fill="#34A853"
+          />
+          <path
+            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+            fill="#FBBC05"
+          />
+          <path
+            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+            fill="#EA4335"
+          />
+        </svg>
+        <span
+          className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-secondary"
+          title="Connected"
+        />
+      </div>
+      <span className="w-full truncate text-[11px] font-medium text-foreground">Google</span>
+    </div>
+  );
+}
+
 /**
  * Channel connect/disconnect wired to the CONVEX backend (the one the new
  * publish engine reads). The legacy Firebase block below is the fallback when
@@ -217,7 +265,7 @@ function convexErrorMessage(err: unknown): string {
   return raw.replace(/^Error:\s*/, "").slice(0, 140);
 }
 
-function ConvexChannels() {
+function ConvexChannels({ compact }: { compact?: boolean }) {
   const { user } = useAuth();
   const catalogue = useQuery(api.social.catalogue, {});
   const accounts = useQuery(api.social.accounts, {});
@@ -225,11 +273,29 @@ function ConvexChannels() {
   const disconnect = useMutation(api.social.disconnect);
   const [busy, setBusy] = useState<string | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
-  const launchPlatforms = new Set(["instagram", "linkedin", "youtube"]);
+  const [showConnectPicker, setShowConnectPicker] = useState(false);
+  // Live Meta + Google channels. Deferred (twitter/reddit) stay in catalogue but
+  // only surface if we intentionally add them here later.
+  const launchPlatforms = new Set([
+    "instagram",
+    "linkedin",
+    "youtube",
+    "facebook",
+    "whatsapp",
+  ]);
 
   const connected = (accounts ?? []).filter(
     (a: any) => a.status === "active" || a.status === "expired",
   );
+
+  const connectable = (catalogue ?? [])
+    .filter((p: any) => launchPlatforms.has(p.id))
+    .filter((p: any) => {
+      const active = connected.some(
+        (a: any) => a.platform === p.id && a.status === "active",
+      );
+      return !active;
+    });
 
   async function handleConnect(provider: string) {
     setBusy(provider);
@@ -270,104 +336,106 @@ function ConvexChannels() {
 
   return (
     <div>
-      {connected.length > 0 && (
-        <div className="mb-4 grid grid-cols-1 gap-2 lg:grid-cols-2">
-          {connected.map((account: any) => {
-            const Icon = PLATFORM_ICON[account.platform] ?? Link2;
-            const isActive = account.status === "active";
-            const raw = (account.username || account.displayName || "").toString().trim();
-            const handle = raw ? (raw.startsWith("@") ? raw : `@${raw}`) : "";
-            const initials = (account.displayName || account.username || "?")
-              .toString()
-              .slice(0, 2)
-              .toUpperCase();
-            const canOpen = Boolean(webProfileUrl(account) || appDeepLink(account));
-            return (
-              <div
-                key={account._id}
-                role={canOpen ? "link" : undefined}
-                tabIndex={canOpen ? 0 : undefined}
-                onClick={() => {
-                  if (canOpen) openChannelProfile(account);
-                }}
-                onKeyDown={(ev) => {
-                  if (!canOpen) return;
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    openChannelProfile(account);
-                  }
-                }}
-                className={cn(
-                  "flex items-center justify-between rounded-lg border border-border bg-secondary p-4 transition-colors",
-                  canOpen && "cursor-pointer hover:border-brand/40 hover:bg-secondary/80",
-                )}
-                title={canOpen ? `Open in ${account.platform}` : undefined}
-              >
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <Avatar className="h-10 w-10 border border-border">
-                    <AvatarImage src={account.avatarUrl} alt="" />
-                    <AvatarFallback className="bg-accent text-xs">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 text-left">
-                    <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{account.displayName || account.platform}</span>
-                    </p>
-                    <p className="truncate text-xs capitalize text-muted-foreground">
-                      {account.platform} · {handle}
-                      {canOpen ? " · Open channel" : ""}
-                    </p>
-                  </div>
-                </div>
-                <div className="ml-2 flex shrink-0 items-center gap-2">
-                  {isActive ? (
-                    <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-700">
-                      <Check className="mr-1 h-3 w-3" />
-                      Connected
-                    </Badge>
-                  ) : (
-                    <Badge className="border-amber-500/20 bg-amber-500/10 text-amber-700">
-                      Reconnect
-                    </Badge>
-                  )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground hover:text-destructive"
-                    disabled={disconnectingId === account._id}
-                    onClick={(ev) => {
-                      ev.preventDefault();
-                      ev.stopPropagation();
-                      void handleDisconnect(String(account._id));
-                    }}
-                  >
-                    {disconnectingId === account._id ? (
-                      <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                    ) : null}
-                    Disconnect
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <div
+        className={cn(
+          "mb-3 grid gap-2.5",
+          compact
+            ? "grid-cols-3 sm:grid-cols-4"
+            : "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8",
+        )}
+      >
+        <GoogleConnectorTile email={user?.email} />
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {(catalogue ?? [])
-          .filter((p: any) => launchPlatforms.has(p.id))
-          // Hide Connect for platforms already linked — they appear in the list above
-          // with Disconnect. Reconnect only when status is expired.
-          .filter((p: any) => {
-            const active = connected.some(
-              (a: any) => a.platform === p.id && a.status === "active",
-            );
-            return !active;
-          })
-          .map((p: any) => {
+        {connected.map((account: any) => {
+          const Icon = PLATFORM_ICON[account.platform] ?? Link2;
+          const isActive = account.status === "active";
+          const raw = (account.username || account.displayName || "").toString().trim();
+          const handle = raw ? (raw.startsWith("@") ? raw : `@${raw}`) : account.platform;
+          const canOpen = Boolean(webProfileUrl(account) || appDeepLink(account));
+          const busyDisc = disconnectingId === account._id;
+          return (
+            <div
+              key={account._id}
+              role={canOpen ? "link" : undefined}
+              tabIndex={canOpen ? 0 : undefined}
+              onClick={() => {
+                if (canOpen) openChannelProfile(account);
+              }}
+              onKeyDown={(ev) => {
+                if (!canOpen) return;
+                if (ev.key === "Enter" || ev.key === " ") {
+                  ev.preventDefault();
+                  openChannelProfile(account);
+                }
+              }}
+              className={cn(
+                "group relative flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-secondary p-2 text-center transition-colors",
+                canOpen && "cursor-pointer hover:border-brand/40 hover:bg-secondary/80",
+              )}
+              title={canOpen ? `Open ${handle} on ${account.platform}` : handle}
+            >
+              <button
+                type="button"
+                aria-label={`Disconnect ${account.platform}`}
+                disabled={busyDisc}
+                onClick={(ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  void handleDisconnect(String(account._id));
+                }}
+                className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-background/80 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+              >
+                {busyDisc ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <X className="h-3 w-3" />
+                )}
+              </button>
+              <div
+                className="relative flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm"
+                style={{ background: PLATFORM_BRAND[account.platform] ?? "#6b7280" }}
+              >
+                <Icon className="h-5 w-5" />
+                <span
+                  className={cn(
+                    "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-secondary",
+                    isActive ? "bg-emerald-500" : "bg-amber-500",
+                  )}
+                  title={isActive ? "Connected" : "Reconnect needed"}
+                />
+              </div>
+              <span className="w-full truncate text-[11px] font-medium text-foreground">
+                {handle}
+              </span>
+            </div>
+          );
+        })}
+
+        {/* + tile — connect another channel */}
+        {connectable.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowConnectPicker((v) => !v)}
+            className={cn(
+              "flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed p-2 text-center transition-colors",
+              showConnectPicker
+                ? "border-brand bg-brand/5 text-brand"
+                : "border-border text-muted-foreground hover:border-brand/50 hover:bg-secondary hover:text-foreground",
+            )}
+            title="Connect a new channel"
+            aria-expanded={showConnectPicker}
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-current/20 bg-background">
+              <Plus className="h-5 w-5" />
+            </div>
+            <span className="w-full truncate text-[11px] font-medium">Add</span>
+          </button>
+        )}
+      </div>
+
+      {(showConnectPicker || connected.length === 0) && connectable.length > 0 && (
+        <div className="mb-2 grid gap-2 sm:grid-cols-2">
+          {connectable.map((p: any) => {
             const Icon = PLATFORM_ICON[p.id] ?? Link2;
             const expired = connected.some(
               (a: any) => a.platform === p.id && a.status === "expired",
@@ -376,6 +444,7 @@ function ConvexChannels() {
               <Button
                 key={p.id}
                 variant="outline"
+                size="sm"
                 className="justify-start"
                 disabled={!p.available || busy !== null}
                 title={p.available ? undefined : p.reason}
@@ -394,12 +463,14 @@ function ConvexChannels() {
               </Button>
             );
           })}
-      </div>
+        </div>
+      )}
 
-      <p className="mt-2 text-xs text-muted-foreground">
-        Instagram requires a Business/Creator account linked to a Facebook Page. YouTube connects
-        via Google. Supported channels are shown here when they are available to your account.
-      </p>
+      {!compact && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Tap + to connect Instagram, LinkedIn, YouTube, Facebook, or WhatsApp.
+        </p>
+      )}
     </div>
   );
 }
@@ -482,32 +553,124 @@ export default function Settings() {
               Profile, preferences, and the channels you publish to.
             </p>
           </div>
-          {LEGACY_TOOLS_ENABLED && clock && !credits?.hasPaidPlan && (
-            <div
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-medium",
-                clock.expired
-                  ? "border-destructive/30 bg-destructive/10 text-destructive"
-                  : clock.daysLeft <= 2
-                    ? "border-amber-500/30 bg-amber-500/10 text-amber-800"
-                    : "border-brand/25 bg-brand/10 text-brand",
-              )}
-            >
-              <Clock className="h-3.5 w-3.5" />
-              {trialStatusCopy(clock)}
-              {clock.endsOnLabel && !clock.expired && (
-                <span className="text-muted-foreground">· ends {clock.endsOnLabel}</span>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Profile + Credits hero */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <Card className="glass-card overflow-hidden lg:col-span-3">
+      {/* Credits & plan — prominent, on top */}
+      {isConvexConfigured && (
+        <Card className="glass-card overflow-hidden">
+          <CardContent className="flex flex-col gap-6 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
+            {/* Balances + trial */}
+            <div className="flex flex-1 flex-wrap items-center gap-x-8 gap-y-5">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                  <Sparkles className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Your credits</p>
+                  <p className="text-[11px] text-muted-foreground">Spent as you create</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-6">
+                <div className={cn(creditsFrozen && "opacity-60")}>
+                  <div className="flex items-center gap-1.5">
+                    <ImageIcon className="h-3.5 w-3.5 text-brand" />
+                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+                      i-credits
+                    </p>
+                  </div>
+                  <p className="mt-0.5 font-display text-3xl tabular-nums text-foreground">
+                    {iCredits}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">1 = text / image post</p>
+                </div>
+                <div className="h-12 w-px bg-border" />
+                <div className={cn(creditsFrozen && "opacity-60")}>
+                  <div className="flex items-center gap-1.5">
+                    <Clapperboard className="h-3.5 w-3.5 text-foreground/70" />
+                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+                      v-credits
+                    </p>
+                  </div>
+                  <p className="mt-0.5 font-display text-3xl tabular-nums text-foreground">
+                    {vCredits}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">1 = 1 second of video</p>
+                </div>
+              </div>
+
+              {clock && !credits?.hasPaidPlan && (
+                <div className="min-w-[150px] flex-1 sm:max-w-[220px]">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-mono uppercase tracking-widest text-muted-foreground">
+                      Free trial
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 font-medium",
+                        clock.expired ? "text-destructive" : "text-brand",
+                      )}
+                    >
+                      <Clock className="h-3 w-3" />
+                      {clock.expired ? "Ended" : `${clock.daysLeft}d left`}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-brand transition-[width] duration-700"
+                      style={{ width: `${Math.max(4, (clock.expired ? 1 : clock.progress) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {clock.expired
+                      ? "Trial credits are frozen"
+                      : clock.endsOnLabel
+                        ? `Ends ${clock.endsOnLabel}`
+                        : ""}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Offer + upgrade */}
+            <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center lg:flex-col lg:items-stretch">
+              {credits?.hasPaidPlan ? (
+                <div className="rounded-lg border border-brand/25 bg-brand/[0.07] px-4 py-3 text-center">
+                  <p className="text-[11px] font-mono uppercase tracking-widest text-brand">
+                    Plan active
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Credits never expire</p>
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-lg border border-brand/25 bg-brand/[0.07] px-4 py-2.5">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-brand">
+                      <Sparkles className="h-3.5 w-3.5" /> Launch offer · Save 20%
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      Pro from <span className="font-medium text-foreground">$23/mo</span> billed
+                      annually
+                    </p>
+                  </div>
+                  <Button asChild className="bg-brand hover:bg-brand/90">
+                    <Link to="/pricing?billing=annual">
+                      <Sparkles className="mr-1.5 h-4 w-4" />
+                      Buy premium
+                    </Link>
+                  </Button>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Profile + preferences */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card className="glass-card overflow-hidden">
           <CardContent className="p-0">
-            <div className="flex flex-col gap-5 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+            <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
               <div className="flex items-center gap-4">
                 <div className="relative">
                   <Avatar className="h-16 w-16 border-2 border-background shadow-md ring-1 ring-border sm:h-20 sm:w-20">
@@ -527,9 +690,6 @@ export default function Settings() {
                   <p className="truncate text-sm text-muted-foreground">
                     {user?.email ?? "No email"}
                   </p>
-                  <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
-                    Synced with Google
-                  </p>
                 </div>
               </div>
               <Button
@@ -545,144 +705,106 @@ export default function Settings() {
               </Button>
             </div>
 
-            {LEGACY_TOOLS_ENABLED && isConvexConfigured && (
-              <div className="space-y-4 bg-secondary/40 p-5 sm:p-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-brand" />
-                    <p className="text-sm font-medium text-foreground">Credits</p>
-                  </div>
-                  <Link
-                    to="/pricing"
-                    className="inline-flex items-center gap-1 text-xs font-mono uppercase tracking-widest text-brand transition-colors hover:text-brand/80"
-                  >
-                    {creditsFrozen ? "Upgrade to unlock" : "Plans"}
-                    <ArrowRight className="h-3 w-3" />
-                  </Link>
-                </div>
-
-                {clock && !credits?.hasPaidPlan && (
-                  <div
-                    className={cn(
-                      "rounded-lg border px-4 py-3",
-                      clock.expired
-                        ? "border-destructive/25 bg-destructive/5"
-                        : "border-brand/20 bg-card",
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
-                          Free trial · {credits?.trialDurationDays ?? 7} days
-                        </p>
-                        <p className="mt-1 font-display text-2xl tabular-nums text-foreground">
-                          {clock.expired ? "Expired" : trialStatusCopy(clock)}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {clock.expired
-                            ? "Trial credits are frozen. Upgrade to keep creating."
-                            : `Use your credits before ${clock.endsOnLabel ?? "the trial ends"}.`}
-                        </p>
-                      </div>
-                      {!clock.expired && (
-                        <div
-                          className="relative h-14 w-14 shrink-0"
-                          title={`${Math.round(clock.progress * 100)}% of trial remaining`}
-                        >
-                          <svg viewBox="0 0 36 36" className="-rotate-90 h-full w-full">
-                            <circle
-                              cx="18"
-                              cy="18"
-                              r="15.5"
-                              fill="none"
-                              className="stroke-border"
-                              strokeWidth="3"
-                            />
-                            <circle
-                              cx="18"
-                              cy="18"
-                              r="15.5"
-                              fill="none"
-                              className="stroke-brand transition-[stroke-dasharray] duration-700"
-                              strokeWidth="3"
-                              strokeLinecap="round"
-                              strokeDasharray={`${clock.progress * 97.4} 97.4`}
-                            />
-                          </svg>
-                          <span className="absolute inset-0 flex items-center justify-center text-[11px] font-mono tabular-nums text-foreground">
-                            {clock.daysLeft}d
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    {!clock.expired && (
-                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-secondary">
-                        <div
-                          className="h-full rounded-full bg-brand transition-[width] duration-700"
-                          style={{ width: `${Math.max(4, clock.progress * 100)}%` }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {credits?.hasPaidPlan && (
-                  <div className="rounded-lg border border-brand/20 bg-card px-4 py-3">
-                    <p className="text-[11px] font-mono uppercase tracking-widest text-brand">
-                      Paid plan active
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Your credits stay available — no trial countdown.
-                    </p>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div
-                    className={cn(
-                      "relative overflow-hidden rounded-lg border border-border bg-card px-4 py-4",
-                      creditsFrozen && "opacity-60",
-                    )}
-                  >
-                    <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-brand/10 text-brand">
-                      <ImageIcon className="h-4 w-4" />
-                    </div>
-                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
-                      i-credits
-                    </p>
-                    <p className="mt-1 font-display text-3xl tabular-nums text-foreground">
-                      {iCredits}
-                    </p>
-                    <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
-                      1 = text / image post
-                    </p>
-                  </div>
-                  <div
-                    className={cn(
-                      "relative overflow-hidden rounded-lg border border-border bg-card px-4 py-4",
-                      creditsFrozen && "opacity-60",
-                    )}
-                  >
-                    <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-foreground/5 text-foreground">
-                      <Clapperboard className="h-4 w-4" />
-                    </div>
-                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
-                      v-credits
-                    </p>
-                    <p className="mt-1 font-display text-3xl tabular-nums text-foreground">
-                      {vCredits}
-                    </p>
-                    <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
-                      1 = 1 second of video
-                    </p>
-                  </div>
-                </div>
+            <div className="border-t border-border px-5 py-5 sm:px-6">
+              <div className="mb-3 flex items-center gap-2">
+                <Link2 className="h-4 w-4 text-brand" />
+                <p className="text-sm font-medium text-foreground">Connectors</p>
               </div>
-            )}
+              <p className="mb-4 text-xs text-muted-foreground">
+                Sign-in and publishing channels in one place.
+              </p>
+              {isConvexConfigured ? (
+                <ConvexChannels compact />
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+                    <GoogleConnectorTile email={user?.email} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Channel connect needs <code className="font-mono">VITE_CONVEX_URL</code>.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-border px-5 py-4 sm:flex-row sm:px-6">
+              <Button
+                size="sm"
+                variant="outline"
+                className="justify-start"
+                onClick={() => {
+                  const data = {
+                    email: user?.email,
+                    displayName: user?.displayName,
+                    exportedAt: new Date().toISOString(),
+                  };
+                  const blob = new Blob([JSON.stringify(data, null, 2)], {
+                    type: "application/json",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "magicbox-account-summary.json";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast.success("Account summary downloaded");
+                }}
+              >
+                <Download className="mr-2 h-3.5 w-3.5" />
+                Download summary
+              </Button>
+
+              <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="justify-start border border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="mr-2 h-3.5 w-3.5" />
+                    Request deletion
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="border-border bg-card">
+                  <DialogHeader>
+                    <DialogTitle className="text-foreground">Request account deletion</DialogTitle>
+                    <DialogDescription className="text-muted-foreground">
+                      Deletion is handled by support while the automated deletion workflow is being
+                      completed. We will verify your identity, help resolve any active subscription,
+                      and confirm the data covered before deletion. This button does not delete or
+                      sign you out immediately.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter className="gap-2 sm:gap-0">
+                    <Button
+                      variant="ghost"
+                      onClick={() => setDeleteDialogOpen(false)}
+                      className="text-muted-foreground"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => {
+                        const subject = encodeURIComponent("MagicBox account deletion request");
+                        const body = encodeURIComponent(
+                          `Please start an account deletion request for ${user?.email ?? "my account"}.`,
+                        );
+                        window.location.href = `mailto:support@magicboxai.in?subject=${subject}&body=${body}`;
+                        setDeleteDialogOpen(false);
+                      }}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Contact support
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="glass-card h-full lg:col-span-2">
+        <Card className="glass-card h-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-foreground">
               <Palette className="h-5 w-5 text-brand" />
@@ -763,218 +885,72 @@ export default function Settings() {
         </Card>
       </div>
 
-      {/* Notifications + Sign-in / actions */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card className="glass-card h-full">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <Bell className="h-5 w-5 text-brand" />
-              Notifications
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              Choose what notifications you want to receive.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[
-              {
-                id: "email",
-                label: "Email Notifications",
-                description: "Receive updates about your content via email",
-                icon: Mail,
-                checked: emailNotifs,
-                onChange: setEmailNotifs,
-              },
-              {
-                id: "push",
-                label: "Push Notifications",
-                description: "Get push notifications in your browser",
-                icon: Smartphone,
-                checked: pushNotifs,
-                onChange: setPushNotifs,
-              },
-              {
-                id: "weekly",
-                label: "Weekly Report",
-                description: "Receive a weekly summary of your analytics",
-                icon: FileBarChart,
-                checked: weeklyReport,
-                onChange: setWeeklyReport,
-              },
-            ].map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between rounded-lg border border-border bg-secondary p-4"
-              >
-                <div className="flex items-center gap-3">
-                  <item.icon className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{item.label}</p>
-                    <p className="text-xs text-muted-foreground">{item.description}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={item.checked}
-                  onClick={() => item.onChange(!item.checked)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
-                    item.checked ? "bg-brand" : "bg-accent"
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-sm ring-0 transition duration-200 ${
-                      item.checked ? "translate-x-5" : "translate-x-0"
-                    }`}
-                  />
-                </button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card h-full">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <Shield className="h-5 w-5 text-brand" />
-              Sign-in & data
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              How you sign in and account-level actions.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div>
-              <Label className="mb-3 block text-foreground/80">Sign-in</Label>
-              <div className="flex items-center justify-between rounded-lg border border-border bg-secondary p-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent">
-                    <svg className="h-5 w-5" viewBox="0 0 24 24">
-                      <path
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
-                        fill="#4285F4"
-                      />
-                      <path
-                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                        fill="#34A853"
-                      />
-                      <path
-                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                        fill="#FBBC05"
-                      />
-                      <path
-                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                        fill="#EA4335"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Google</p>
-                    <p className="text-xs text-muted-foreground">{user?.email ?? "Connected"}</p>
-                  </div>
-                </div>
-                <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-700">
-                  <Check className="mr-1 h-3 w-3" />
-                  Connected
-                </Badge>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button
-                onClick={() => {
-                  const data = {
-                    email: user?.email,
-                    displayName: user?.displayName,
-                    exportedAt: new Date().toISOString(),
-                  };
-                  const blob = new Blob([JSON.stringify(data, null, 2)], {
-                    type: "application/json",
-                  });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = "magicbox-account-summary.json";
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  toast.success("Account summary downloaded");
-                }}
-                variant="outline"
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Download account summary
-              </Button>
-
-              <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="border border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Request account deletion
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="border-border bg-card">
-                  <DialogHeader>
-                    <DialogTitle className="text-foreground">Request account deletion</DialogTitle>
-                    <DialogDescription className="text-muted-foreground">
-                      Deletion is handled by support while the automated deletion workflow is being
-                      completed. We will verify your identity, help resolve any active subscription,
-                      and confirm the data covered before deletion. This button does not delete or
-                      sign you out immediately.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter className="gap-2 sm:gap-0">
-                    <Button
-                      variant="ghost"
-                      onClick={() => setDeleteDialogOpen(false)}
-                      className="text-muted-foreground"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      onClick={() => {
-                        const subject = encodeURIComponent("MagicBox account deletion request");
-                        const body = encodeURIComponent(
-                          `Please start an account deletion request for ${user?.email ?? "my account"}.`,
-                        );
-                        window.location.href = `mailto:support@magicboxai.in?subject=${subject}&body=${body}`;
-                        setDeleteDialogOpen(false);
-                      }}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Contact support
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Channels — full width */}
+      {/* Notifications */}
       <Card className="glass-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-foreground">
-            <Link2 className="h-5 w-5 text-brand" />
-            Connected channels
+            <Bell className="h-5 w-5 text-brand" />
+            Notifications
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            Link Instagram, LinkedIn, YouTube, and more so Maya and Studio can publish.
+            Choose what notifications you want to receive.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {isConvexConfigured ? (
-            <ConvexChannels />
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Channel connect needs <code className="font-mono">VITE_CONVEX_URL</code>. Restart the
-              web app after setting it.
-            </p>
-          )}
+        <CardContent className="space-y-4">
+          {[
+            {
+              id: "email",
+              label: "Email Notifications",
+              description: "Receive updates about your content via email",
+              icon: Mail,
+              checked: emailNotifs,
+              onChange: setEmailNotifs,
+            },
+            {
+              id: "push",
+              label: "Push Notifications",
+              description: "Get push notifications in your browser",
+              icon: Smartphone,
+              checked: pushNotifs,
+              onChange: setPushNotifs,
+            },
+            {
+              id: "weekly",
+              label: "Weekly Report",
+              description: "Receive a weekly summary of your analytics",
+              icon: FileBarChart,
+              checked: weeklyReport,
+              onChange: setWeeklyReport,
+            },
+          ].map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center justify-between rounded-lg border border-border bg-secondary p-4"
+            >
+              <div className="flex items-center gap-3">
+                <item.icon className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">{item.label}</p>
+                  <p className="text-xs text-muted-foreground">{item.description}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={item.checked}
+                onClick={() => item.onChange(!item.checked)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+                  item.checked ? "bg-brand" : "bg-accent"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-sm ring-0 transition duration-200 ${
+                    item.checked ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </div>

@@ -1,6 +1,6 @@
 /** Shared types for the branded carousel layering system. */
 
-export type CarouselPlatform = "linkedin" | "instagram" | "facebook" | "twitter";
+export type CarouselPlatform = "linkedin" | "instagram" | "facebook" | "twitter" | "whatsapp";
 
 export type CarouselAspect = "1:1" | "4:5" | "16:9";
 
@@ -49,6 +49,7 @@ export const PLATFORM_ASPECT: Record<CarouselPlatform, CarouselAspect> = {
   instagram: "1:1",
   facebook: "1:1",
   twitter: "1:1",
+  whatsapp: "1:1",
 };
 
 export function defaultBrand(overrides?: Partial<CarouselBrand>): CarouselBrand {

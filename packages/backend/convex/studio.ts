@@ -39,7 +39,7 @@ const MAX_VIDEO_SECONDS = 30;
  * storage URLs so a user cannot coerce those server-side provider flows into
  * fetching arbitrary internal URLs (SSRF).
  */
-function trustedConvexStorageUrl(raw: string): string {
+function trustedMediaUrl(raw: string): string {
   if (raw.length === 0 || raw.length > MAX_URL_LENGTH) {
     throw new Error("Media URL is invalid");
   }
@@ -49,13 +49,21 @@ function trustedConvexStorageUrl(raw: string): string {
   } catch {
     throw new Error("Media URL is invalid");
   }
+  const convexStorage =
+    url.hostname.endsWith(".convex.cloud") && url.pathname.startsWith("/api/storage/");
+  const firebaseBrandCreative =
+    url.hostname === "firebasestorage.googleapis.com" &&
+    /^\/v0\/b\/magicboxai-50927\.(?:firebasestorage\.app|appspot\.com)\/o\/users%2F[^/]+%2Fbrand-creatives%2F/i.test(
+      url.pathname,
+    ) &&
+    url.searchParams.get("alt") === "media" &&
+    Boolean(url.searchParams.get("token"));
   if (
     url.protocol !== "https:" ||
     url.username ||
     url.password ||
     url.port ||
-    !url.hostname.endsWith(".convex.cloud") ||
-    !url.pathname.startsWith("/api/storage/")
+    (!convexStorage && !firebaseBrandCreative)
   ) {
     throw new Error("Media must be uploaded to MagicBox storage");
   }
@@ -348,7 +356,7 @@ export const createPost = action({
       args.mediaUrl && args.mediaType
         ? [{
             type: args.mediaType,
-            url: trustedConvexStorageUrl(args.mediaUrl),
+            url: trustedMediaUrl(args.mediaUrl),
             source: (args.mediaSource ?? "upload") as any,
           }]
         : undefined;

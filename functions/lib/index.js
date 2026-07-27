@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateUGCVideo = exports.generateAvatarVideo = exports.analyzeAvatarVideo = exports.analyzeAvatarPhotos = exports.analyzeImage = exports.generateScript = exports.generateImage = exports.renderRemotionVideo = exports.verifyAdminStatus = exports.setAdminRole = exports.createGuestCheckout = exports.dodoWebhook = exports.createDodoPortal = exports.createDodoCheckout = exports.onUserCreatedSendWelcome = exports.extractBrandFromWebsite = exports.postingTick = exports.generationTick = exports.automationTick = exports.socialOAuthCallback = exports.disconnectSocialAccount = exports.getSocialConnectUrl = exports.getQuota = exports.regeneratePostContent = exports.cancelPost = exports.retryPost = exports.approvePost = exports.generatePreviewContent = exports.createManualPost = exports.runAutomationNow = exports.setAutomationStatus = exports.updateAutomation = exports.createAutomation = void 0;
+exports.generateUGCVideo = exports.generateAvatarVideo = exports.analyzeAvatarVideo = exports.analyzeAvatarPhotos = exports.analyzeImage = exports.generateScript = exports.generateImage = exports.renderRemotionVideo = exports.verifyAdminStatus = exports.setAdminRole = exports.createGuestCheckout = exports.dodoWebhook = exports.createDodoPortal = exports.createDodoCheckout = exports.onUserCreatedSendWelcome = exports.generateBrandedPostImage = exports.extractBrandFromWebsite = exports.postingTick = exports.generationTick = exports.automationTick = exports.socialOAuthCallback = exports.disconnectSocialAccount = exports.getSocialConnectUrl = exports.getQuota = exports.regeneratePostContent = exports.cancelPost = exports.retryPost = exports.approvePost = exports.generatePreviewContent = exports.createManualPost = exports.runAutomationNow = exports.setAutomationStatus = exports.updateAutomation = exports.createAutomation = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const genai_1 = require("@google/genai");
@@ -68,6 +68,7 @@ Object.defineProperty(exports, "generationTick", { enumerable: true, get: functi
 Object.defineProperty(exports, "postingTick", { enumerable: true, get: function () { return scheduler_1.postingTick; } });
 var brand_1 = require("./brand");
 Object.defineProperty(exports, "extractBrandFromWebsite", { enumerable: true, get: function () { return brand_1.extractBrandFromWebsite; } });
+Object.defineProperty(exports, "generateBrandedPostImage", { enumerable: true, get: function () { return brand_1.generateBrandedPostImage; } });
 var welcome_1 = require("./welcome");
 Object.defineProperty(exports, "onUserCreatedSendWelcome", { enumerable: true, get: function () { return welcome_1.onUserCreatedSendWelcome; } });
 var dodo_1 = require("./dodo");
@@ -748,7 +749,12 @@ exports.generateAvatarVideo = (0, https_1.onCall)(Object.assign(Object.assign({}
         const path = requireOwnedStoragePath(uid, rawPath, "Frame");
         await assertStoredMedia(path, "image/", MAX_STORED_IMAGE_BYTES);
     }));
-    await reserveVideoGeneration(uid);
+    // Metering for avatar previews lives in the Convex v-credit ledger (the same
+    // balance shown across the app): the authenticated client charges v-credits
+    // via `credits.spendVideo` before this call and refunds via
+    // `credits.refundVideo` if it fails. This path therefore does NOT use the
+    // Firebase paid-plan quota, so free-trial users with v-credits can generate.
+    // App Check + auth + ownership remain the request-integrity guards.
     try {
         const outputStoragePrefix = `users/${uid}/avatar-previews/${(0, uuid_1.v4)()}/`;
         const frameNote = frameStoragePaths && frameStoragePaths.length > 1
@@ -767,7 +773,6 @@ exports.generateAvatarVideo = (0, https_1.onCall)(Object.assign(Object.assign({}
         return res;
     }
     catch (error) {
-        await releaseVideoGeneration(uid);
         console.error("[generateAvatarVideo] failed", stringifyError(error));
         throw new https_1.HttpsError("internal", parseError(error));
     }

@@ -50,16 +50,27 @@ export const getBucket = () => admin.storage().bucket();
 /**
  * Only the first-party applications and local development servers can invoke
  * browser callables. Authentication still remains the authorization boundary.
+ *
+ * Gen2 callables run on Cloud Run. Without `invoker: "public"`, Cloud Run IAM
+ * rejects browser requests (empty Google IAM Authorization header) before
+ * Firebase Auth / App Check can run — clients then see a useless "internal"
+ * error. Firebase Auth (`requireAuth`) + optional App Check remain the real gates.
+ *
+ * App Check: set Functions env ENFORCE_APP_CHECK=1 once
+ * VITE_FIREBASE_APPCHECK_SITE_KEY is live on every client (prod + local debug).
+ * Until then, enforcement stays off so localhost can launch automations.
  */
-export const callableSecurity: Pick<CallableOptions, "cors" | "enforceAppCheck"> = {
+export const callableSecurity: Pick<
+  CallableOptions,
+  "cors" | "enforceAppCheck" | "invoker"
+> = {
   cors: [
     "https://app.magicboxai.in",
     "https://admin.magicboxai.in",
     /^http:\/\/(localhost|127\.0\.0\.1):\d+$/,
   ],
-  // App Check is initialized by shared/lib/firebase.ts. Deployments must set
-  // VITE_FIREBASE_APPCHECK_SITE_KEY before serving browser traffic.
-  enforceAppCheck: true,
+  invoker: "public",
+  enforceAppCheck: process.env.ENFORCE_APP_CHECK === "1",
 };
 
 const RATE_LIMIT_OPERATION = /^[a-z][a-z0-9-]{0,63}$/;
@@ -331,6 +342,12 @@ export interface BrandProfileDoc {
   userId: string;
   name: string;
   logoUrl?: string;
+  websiteImages?: Array<{
+    url: string;
+    alt: string;
+    kind: "product" | "hero" | "social" | "content";
+  }>;
+  brandedImageUrl?: string;
   colors?: { primary: string; secondary?: string; accent?: string };
   industry: string;
   toneOfVoice: string;

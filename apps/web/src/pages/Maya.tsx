@@ -6,7 +6,9 @@ import { toast } from "sonner";
 import { api } from "@convex/_generated/api";
 import { Button } from "@shared/components/ui/button";
 import { cn } from "@shared/lib/utils";
+import type { SocialPlatform } from "@shared/types";
 import { isConvexConfigured } from "../lib/convex";
+import PlatformPreview, { type PreviewContent } from "../components/previews/PlatformPreview";
 import {
   Sparkles,
   X,
@@ -14,6 +16,7 @@ import {
   Linkedin,
   Youtube,
   Facebook,
+  MessageCircle,
   TrendingUp,
   Loader2,
   CalendarClock,
@@ -32,6 +35,7 @@ const PLATFORM_ICON: Record<string, typeof Instagram> = {
   linkedin: Linkedin,
   youtube: Youtube,
   facebook: Facebook,
+  whatsapp: MessageCircle,
 };
 
 const SWIPE_THRESHOLD = 110;
@@ -76,6 +80,15 @@ function Card({
 
   const platform = s.platforms[0] ?? "instagram";
   const Icon = PLATFORM_ICON[platform] ?? Sparkles;
+
+  const asset = s.media?.[0];
+  const isRendering = !asset && !!s.mediaPlan && s.mediaPlan.type !== "none";
+  const previewContent: PreviewContent = {
+    caption: s.caption,
+    hashtags: s.hashtags,
+    imageUrl: asset?.type === "image" ? asset.url : undefined,
+    videoUrl: asset?.type === "video" ? asset.url : undefined,
+  };
 
   function handleDragEnd(_: unknown, info: PanInfo) {
     if (Math.abs(info.offset.x) < SWIPE_THRESHOLD) return;
@@ -125,60 +138,32 @@ function Card({
         )}
       </div>
 
-      {/* Rendered media: the actual poster image (or video) Maya generated. */}
-      {(() => {
-        const asset = s.media?.[0];
-        if (asset?.type === "video") {
-          return (
-            <video
-              src={asset.url}
-              className="mb-4 max-h-72 w-full rounded-xl border border-border object-cover"
-              muted
-              loop
-              playsInline
-              autoPlay
-            />
-          );
-        }
-        if (asset?.type === "image") {
-          return (
-            <img
-              src={asset.url}
-              alt=""
-              className="mb-4 max-h-72 w-full rounded-xl border border-border object-cover"
-              draggable={false}
-            />
-          );
-        }
-        // Media planned but not rendered yet — show a subtle loading frame.
-        if (s.mediaPlan && s.mediaPlan.type !== "none") {
-          return (
-            <div className="mb-4 flex h-40 w-full items-center justify-center rounded-xl border border-dashed border-border bg-secondary/40">
-              <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                rendering {s.mediaPlan.type}…
-              </span>
-            </div>
-          );
-        }
-        return null;
-      })()}
+      {/* Hook / angle are Maya's internal strategy notes for the reviewer —
+          not part of the post itself, so they sit above the preview rather
+          than inside it. */}
+      {(s.hook || s.angle) && (
+        <div className="mb-4 space-y-1">
+          {s.hook && (
+            <p className="font-display text-lg leading-tight text-foreground sm:text-xl">
+              {s.hook}
+            </p>
+          )}
+          {s.angle && <p className="text-sm italic text-muted-foreground">{s.angle}</p>}
+        </div>
+      )}
 
-      <h3 className="mb-3 font-display text-xl leading-tight text-foreground sm:text-2xl">
-        {s.hook ?? "Untitled"}
-      </h3>
-
-      {s.angle && <p className="mb-4 text-sm italic text-muted-foreground">{s.angle}</p>}
-
-      <p className="mb-4 max-h-52 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-        {s.caption}
-      </p>
-
-      {s.hashtags?.length > 0 && (
-        <p className="font-mono text-xs text-brand">
-          {s.hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ")}
+      {isRendering && (
+        <p className="mb-3 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          rendering {s.mediaPlan?.type}…
         </p>
       )}
+
+      {/* Platform-accurate preview: exactly the caption, hashtags, and media
+          that will actually publish — as if scrolling the real feed. */}
+      <div className="flex justify-center">
+        <PlatformPreview platform={platform as SocialPlatform} content={previewContent} />
+      </div>
     </motion.div>
   );
 }

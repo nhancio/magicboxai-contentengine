@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
+import { isConvexConfigured } from "../lib/convex";
 import { useAuth } from "@shared/lib/auth";
 import { savePhotoAvatar, type AvatarSourceType } from "@shared/lib/firestore";
 import {
@@ -38,6 +41,8 @@ const MAX_PHOTOS = 10;
 const REQUIRED_PHOTOS = 4;
 const MAX_VIDEO_MB = 200;
 const MIN_RECORD_SECONDS = 3;
+/** Veo avatar preview length — must match `durationSeconds` in the callable. */
+const AVATAR_VIDEO_SECONDS = 8;
 const MAX_RECORD_SECONDS = 60;
 /** Identity frames sampled from an upload/recording for Veo. */
 const AVATAR_FRAME_COUNT = 5;
@@ -247,6 +252,10 @@ const pickRecorderMimeType = () => {
 export default function AvatarCreator({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  // v-credit metering for the Veo avatar preview (single ledger, shared with the
+  // rest of the app). Charged before generation, refunded if it fails.
+  const spendVideoCredits = useMutation(api.credits.spendVideo);
+  const refundVideoCredits = useMutation(api.credits.refundVideo);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<CreationMode>("photos");
@@ -573,7 +582,13 @@ export default function AvatarCreator({ embedded = false }: { embedded?: boolean
       setCreationStep("generating-video");
       let videoUrl: string | null = null;
       let previewStatus: "pending" | "completed" | "failed" = "pending";
+      let charged = false;
       try {
+        // Charge v-credits up front; refunded below if generation fails.
+        if (isConvexConfigured) {
+          await spendVideoCredits({ seconds: AVATAR_VIDEO_SECONDS });
+          charged = true;
+        }
         if (!functions) throw new Error("Cloud Functions not configured");
         const generateAvatarVideoFn = httpsCallable<
           {
@@ -601,6 +616,13 @@ export default function AvatarCreator({ embedded = false }: { embedded?: boolean
         console.warn("Veo avatar generation failed:", videoErr);
         toast.error(message);
       }
+      if (charged && previewStatus !== "completed") {
+        try {
+          await refundVideoCredits({ seconds: AVATAR_VIDEO_SECONDS });
+        } catch (refundErr) {
+          console.warn("v-credit refund failed", refundErr);
+        }
+      }
 
       setCreationStep("saving");
       const avatarData: Parameters<typeof savePhotoAvatar>[0] = {
@@ -615,7 +637,9 @@ export default function AvatarCreator({ embedded = false }: { embedded?: boolean
         sourceType: MODE_SOURCE_TYPE[mode],
         sourceVideoUrl,
         sourceVideoStoragePath: sourceVideoPath,
-        videoUrl: videoUrl || assembledVideoUrl,
+        // Only a real Veo-generated preview counts as the avatar video. The raw
+        // recording stays in sourceVideoUrl — never shown as the "avatar".
+        videoUrl: videoUrl ?? undefined,
         previewStatus,
       };
       if (previewError) avatarData.previewError = previewError;
@@ -627,7 +651,7 @@ export default function AvatarCreator({ embedded = false }: { embedded?: boolean
         personality: analysis.personality,
         voiceTone: analysis.voiceTone,
         description: analysis.description,
-        videoUrl: videoUrl || assembledVideoUrl,
+        videoUrl: videoUrl ?? undefined,
       });
       toast.success(
         videoUrl
@@ -712,38 +736,66 @@ export default function AvatarCreator({ embedded = false }: { embedded?: boolean
         toast.error("Vertex AI API is disabled. Saving avatar without AI analysis or preview video.");
       }
 
-      // Step 3: Generate avatar video with Veo (via Cloud Function)
+      // Step 3: Generate avatar video with Veo (via Cloud Function).
+      // Metered against the shared v-credit balance: charge first, refund on failure.
       let videoUrl: string | null = null;
+      let charged = false;
       if (!analysisWarning) {
         setCreationStep("generating-video");
+
         try {
-          if (functions && firstPhotoStoragePath) {
-            const generateAvatarVideoFn = httpsCallable<
-              { photoStoragePath: string; avatarName: string; personality: string },
-              { videoUrl: string }
-            >(functions, "generateAvatarVideo");
-            const result = await generateAvatarVideoFn({
-              photoStoragePath: firstPhotoStoragePath,
-              avatarName,
-              personality: analysis.personality,
-            });
-            if (result.data.videoUrl) {
-              videoUrl = result.data.videoUrl;
-              previewStatus = "completed";
-            } else {
-              previewStatus = "failed";
-              previewError = "Preview video did not return a URL.";
-            }
-          } else {
-            console.warn("Firebase Functions not initialized or missing photo storage path.");
-            previewStatus = "failed";
-            previewError = "Preview generation is unavailable in demo mode.";
+          if (isConvexConfigured) {
+            await spendVideoCredits({ seconds: AVATAR_VIDEO_SECONDS });
+            charged = true;
           }
-        } catch (videoErr) {
-          console.warn("Video generation failed, continuing without video:", videoErr);
+        } catch (creditErr) {
           previewStatus = "failed";
           previewError =
-            videoErr instanceof Error ? videoErr.message : "Preview generation failed";
+            creditErr instanceof Error
+              ? creditErr.message
+              : "Not enough v-credits for a preview video.";
+          toast.error(previewError);
+        }
+
+        if (previewStatus !== "failed") {
+          try {
+            if (functions && firstPhotoStoragePath) {
+              const generateAvatarVideoFn = httpsCallable<
+                { photoStoragePath: string; avatarName: string; personality: string },
+                { videoUrl: string }
+              >(functions, "generateAvatarVideo");
+              const result = await generateAvatarVideoFn({
+                photoStoragePath: firstPhotoStoragePath,
+                avatarName,
+                personality: analysis.personality,
+              });
+              if (result.data.videoUrl) {
+                videoUrl = result.data.videoUrl;
+                previewStatus = "completed";
+              } else {
+                previewStatus = "failed";
+                previewError = "Preview video did not return a URL.";
+              }
+            } else {
+              console.warn("Firebase Functions not initialized or missing photo storage path.");
+              previewStatus = "failed";
+              previewError = "Preview generation is unavailable in demo mode.";
+            }
+          } catch (videoErr) {
+            console.warn("Video generation failed, continuing without video:", videoErr);
+            previewStatus = "failed";
+            previewError =
+              videoErr instanceof Error ? videoErr.message : "Preview generation failed";
+          }
+        }
+
+        // Refund if we charged but no preview was produced.
+        if (charged && previewStatus !== "completed") {
+          try {
+            await refundVideoCredits({ seconds: AVATAR_VIDEO_SECONDS });
+          } catch (refundErr) {
+            console.warn("v-credit refund failed", refundErr);
+          }
         }
       }
 

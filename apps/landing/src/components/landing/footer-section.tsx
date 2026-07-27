@@ -1,6 +1,6 @@
 import { AnimatedWave } from "./animated-wave";
 
-import { APP_URL } from "@/lib/config";
+import { appSignInUrl } from "@/lib/config";
 
 const footerLinks = {
   Product: [
@@ -83,7 +83,7 @@ export function FooterSection() {
         <div className="py-8 border-t border-foreground/10 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">© 2026 MagicBox. All rights reserved.</p>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <a href={`${APP_URL}/login`} className="hover:text-foreground transition-colors">Sign in</a>
+            <a href={appSignInUrl()} className="hover:text-foreground transition-colors">Sign in</a>
             <span>Built in Hyderabad, India</span>
           </div>
         </div>

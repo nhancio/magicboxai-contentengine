@@ -1,7 +1,8 @@
 "use strict";
-// Firestore trigger: send a one-time welcome / thank-you email when a new
-// user document is created at users/{uid}. The client (shared/lib/auth.tsx)
-// creates this doc via setDoc merge on first sign-in.
+// Firestore trigger on users/{uid}: on every create *and* update — i.e. every
+// sign-in, since shared/lib/auth.tsx setDoc-merges lastLoginAt each time —
+// claim any guest-checkout entitlement paid under this (Google-verified)
+// email, and send the one-time welcome email on first creation.
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -46,60 +47,67 @@ if (!admin.apps.length) {
     admin.initializeApp();
 }
 /**
- * Fires once when users/{uid} is created. Sends the welcome email via Brevo,
- * guarding against duplicate sends with a welcomeEmailSent flag. A failed
- * email is logged but never crashes the trigger.
+ * Claim any plan bought before signup via guest checkout, keyed by the
+ * (Google-verified) email — so auto-applying it to this account on login is
+ * safe. Runs on every login, not just the first one, so an existing account
+ * that pays as a guest under the same email gets claimed too. Idempotent:
+ * once claimed, `pendingEntitlements/{email}.status` flips to "claimed" and
+ * this no-ops on subsequent logins.
  */
-exports.onUserCreatedSendWelcome = (0, firestore_1.onDocumentCreated)({
+async function claimPendingEntitlement(uid, email) {
+    var _a, _b, _c, _d, _e, _f, _g;
+    try {
+        const key = email.toLowerCase();
+        const pendingRef = core_1.db.collection("pendingEntitlements").doc(key);
+        const pending = await pendingRef.get();
+        const p = pending.data();
+        if (!(p === null || p === void 0 ? void 0 : p.plan) || (p.status !== "paid" && p.status !== "active"))
+            return;
+        const existingSub = await core_1.db.collection("subscriptions").doc(uid).get();
+        if (((_a = existingSub.data()) === null || _a === void 0 ? void 0 : _a.status) === "active" && ((_b = existingSub.data()) === null || _b === void 0 ? void 0 : _b.providerSubscriptionId)) {
+            logger.warn("[claimPendingEntitlement] skipped: account already has an active subscription", {
+                uid,
+                pendingPlan: p.plan,
+            });
+            return;
+        }
+        await core_1.db.collection("subscriptions").doc(uid).set(Object.assign(Object.assign({ plan: p.plan, billing: (_c = p.billing) !== null && _c !== void 0 ? _c : null, videosUsed: 0, videosLimit: core_1.PLAN_VIDEO_LIMIT[p.plan], status: "active", provider: (_d = p.provider) !== null && _d !== void 0 ? _d : "dodo", providerProductId: (_e = p.providerProductId) !== null && _e !== void 0 ? _e : null, providerSubscriptionId: (_f = p.providerSubscriptionId) !== null && _f !== void 0 ? _f : null, providerCustomerId: (_g = p.providerCustomerId) !== null && _g !== void 0 ? _g : null }, (p.currentPeriodEnd ? { currentPeriodEnd: p.currentPeriodEnd } : {})), { claimedFrom: "guest-checkout", updatedAt: admin.firestore.FieldValue.serverTimestamp() }), { merge: true });
+        await pendingRef.set({
+            status: "claimed",
+            claimedByUid: uid,
+            claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        logger.info("[claimPendingEntitlement] claimed pending entitlement", { uid, plan: p.plan });
+    }
+    catch (error) {
+        logger.error("[claimPendingEntitlement] failed", {
+            uid,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+exports.onUserCreatedSendWelcome = (0, firestore_1.onDocumentWritten)({
     document: "users/{uid}",
     // Firestore triggers must run in the database's region (asia-south2).
     // Pinned so the global us-central1 default (set in core.ts) can't move it.
     region: "asia-south2",
     secrets: [brevo_1.brevoApiKey],
 }, async (event) => {
-    var _a;
-    const snap = event.data;
-    if (!snap)
-        return;
+    var _a, _b;
+    const snap = (_a = event.data) === null || _a === void 0 ? void 0 : _a.after;
+    if (!(snap === null || snap === void 0 ? void 0 : snap.exists))
+        return; // deletion — nothing to do
     const data = snap.data();
-    if (data.welcomeEmailSent === true) {
-        logger.info("[onUserCreatedSendWelcome] welcome email already sent, skipping", {
-            uid: event.params.uid,
-        });
-        return;
-    }
-    const email = (_a = data.email) === null || _a === void 0 ? void 0 : _a.trim();
+    const email = (_b = data.email) === null || _b === void 0 ? void 0 : _b.trim();
     if (!email) {
         logger.warn("[onUserCreatedSendWelcome] user doc has no email, skipping", {
             uid: event.params.uid,
         });
         return;
     }
-    // Claim any plan bought before signup via guest checkout. Keyed by the
-    // (Google-verified) email, so auto-applying it to this account is safe.
-    try {
-        const key = email.toLowerCase();
-        const pendingRef = core_1.db.collection("pendingEntitlements").doc(key);
-        const pending = await pendingRef.get();
-        const p = pending.data();
-        if ((p === null || p === void 0 ? void 0 : p.plan) && (p.status === "paid" || p.status === "active")) {
-            await core_1.db.collection("subscriptions").doc(event.params.uid).set(Object.assign(Object.assign({ plan: p.plan, videosUsed: 0, videosLimit: core_1.PLAN_VIDEO_LIMIT[p.plan], status: "active", provider: "dodo" }, (p.currentPeriodEnd ? { currentPeriodEnd: p.currentPeriodEnd } : {})), { claimedFrom: "guest-checkout", updatedAt: admin.firestore.FieldValue.serverTimestamp() }), { merge: true });
-            await pendingRef.set({
-                status: "claimed",
-                claimedByUid: event.params.uid,
-                claimedAt: admin.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
-            logger.info("[onUserCreatedSendWelcome] claimed pending entitlement", {
-                uid: event.params.uid,
-                plan: p.plan,
-            });
-        }
-    }
-    catch (error) {
-        logger.error("[onUserCreatedSendWelcome] pending entitlement claim failed", {
-            uid: event.params.uid,
-            error: error instanceof Error ? error.message : String(error),
-        });
+    await claimPendingEntitlement(event.params.uid, email);
+    if (data.welcomeEmailSent === true) {
+        return;
     }
     try {
         const result = await (0, brevo_1.sendOnboardingEmail)({ email, name: data.displayName });

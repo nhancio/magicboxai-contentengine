@@ -14,11 +14,14 @@ import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/
 import { Jimp } from "jimp";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { v4 as uuidv4 } from "uuid";
 import {
   AI_RATE_LIMITS,
   callableSecurity,
+  createDownloadUrl,
   enforceCallableRateLimit,
   getAI,
+  getBucket,
   requireAuth,
   stringifyError,
 } from "./core";
@@ -34,12 +37,20 @@ export type BrandExtract = {
   hashtags: string[];
   sampleCaptions: string[];
   logoUrl: string;
+  websiteImages: WebsiteImage[];
+  brandedImageUrl: string;
+  brandedImageSource: "website" | "generated" | "";
   colors: { primary?: string; secondary?: string; accent?: string };
   fonts: string[];
 };
 
 export type RGB = [number, number, number];
 type LogoCandidate = { url: string; kind: "logo-img" | "apple-touch-icon" | "favicon" | "social" };
+export type WebsiteImage = {
+  url: string;
+  alt: string;
+  kind: "product" | "hero" | "social" | "content";
+};
 
 // ── URL safety ───────────────────────────────────────────────────────────────
 
@@ -299,6 +310,75 @@ export function pickBrandMark(candidates: LogoCandidate[], baseUrl: string): str
   return best ?? resolveHref("/favicon.ico", baseUrl);
 }
 
+/**
+ * Find meaningful visual assets that can anchor a social creative. Decorative
+ * icons, logos, tracking pixels and tiny thumbnails are deliberately excluded.
+ */
+export function collectWebsiteImages(html: string, baseUrl: string): WebsiteImage[] {
+  const ranked: Array<WebsiteImage & { score: number }> = [];
+  const seen = new Set<string>();
+  const add = (
+    rawUrl: string | undefined,
+    alt: string,
+    kind: WebsiteImage["kind"],
+    score: number,
+  ) => {
+    const url = resolveHref(rawUrl, baseUrl);
+    if (
+      !url ||
+      seen.has(url) ||
+      /\.(?:svg|ico)(?:$|[?#])/i.test(url) ||
+      /(?:sprite|spacer|pixel|tracking|favicon|avatar)/i.test(url)
+    ) {
+      return;
+    }
+    seen.add(url);
+    ranked.push({ url, alt: alt.slice(0, 240), kind, score });
+  };
+
+  for (const meta of findTags(html, "meta")) {
+    const key = (meta.property ?? meta.name ?? "").toLowerCase();
+    if (["og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
+      add(meta.content, "Website social image", "social", 80);
+    }
+  }
+
+  for (const img of findTags(html, "img")) {
+    const src =
+      img.src ||
+      img["data-src"] ||
+      img["data-lazy-src"] ||
+      (img.srcset ?? img["data-srcset"] ?? "").split(",").pop()?.trim().split(/\s+/)[0] ||
+      "";
+    const alt = (img.alt ?? "").trim();
+    const hints = [img.class, img.id, alt, src].filter(Boolean).join(" ").toLowerCase();
+    if (/logo|brand[-_ ]?mark|icon|badge|flag|payment|rating|star/.test(hints)) continue;
+
+    const width = Number.parseInt(img.width ?? "0", 10) || 0;
+    const height = Number.parseInt(img.height ?? "0", 10) || 0;
+    if ((width && width < 280) || (height && height < 180)) continue;
+
+    const product = /product|packshot|catalog|merch|device|app[-_ ]?screen/.test(hints);
+    const hero = /hero|banner|masthead|feature|showcase|cover/.test(hints);
+    const screenshot = /screen|dashboard|interface|mockup|demo/.test(hints);
+    const dimensionScore = Math.min(25, Math.floor((width * height) / 120_000));
+    const kind: WebsiteImage["kind"] = product
+      ? "product"
+      : hero
+        ? "hero"
+        : screenshot
+          ? "content"
+          : "content";
+    const score = (product ? 105 : hero ? 95 : screenshot ? 90 : 45) + dimensionScore + (alt ? 5 : 0);
+    add(src, alt || (product ? "Product image" : hero ? "Hero image" : "Website image"), kind, score);
+  }
+
+  return ranked
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map(({ score: _score, ...image }) => image);
+}
+
 export function extractStylesheetUrls(html: string, baseUrl: string): string[] {
   return findTags(html, "link")
     .filter((l) => /stylesheet/i.test(l.rel ?? ""))
@@ -538,6 +618,7 @@ export const extractBrandFromWebsite = onCall(
     const logoCandidates = collectLogoCandidates(html, finalUrl);
     const logoUrl = pickDisplayLogo(logoCandidates);
     const brandMarkUrl = pickBrandMark(logoCandidates, finalUrl);
+    const websiteImages = collectWebsiteImages(html, finalUrl);
 
     // Visual identity + written profile in parallel: stylesheets (colors and
     // fonts live there), the brand mark's pixels, and Gemini's read of the
@@ -580,6 +661,150 @@ export const extractBrandFromWebsite = onCall(
     const colors = buildPalette(imageColors, colorsFromCss(html, css));
     const fonts = extractFonts(html, css);
 
-    return { ...profile, logoUrl, colors, fonts };
+    let brandedImageUrl = "";
+    let brandedImageSource: BrandExtract["brandedImageSource"] = "";
+    try {
+      let sourceBuffer = websiteImages[0]
+        ? await fetchBinary(websiteImages[0].url, 6_000_000, 10_000)
+        : null;
+      brandedImageSource = sourceBuffer ? "website" : "generated";
+      if (!sourceBuffer) {
+        await enforceCallableRateLimit(uid, "onboarding-branded-image", AI_RATE_LIMITS.imageGeneration);
+        const ai = getAI();
+        const response = await ai.models.generateImages({
+          model: "imagen-3.0-generate-001",
+          prompt: [
+            "Create a polished square social media photograph or editorial illustration.",
+            `Brand: ${profile.companyName || new URL(finalUrl).hostname}.`,
+            profile.industry ? `Industry: ${profile.industry}.` : "",
+            profile.sampleCaptions[0] ? `Post context: ${profile.sampleCaptions[0]}.` : "",
+            "Show a specific, credible subject relevant to the business. No logos, no text, no generic gradient background.",
+          ].filter(Boolean).join("\n"),
+          config: { numberOfImages: 1, outputMimeType: "image/png", aspectRatio: "1:1" },
+        });
+        const bytes = response.generatedImages?.[0]?.image?.imageBytes;
+        if (bytes) sourceBuffer = Buffer.from(bytes, "base64");
+      }
+      if (sourceBuffer) {
+        const logoBuffer = logoUrl ? await fetchBinary(logoUrl, 2_000_000, 8_000) : null;
+        const output = await createBrandedSquare(sourceBuffer, logoBuffer, colors);
+        const storagePath = `users/${uid}/brand-creatives/${uuidv4()}.png`;
+        await getBucket().file(storagePath).save(output, {
+          metadata: { contentType: "image/png", cacheControl: "private, max-age=31536000" },
+        });
+        brandedImageUrl = await createDownloadUrl(storagePath);
+      }
+    } catch (error) {
+      console.warn("[brand] branded preview generation failed", stringifyError(error));
+      brandedImageSource = "";
+    }
+
+    return {
+      ...profile,
+      logoUrl,
+      websiteImages,
+      brandedImageUrl,
+      brandedImageSource,
+      colors,
+      fonts,
+    };
   }
+);
+
+type BrandedImageReq = {
+  websiteUrl: string;
+  assetUrl?: string;
+  brandName: string;
+  industry?: string;
+  caption?: string;
+  colors?: { primary?: string; secondary?: string; accent?: string };
+};
+
+function safeHex(raw: string | undefined, fallback: string): string {
+  return /^#[0-9a-f]{6}$/i.test(raw ?? "") ? raw! : fallback;
+}
+
+async function createBrandedSquare(
+  sourceBuffer: Buffer,
+  logoBuffer: Buffer | null,
+  colors: BrandedImageReq["colors"],
+): Promise<Buffer> {
+  const canvas = await Jimp.fromBuffer(sourceBuffer);
+  canvas.cover({ w: 1080, h: 1080 });
+
+  const primary = safeHex(colors?.primary, "#7c3aed");
+  const accent = safeHex(colors?.accent, colors?.secondary ?? "#111827");
+  const topRule = new Jimp({ width: 1080, height: 18, color: Number.parseInt(`${accent.slice(1)}ff`, 16) });
+  const shade = new Jimp({ width: 1080, height: 250, color: Number.parseInt(`${primary.slice(1)}b8`, 16) });
+  canvas.composite(topRule, 0, 0);
+  canvas.composite(shade, 0, 830);
+
+  if (logoBuffer) {
+    try {
+      const logo = await Jimp.fromBuffer(logoBuffer);
+      logo.contain({ w: 164, h: 164 });
+      const card = new Jimp({ width: 204, height: 204, color: 0xfffffff2 });
+      card.composite(logo, 20, 20);
+      canvas.composite(card, 56, 842);
+    } catch {
+      // A malformed/unsupported logo must not discard an otherwise good creative.
+    }
+  }
+
+  return canvas.getBuffer("image/png");
+}
+
+/**
+ * Turn a fetched product/hero image into publishable branded media. The asset
+ * must still exist on the supplied website, preventing callers from using this
+ * server-side fetch as an arbitrary URL proxy.
+ */
+export const generateBrandedPostImage = onCall(
+  { ...callableSecurity, invoker: "public", timeoutSeconds: 120, memory: "1GiB" },
+  async (request: CallableRequest<BrandedImageReq>): Promise<{ imageUrl: string; source: "website" | "generated" }> => {
+    const uid = requireAuth(request);
+    const websiteUrl = normalizeUrl(request.data?.websiteUrl ?? "");
+    const brandName = String(request.data?.brandName ?? "").trim().slice(0, 120);
+    if (!brandName) throw new HttpsError("invalid-argument", "Brand name is required.");
+    await enforceCallableRateLimit(uid, "onboarding-branded-image", AI_RATE_LIMITS.imageGeneration);
+
+    const page = await fetchText(websiteUrl.toString(), 500_000, 10_000);
+    const websiteImages = collectWebsiteImages(page.body, page.finalUrl);
+    const requestedAsset = request.data?.assetUrl
+      ? websiteImages.find((image) => image.url === request.data.assetUrl)
+      : websiteImages[0];
+    const logoUrl = pickDisplayLogo(collectLogoCandidates(page.body, page.finalUrl));
+
+    let sourceBuffer = requestedAsset
+      ? await fetchBinary(requestedAsset.url, 6_000_000, 10_000)
+      : null;
+    let source: "website" | "generated" = "website";
+
+    if (!sourceBuffer) {
+      source = "generated";
+      const ai = getAI();
+      const response = await ai.models.generateImages({
+        model: "imagen-3.0-generate-001",
+        prompt: [
+          "Create a polished square social media photograph or editorial illustration.",
+          `Brand: ${brandName}.`,
+          request.data?.industry ? `Industry: ${String(request.data.industry).slice(0, 160)}.` : "",
+          request.data?.caption ? `Post context: ${String(request.data.caption).slice(0, 500)}.` : "",
+          "Show a specific, credible subject relevant to the business. No logos, no text, no generic gradient background.",
+        ].filter(Boolean).join("\n"),
+        config: { numberOfImages: 1, outputMimeType: "image/png", aspectRatio: "1:1" },
+      });
+      const bytes = response.generatedImages?.[0]?.image?.imageBytes;
+      if (!bytes) throw new HttpsError("internal", "No image was generated.");
+      sourceBuffer = Buffer.from(bytes, "base64");
+    }
+
+    const logoBuffer = logoUrl ? await fetchBinary(logoUrl, 2_000_000, 8_000) : null;
+    const output = await createBrandedSquare(sourceBuffer, logoBuffer, request.data?.colors);
+    const storagePath = `users/${uid}/brand-creatives/${uuidv4()}.png`;
+    await getBucket().file(storagePath).save(output, {
+      metadata: { contentType: "image/png", cacheControl: "private, max-age=31536000" },
+    });
+    return { imageUrl: await createDownloadUrl(storagePath), source };
+  },
 );

@@ -132,6 +132,12 @@ export interface BrandProfile {
   userId: string;
   name: string;
   logoUrl?: string;
+  websiteImages?: Array<{
+    url: string;
+    alt: string;
+    kind: "product" | "hero" | "social" | "content";
+  }>;
+  brandedImageUrl?: string;
   colors?: { primary: string; secondary?: string; accent?: string };
   industry: string;
   toneOfVoice: string;

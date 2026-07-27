@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/button";
@@ -8,8 +8,36 @@ import "./login.css";
 
 const LoginLottie = lazy(() => import("./LoginLottie"));
 
+/**
+ * Landing CTAs link here with `intent=google` so the visitor goes straight to
+ * the Google account chooser instead of meeting a second "Sign in" button.
+ * Survives one round-trip in sessionStorage: if the visitor comes back still
+ * signed out (they cancelled, or the handler failed), we must not bounce them
+ * to Google again — show the normal card instead.
+ */
+const AUTO_SIGNIN_ATTEMPTED = "mb_auto_signin_attempted";
+
+// Safari private mode and locked-down profiles throw on sessionStorage access.
+// Losing the loop guard is survivable; crashing the sign-in page is not.
+function readAttempted(): boolean {
+  try {
+    return sessionStorage.getItem(AUTO_SIGNIN_ATTEMPTED) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeAttempted(value: boolean) {
+  try {
+    if (value) sessionStorage.setItem(AUTO_SIGNIN_ATTEMPTED, "1");
+    else sessionStorage.removeItem(AUTO_SIGNIN_ATTEMPTED);
+  } catch {
+    /* no-op */
+  }
+}
+
 export default function Login() {
-  const { user, loading, signInWithGoogle } = useAuth();
+  const { user, loading, redirecting, canAutoRedirect, signInWithGoogle } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
   const [searchParams] = useSearchParams();
   const redirectRaw = searchParams.get("redirect");
@@ -19,16 +47,48 @@ export default function Login() {
       ? redirectRaw
       : "/";
 
-  if (loading) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-brand" />
-      </div>
-    );
-  }
+  const wantsAutoSignIn = searchParams.get("intent") === "google";
+  const autoStarted = useRef(false);
+  // Decided once, before the effect can flip the sessionStorage flag, so the
+  // first render already knows whether to paint the card or the handoff screen.
+  const [autoPending, setAutoPending] = useState(
+    () => wantsAutoSignIn && canAutoRedirect && !readAttempted(),
+  );
+
+  useEffect(() => {
+    if (user) {
+      writeAttempted(false);
+      return;
+    }
+    // `loading` covers the redirect round-trip too — firing before it settles
+    // would send an already-authenticated visitor back to Google.
+    if (!autoPending || loading || autoStarted.current) return;
+    autoStarted.current = true;
+    writeAttempted(true);
+    signInWithGoogle("redirect").catch((err) => {
+      // The handoff never started — drop back to the card rather than leaving
+      // the visitor on a spinner that will never resolve.
+      writeAttempted(false);
+      setAutoPending(false);
+      toast.error(err instanceof Error ? err.message : "Failed to sign in with Google");
+    });
+  }, [autoPending, loading, user, signInWithGoogle]);
 
   if (user) {
     return <Navigate to={redirectTo} replace />;
+  }
+
+  if (loading || redirecting || autoPending) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center gap-4 bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-brand" />
+        {(redirecting || autoPending) && (
+          <p className="font-mono text-[0.65rem] uppercase tracking-[0.22em] text-muted-foreground">
+            Taking you to Google
+          </p>
+        )}
+      </div>
+    );
   }
 
   const handleSignIn = async () => {

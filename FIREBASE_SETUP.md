@@ -25,6 +25,51 @@ valid App Check traffic before deploying Functions with enforcement enabled.
 Enable Google sign-in and allow only the intended production plus deliberate
 development domains.
 
+### Self-hosted sign-in handler (required for mobile)
+
+By default `authDomain` is `magicboxai-50927.firebaseapp.com`, so every piece of
+Firebase's auth machinery — the popup handler and the `/__/auth/iframe` used to
+carry sign-in state — is **third-party** to `app.magicboxai.in`. Safari's ITP
+partitions and evicts that storage, which produces two symptoms:
+
+- `signInWithRedirect` never completes, so any gesture-free sign-in hangs.
+- Refresh tokens go stale early. The app still shows a signed-in user (the
+  cached `onAuthStateChanged` object survives), but callables arrive at Cloud
+  Functions with no valid ID token and `requireAuth` rejects them as
+  `unauthenticated`.
+
+`apps/web/vercel.json` already proxies `/__/*` to the Firebase Hosting site, so
+the handler is served first-party. Two manual steps activate it:
+
+1. **Google Cloud console → APIs & Services → Credentials →** the OAuth 2.0
+   Web client used by Firebase Auth. Add to *Authorized redirect URIs*:
+
+   ```
+   https://app.magicboxai.in/__/auth/handler
+   ```
+
+   Keep the existing `https://magicboxai-50927.firebaseapp.com/__/auth/handler`
+   entry so the change is reversible.
+
+2. **Vercel → `magicboxai-web` → Settings → Environment Variables (Production).**
+   Set:
+
+   ```
+   VITE_FIREBASE_AUTH_DOMAIN=app.magicboxai.in
+   ```
+
+   Redeploy. To roll back, put the `firebaseapp.com` value back and redeploy —
+   no code change needed.
+
+Leave `VITE_FIREBASE_AUTH_DOMAIN` on the `firebaseapp.com` value for local
+development: `localhost` has no `/__/auth` proxy, so sign-in there uses the
+popup path, which works cross-origin.
+
+`shared/lib/firebase.ts` exposes `isAuthDomainFirstParty()`, and
+`shared/lib/auth.tsx` keys its popup-vs-redirect choice off it, so both
+configurations behave correctly — only the mobile/redirect experience improves
+once the flip is done.
+
 The current channel-connection path is **Convex**, not Firebase Functions.
 Configure Google/YouTube, Meta/Instagram, and LinkedIn with this exact
 production redirect URI, and do not use wildcard redirect URIs:

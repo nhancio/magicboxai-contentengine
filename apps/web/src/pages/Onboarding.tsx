@@ -26,14 +26,17 @@ import {
  CalendarClock,
  Check,
  ChevronLeft,
+ Facebook,
  Globe2,
  Instagram,
  Link2,
  Linkedin,
  Loader2,
+ MessageCircle,
  PanelRight,
  Send,
  Sparkles,
+ Twitter,
  Youtube,
 } from"lucide-react";
 
@@ -55,14 +58,19 @@ const PLATFORM_META: Record<
  { label: string; icon: typeof Instagram; tint: string }
 > = {
  instagram: { label:"Instagram", icon: Instagram, tint:"from-pink-500 to-orange-400" },
+ facebook: { label:"Facebook", icon: Facebook, tint:"from-blue-600 to-indigo-500" },
+ twitter: { label:"Twitter / X", icon: Twitter, tint:"from-sky-400 to-blue-500" },
  linkedin: { label:"LinkedIn", icon: Linkedin, tint:"from-blue-500 to-cyan-500" },
  youtube: { label:"YouTube", icon: Youtube, tint:"from-red-500 to-rose-500" },
+ whatsapp: { label:"WhatsApp", icon: MessageCircle, tint:"from-emerald-500 to-teal-500" },
 };
 
-const CONNECTABLE: Array<"instagram" | "linkedin" | "youtube"> = [
+const CONNECTABLE: Array<"instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp"> = [
  "instagram",
  "linkedin",
  "youtube",
+ "facebook",
+ "whatsapp",
 ];
 
 function channelHandle(account: SocialAccount): string {
@@ -79,6 +87,8 @@ const PREVIEW_PLATFORMS: SocialPlatform[] = [
  "instagram",
  "linkedin",
  "youtube",
+ "facebook",
+ "whatsapp",
 ];
 
 type SamplePost = {
@@ -180,6 +190,8 @@ export default function Onboarding() {
  const [samples, setSamples] = useState<SamplePost[]>([]);
  const [activeSampleId, setActiveSampleId] = useState<string>("sample-0");
  const [generating, setGenerating] = useState(false);
+ const [previewImageUrl, setPreviewImageUrl] = useState("");
+ const [publishableImageUrl, setPublishableImageUrl] = useState("");
  const [posting, setPosting] = useState(false);
  const [previewCollapsed, setPreviewCollapsed] = useState(false);
 
@@ -305,6 +317,10 @@ export default function Onboarding() {
  sampleCaptions: extracted.sampleCaptions?.length
  ? extracted.sampleCaptions
  : undefined,
+ websiteImages: extracted.websiteImages?.length
+ ? extracted.websiteImages
+ : undefined,
+ brandedImageUrl: extracted.brandedImageUrl || undefined,
  });
  setBrandProfileId(id);
  setBrandName(extracted.companyName || new URL(extractedUrl).hostname);
@@ -331,6 +347,9 @@ export default function Onboarding() {
  const local = buildBrandSamples(extracted, brandName);
  setSamples(local);
  setActiveSampleId(local[0]?.id ?? "sample-0");
+ const discoveredImage = extracted?.websiteImages?.[0]?.url ?? "";
+ setPreviewImageUrl(extracted?.brandedImageUrl || discoveredImage);
+ setPublishableImageUrl(extracted?.brandedImageUrl || "");
 
  // Best-effort AI polish via Convex — never blocks the UI if it fails.
  if (!isConvexConfigured) return;
@@ -385,12 +404,13 @@ export default function Onboarding() {
  return;
  }
 
- const needsMedia =
- previewPlatform === "instagram" || previewPlatform === "youtube";
- const logo = extracted?.logoUrl;
- if (needsMedia && !logo) {
+ if (previewPlatform === "youtube") {
+ toast.error("YouTube requires a video. Use this branded creative as the visual direction in Studio.");
+ return;
+ }
+ if (!publishableImageUrl) {
  toast.error(
- `${PLATFORM_META[previewPlatform].label} needs an image — fetch a site with a logo, or post from Studio.`,
+ `A finished branded image is required before posting to ${PLATFORM_META[previewPlatform].label}. Fetch the website again or use Studio.`,
  );
  return;
  }
@@ -402,9 +422,9 @@ export default function Onboarding() {
  hashtags: activeSample.hashtags,
  platforms: [previewPlatform],
  socialAccountIds: [activeAccountForPreview.id],
- mediaUrl: logo || undefined,
- mediaType: logo ? "image" : undefined,
- mediaSource: logo ? "upload" : undefined,
+ mediaUrl: publishableImageUrl || undefined,
+ mediaType: publishableImageUrl ? "image" : undefined,
+ mediaSource: publishableImageUrl ? "upload" : undefined,
  brief: SAMPLE_BRIEF,
  brandProfileId: brandProfileId || undefined,
  mode,
@@ -844,8 +864,8 @@ export default function Onboarding() {
  <div>
  <h2 className="font-display text-2xl">{STEPS[2].title}</h2>
  <p className="mt-1 text-sm text-muted-foreground">
- Sample posts in your fetched brand — logo, colors, and voice. Post now if a
- channel is connected.
+ Sample posts use your website imagery, brand colors, logo, and voice. Post now
+ if a channel is connected.
  </p>
  </div>
  <div className="flex items-center gap-2">
@@ -1009,6 +1029,7 @@ export default function Onboarding() {
  ? {
  caption: activeSample.caption,
  hashtags: activeSample.hashtags,
+ imageUrl: previewImageUrl || undefined,
  brandName: brandName || "Your Brand",
  handle: brandName
  ? brandName.toLowerCase().replace(/\s+/g, "")

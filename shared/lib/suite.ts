@@ -1,15 +1,80 @@
 // Client wrappers for the marketing automation suite callables.
 
-import { httpsCallable } from "firebase/functions";
-import { functions } from "./firebase";
+import { httpsCallable, type FunctionsErrorCode } from "firebase/functions";
+import { FirebaseError } from "firebase/app";
+import { auth, functions } from "./firebase";
 import type { SocialPlatform, SocialProvider } from "../types";
+
+function errorCode(error: unknown): string {
+  return error instanceof FirebaseError
+    ? error.code.replace(/^functions\//, "")
+    : "";
+}
+
+function friendlyCallableError(error: unknown): Error {
+  if (error instanceof FirebaseError) {
+    const code = errorCode(error) as FunctionsErrorCode | string;
+    if (code === "internal" || code === "unknown") {
+      return new Error(
+        "Could not reach automation service. If this keeps happening, the Cloud Function may be blocking browser calls — ask an admin to set invoker=public and redeploy.",
+      );
+    }
+    if (code === "unauthenticated") {
+      // Reached only after a forced token refresh already failed, so the
+      // session really is gone rather than merely stale.
+      return new Error("Your session expired. Sign in again to continue.");
+    }
+    if (code === "failed-precondition" && /app check/i.test(error.message)) {
+      return new Error("App Check blocked this request. Set VITE_FIREBASE_APPCHECK_SITE_KEY for local/prod.");
+    }
+    if (error.message && error.message.toLowerCase() !== "internal") {
+      return new Error(error.message);
+    }
+    return new Error(code);
+  }
+  if (error instanceof Error) return error;
+  return new Error("Could not save automation");
+}
+
+/**
+ * Forces a new Firebase ID token, returning false when the session cannot be
+ * revived. Callables carry whatever token the SDK has cached; if that token is
+ * expired — or the device clock is skewed, or Safari evicted the auth store
+ * mid-session — Cloud Functions rejects the call as `unauthenticated` even
+ * though the app still shows a signed-in user.
+ */
+async function refreshSession(): Promise<boolean> {
+  const current = auth?.currentUser;
+  if (!current) return false;
+  try {
+    await current.getIdToken(true);
+    return true;
+  } catch (e) {
+    console.warn("Could not refresh the Firebase ID token", e);
+    return false;
+  }
+}
 
 function callable<Req, Res>(name: string) {
   return async (data: Req): Promise<Res> => {
     if (!functions) throw new Error("Firebase Functions not initialized");
     const fn = httpsCallable<Req, Res>(functions, name);
-    const result = await fn(data);
-    return result.data;
+    try {
+      const result = await fn(data);
+      return result.data;
+    } catch (error) {
+      // A stale token is the common cause here and it is fully recoverable, so
+      // mint a fresh one and retry once before telling the user to sign in.
+      if (errorCode(error) === "unauthenticated" && (await refreshSession())) {
+        try {
+          const retried = await fn(data);
+          return retried.data;
+        } catch (retryError) {
+          throw friendlyCallableError(retryError);
+        }
+      }
+      throw friendlyCallableError(error);
+    }
   };
 }
 
@@ -105,6 +170,13 @@ export type BrandExtractResult = {
   hashtags: string[];
   sampleCaptions: string[];
   logoUrl: string;
+  websiteImages: Array<{
+    url: string;
+    alt: string;
+    kind: "product" | "hero" | "social" | "content";
+  }>;
+  brandedImageUrl: string;
+  brandedImageSource: "website" | "generated" | "";
   colors: { primary?: string; secondary?: string; accent?: string };
   fonts: string[];
 };
@@ -112,6 +184,18 @@ export type BrandExtractResult = {
 export const extractBrandFromWebsite = callable<{ url: string }, BrandExtractResult>(
   "extractBrandFromWebsite",
 );
+
+export const generateBrandedPostImage = callable<
+  {
+    websiteUrl: string;
+    assetUrl?: string;
+    brandName: string;
+    industry?: string;
+    caption?: string;
+    colors?: { primary?: string; secondary?: string; accent?: string };
+  },
+  { imageUrl: string; source: "website" | "generated" }
+>("generateBrandedPostImage");
 /** Create a Dodo Payments checkout session and return its hosted URL. */
 export const createDodoCheckout = callable<
   { planId: "pro" | "max"; billing: "monthly" | "annual" },

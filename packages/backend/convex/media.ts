@@ -280,9 +280,10 @@ export const renderVideo = internalAction({
     if (!args.prompt.trim() || args.prompt.length > MAX_GENERATION_PROMPT_LENGTH) {
       throw new Error("Video prompt must be between 1 and 8,000 characters");
     }
-    if (!["1:1", "9:16", "16:9"].includes(args.aspectRatio)) {
-      throw new Error("Unsupported video aspect ratio");
-    }
+    // Product rule: every generated video is 9:16 (vertical Reel/Short shape),
+    // never square or landscape — regardless of what the caller requested. This
+    // is the single chokepoint for Studio, Maya and automation video renders.
+    const aspectRatio = "9:16";
     const requestedSeconds = args.durationSeconds ?? DEFAULT_VEO_SECONDS;
     if (!Number.isFinite(requestedSeconds) || requestedSeconds < 1 || requestedSeconds > MAX_VIDEO_SECONDS) {
       throw new Error(`Video duration must be between 1 and ${MAX_VIDEO_SECONDS} seconds`);
@@ -298,12 +299,12 @@ export const renderVideo = internalAction({
       userId: args.userId,
       kind: "video",
       prompt: args.prompt,
-      aspectRatio: args.aspectRatio,
+      aspectRatio,
       target: args.target,
     });
 
     try {
-      const operationName = await startVeoOperation(args.prompt, args.aspectRatio);
+      const operationName = await startVeoOperation(args.prompt, aspectRatio);
       await ctx.runMutation(internal.media.patchJob, {
         jobId,
         patch: { status: "rendering", operationName, billedSeconds: seconds },

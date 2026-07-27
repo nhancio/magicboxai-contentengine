@@ -7,7 +7,7 @@ const features: {
   description: string;
   platform: PlatformKey;
   status: PublishStatus;
-  media: { caption: string; handle: string };
+  media: { caption: string; handle: string; src: string };
 }[] = [
   {
     number: "01",
@@ -19,6 +19,7 @@ const features: {
     media: {
       caption: "A product update, ready for review",
       handle: "@yourbrand",
+      src: "/videos/sample2.mp4",
     },
   },
   {
@@ -32,6 +33,7 @@ const features: {
       caption:
         "One brand kit. Consistent voice across every channel — without the copy-paste grind.",
       handle: "Your Brand",
+      src: "/videos/Cute_animated_children_talking.mp4",
     },
   },
   {
@@ -44,6 +46,7 @@ const features: {
     media: {
       caption: "One brief, adapted to each connected channel",
       handle: "Your Brand",
+      src: "/videos/Toddlers_using_laptop.mp4",
     },
   },
   {
@@ -56,51 +59,54 @@ const features: {
     media: {
       caption: "Scheduled with your approval settings",
       handle: "@yourbrand",
+      src: "/videos/Caring_partner_giving_massage.mp4",
     },
   },
 ];
 
-function FeatureRow({
+function StepBlock({
   feature,
   index,
+  active,
+  onActivate,
 }: {
   feature: (typeof features)[0];
   index: number;
+  active: boolean;
+  onActivate: (index: number) => void;
 }) {
-  const [isVisible, setIsVisible] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
-  const phoneLeft = index % 2 === 1;
 
   useEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) setIsVisible(true);
+        if (entry.isIntersecting) onActivate(index);
       },
-      { threshold: 0.2 },
+      { rootMargin: "-45% 0px -45% 0px", threshold: 0 },
     );
-    if (rowRef.current) observer.observe(rowRef.current);
+    observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [index, onActivate]);
 
   return (
     <div
       ref={rowRef}
-      className={`grid items-center gap-10 border-b border-foreground/10 py-14 lg:grid-cols-2 lg:gap-16 lg:py-20 ${
-        isVisible ? "translate-y-0 opacity-100" : "translate-y-12 opacity-0"
-      } transition-all duration-700`}
-      style={{ transitionDelay: `${index * 60}ms` }}
+      className={`border-b border-foreground/10 py-14 transition-opacity duration-500 lg:min-h-[60vh] lg:flex lg:flex-col lg:justify-center lg:border-b-0 lg:py-0 ${
+        active ? "opacity-100" : "lg:opacity-40"
+      }`}
     >
-      <div className={phoneLeft ? "lg:order-2" : ""}>
-        <span className="mb-4 block font-mono text-sm text-muted-foreground">
-          {feature.number}
-        </span>
-        <h3 className="mb-4 font-display text-3xl lg:text-4xl">{feature.title}</h3>
-        <p className="max-w-lg text-lg leading-relaxed text-muted-foreground">
-          {feature.description}
-        </p>
-      </div>
+      <span className="mb-4 block font-mono text-sm text-muted-foreground">
+        {feature.number}
+      </span>
+      <h3 className="mb-4 font-display text-3xl lg:text-4xl">{feature.title}</h3>
+      <p className="max-w-lg text-lg leading-relaxed text-muted-foreground">
+        {feature.description}
+      </p>
 
-      <div className={`flex justify-center ${phoneLeft ? "lg:order-1" : ""}`}>
+      {/* Sticky phone only renders on lg+; mobile gets its own inline phone per step */}
+      <div className="mt-8 flex justify-center lg:hidden">
         <FeaturePhone
           platform={feature.platform}
           status={feature.status}
@@ -114,7 +120,9 @@ function FeatureRow({
 
 export function FeaturesSection() {
   const [isVisible, setIsVisible] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const sectionRef = useRef<HTMLElement>(null);
+  const active = features[activeIndex];
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -147,10 +155,30 @@ export function FeaturesSection() {
           </h2>
         </div>
 
-        <div>
-          {features.map((feature, index) => (
-            <FeatureRow key={feature.number} feature={feature} index={index} />
-          ))}
+        <div className="grid gap-10 lg:grid-cols-2 lg:gap-16">
+          <div>
+            {features.map((feature, index) => (
+              <StepBlock
+                key={feature.number}
+                feature={feature}
+                index={index}
+                active={activeIndex === index}
+                onActivate={setActiveIndex}
+              />
+            ))}
+          </div>
+
+          {/* Desktop only: one phone stays pinned in view while steps scroll past on the left */}
+          <div className="hidden lg:block">
+            <div className="sticky top-32 flex justify-center">
+              <FeaturePhone
+                platform={active.platform}
+                status={active.status}
+                media={active.media}
+                size="lg"
+              />
+            </div>
+          </div>
         </div>
       </div>
     </section>

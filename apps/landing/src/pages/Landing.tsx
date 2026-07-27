@@ -17,7 +17,7 @@ import { FooterSection } from "@/components/landing/footer-section";
  */
 export default function Landing() {
   return (
-    <main className="relative overflow-x-hidden bg-background text-foreground">
+    <main className="relative bg-background text-foreground">
       <Navigation />
       <HeroSection />
       <AboutMagicBoxSection />

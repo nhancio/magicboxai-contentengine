@@ -39,7 +39,7 @@ export {
   socialOAuthCallback,
 } from "./social";
 export { automationTick, generationTick, postingTick } from "./scheduler";
-export { extractBrandFromWebsite } from "./brand";
+export { extractBrandFromWebsite, generateBrandedPostImage } from "./brand";
 export { onUserCreatedSendWelcome } from "./welcome";
 export { createDodoCheckout, createDodoPortal, dodoWebhook, createGuestCheckout } from "./dodo";
 
@@ -929,7 +929,12 @@ export const generateAvatarVideo = onCall(
         await assertStoredMedia(path, "image/", MAX_STORED_IMAGE_BYTES);
       }),
     );
-    await reserveVideoGeneration(uid);
+    // Metering for avatar previews lives in the Convex v-credit ledger (the same
+    // balance shown across the app): the authenticated client charges v-credits
+    // via `credits.spendVideo` before this call and refunds via
+    // `credits.refundVideo` if it fails. This path therefore does NOT use the
+    // Firebase paid-plan quota, so free-trial users with v-credits can generate.
+    // App Check + auth + ownership remain the request-integrity guards.
 
     try {
       const outputStoragePrefix = `users/${uid}/avatar-previews/${uuidv4()}/`;
@@ -950,7 +955,6 @@ export const generateAvatarVideo = onCall(
       });
       return res;
     } catch (error: unknown) {
-      await releaseVideoGeneration(uid);
       console.error("[generateAvatarVideo] failed", stringifyError(error));
       throw new HttpsError("internal", parseError(error));
     }

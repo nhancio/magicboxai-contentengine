@@ -8,9 +8,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-sans)", "Instrument Sans", "system-ui", "sans-serif"],
-        display: ["var(--font-display)", "Instrument Serif", "Georgia", "serif"],
-        mono: ["var(--font-mono)", "JetBrains Mono", "monospace"],
+        sans: ["var(--font-sans)", "Open Sans", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "Open Sans", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "Open Sans", "system-ui", "sans-serif"],
       },
       colors: {
         border: rgb("--border"),

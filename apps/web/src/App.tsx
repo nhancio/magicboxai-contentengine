@@ -9,7 +9,6 @@ import OnboardingGate from "./components/layout/OnboardingGate";
 import AppLayout from "./components/layout/AppLayout";
 import ConsentBanner from "@shared/components/ConsentBanner";
 import { ErrorBoundary, PageLoader } from "./components/ErrorBoundary";
-import { LEGACY_TOOLS_ENABLED } from "./lib/flags";
 import Login from "./pages/Login";
 
 const Onboarding = lazy(() => import("./pages/Onboarding"));
@@ -18,10 +17,7 @@ const Maya = lazy(() => import("./pages/Maya"));
 const Automations = lazy(() => import("./pages/Automations"));
 const AutomationWizard = lazy(() => import("./pages/AutomationWizard"));
 const BrandKit = lazy(() => import("./pages/BrandKit"));
-const ContentStudio = lazy(() => import("./pages/ContentStudio"));
-const VideoCreator = lazy(() => import("./pages/VideoCreator"));
 const Studio = lazy(() => import("./pages/Studio"));
-const Carousel = lazy(() => import("./pages/Carousel"));
 const Library = lazy(() => import("./pages/Library"));
 const Schedule = lazy(() => import("./pages/Schedule"));
 const Analytics = lazy(() => import("./pages/Analytics"));
@@ -95,20 +91,10 @@ export default function App() {
                 <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
                 <Route path="/avatars" element={<ProtectedRoute><Avatars /></ProtectedRoute>} />
                 <Route path="/studio" element={<ProtectedRoute><Studio /></ProtectedRoute>} />
-                <Route path="/carousel" element={<ProtectedRoute><Carousel /></ProtectedRoute>} />
-                {LEGACY_TOOLS_ENABLED ? (
-                  <>
-                    <Route path="/content-studio" element={<ProtectedRoute><ContentStudio /></ProtectedRoute>} />
-                    <Route path="/video-creator" element={<ProtectedRoute><VideoCreator /></ProtectedRoute>} />
-                    <Route path="/create-video" element={<ProtectedRoute><VideoCreator /></ProtectedRoute>} />
-                  </>
-                ) : (
-                  <>
-                    <Route path="/content-studio" element={<Navigate to="/maya" replace />} />
-                    <Route path="/video-creator" element={<Navigate to="/studio" replace />} />
-                    <Route path="/create-video" element={<Navigate to="/studio" replace />} />
-                  </>
-                )}
+                <Route path="/carousel" element={<Navigate to="/studio?mode=carousel" replace />} />
+                <Route path="/content-studio" element={<Navigate to="/studio?mode=post" replace />} />
+                <Route path="/video-creator" element={<Navigate to="/studio?mode=video" replace />} />
+                <Route path="/create-video" element={<Navigate to="/studio?mode=video" replace />} />
                 <Route path="/ad-generator" element={<Navigate to="/studio" replace />} />
                 <Route path="/avatar-builder" element={<Navigate to="/avatars?tab=custom" replace />} />
                 <Route path="/avatar-creator" element={<Navigate to="/avatars?tab=create" replace />} />

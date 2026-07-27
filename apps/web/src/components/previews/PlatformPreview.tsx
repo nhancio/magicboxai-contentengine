@@ -2,6 +2,7 @@
 // Each mockup mirrors the real platform's post anatomy so an enterprise
 // buyer instantly recognizes how their content will land.
 
+import type { ReactNode } from"react";
 import type { SocialPlatform } from"@shared/types";
 import {
  BadgeCheck,
@@ -19,6 +20,10 @@ export interface PreviewContent {
  caption: string;
  hashtags?: string[];
  imageUrl?: string;
+ /** When present, the media slot plays this video (thumbnail via imageUrl). */
+ videoUrl?: string;
+ /** Live node rendered inside the media slot (e.g. a carousel slide). Wins over image/video. */
+ mediaNode?: ReactNode;
  brandName?: string;
  handle?: string;
  logoUrl?: string;
@@ -48,6 +53,35 @@ function BrandAvatar({ content, className }: { content: PreviewContent; classNam
 }
 
 function MediaSlot({ content, aspect }: { content: PreviewContent; aspect: string }) {
+ if (content.mediaNode) {
+ return (
+ <div
+ className={`relative flex w-full ${aspect} items-center justify-center overflow-hidden bg-black`}
+ >
+ {content.mediaNode}
+ </div>
+ );
+ }
+ if (content.videoUrl) {
+ // Generated videos are always 9:16 — preview them vertically, not in the
+ // platform's photo aspect, so the mobile preview matches the real output.
+ // The CONTAINER owns the 9:16 shape (a bare <video> with w-auto can collapse
+ // to 0 before metadata loads, showing nothing); the video just fills it.
+ return (
+ <div className="mx-auto flex aspect-[9/16] w-full max-w-[300px] items-center justify-center overflow-hidden bg-black">
+ <video
+ src={content.videoUrl}
+ poster={content.imageUrl}
+ className="h-full w-full object-cover"
+ autoPlay
+ muted
+ loop
+ playsInline
+ controls={false}
+ />
+ </div>
+ );
+ }
  if (content.imageUrl) {
  return <img src={content.imageUrl} alt="" className={`w-full ${aspect} object-cover`} />;
  }

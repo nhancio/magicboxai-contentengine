@@ -131,6 +131,7 @@ function MediaBackdrop({
     el.setAttribute("muted", "");
     el.setAttribute("playsinline", "");
     el.setAttribute("webkit-playsinline", "");
+    el.load();
 
     const tryPlay = () => {
       void el.play().catch(() => {

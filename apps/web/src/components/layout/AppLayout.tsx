@@ -7,7 +7,6 @@ import { Button } from "@shared/components/ui/button";
 import { cn } from "@shared/lib/utils";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "@/lib/convex";
-import { LEGACY_TOOLS_ENABLED } from "@/lib/flags";
 import { CreditsTrialCard } from "@/components/CreditsTrialCard";
 import {
   BarChart3,
@@ -16,16 +15,13 @@ import {
   CreditCard,
   Film,
   FolderOpen,
-  Layers,
   LayoutDashboard,
   LogOut,
   Menu,
   Palette,
-  PenTool,
   Settings,
   Sparkles,
   User,
-  Video,
   X,
 } from "lucide-react";
 
@@ -37,7 +33,7 @@ const NAV_SECTIONS = [
       { label: "Maya", path: "/maya", icon: Sparkles },
       { label: "Automations", path: "/automations", icon: Bot },
       { label: "Calendar", path: "/calendar", icon: CalendarDays },
-      { label: "Posts", path: "/posts", icon: FolderOpen },
+      { label: "Library", path: "/posts", icon: FolderOpen },
       { label: "Brand Kit", path: "/brand", icon: Palette },
       { label: "Analytics", path: "/analytics", icon: BarChart3 },
     ],
@@ -47,20 +43,8 @@ const NAV_SECTIONS = [
     items: [
       { label: "Avatar", path: "/avatars", icon: User },
       { label: "Studio", path: "/studio", icon: Film },
-      { label: "Carousel", path: "/carousel", icon: Layers },
     ],
   },
-  ...(LEGACY_TOOLS_ENABLED
-    ? [
-        {
-          heading: "Create",
-          items: [
-            { label: "Content Studio", path: "/content-studio", icon: PenTool },
-            { label: "Video Creator", path: "/create-video", icon: Video },
-          ],
-        },
-      ]
-    : []),
 ] as const;
 
 const BOTTOM_NAV = [
@@ -112,13 +96,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 sm:h-16 sm:px-5">
         <img
           src="/logo.png"
-          alt="MagicBox"
+          alt="Magic Box AI"
           className="h-8 w-8 shrink-0 rounded-lg object-contain sm:h-9 sm:w-9"
         />
         <div className="min-w-0">
-          <div className="truncate text-sm font-display text-foreground">MagicBox</div>
+          <div className="truncate text-sm font-display text-foreground">Magic Box</div>
           <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-            Automation
+            AI
           </div>
         </div>
         <button
@@ -234,7 +218,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 alt=""
                 className="h-7 w-7 shrink-0 rounded-lg object-contain"
               />
-              <span className="truncate text-sm font-display text-foreground">MagicBox</span>
+              <span className="truncate text-sm font-display text-foreground">Magic Box AI</span>
             </div>
             {isConvexConfigured && (
               <CreditsTrialCard credits={credits} compact className="mr-1" />

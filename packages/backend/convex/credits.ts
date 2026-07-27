@@ -307,6 +307,44 @@ export const claimTrial = mutation({
   },
 });
 
+/**
+ * Client-charged video credits for flows that render video OUTSIDE Convex
+ * (e.g. the Firebase avatar/Veo callable). The authenticated client calls this
+ * before kicking off generation, and `refundVideo` if generation then fails.
+ * Charging here — authed by the caller's own Firebase token — keeps a single
+ * v-credit ledger without a cross-backend service secret. Throws
+ * InsufficientCreditsError / TrialExpiredError, surfaced to the client.
+ */
+export const spendVideo = mutation({
+  args: { seconds: v.number(), reason: v.optional(v.string()) },
+  handler: async (ctx, { seconds, reason }) => {
+    const uid = await requireUid(ctx);
+    if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 120) {
+      throw new Error("Video seconds must be between 1 and 120");
+    }
+    const amount = Math.max(1, Math.ceil(seconds));
+    return await spend(ctx, { userId: uid, kind: "v", amount, reason: reason ?? "avatar_video" });
+  },
+});
+
+/** Refund a client-charged video reservation when generation fails. */
+export const refundVideo = mutation({
+  args: { seconds: v.number(), reason: v.optional(v.string()) },
+  handler: async (ctx, { seconds, reason }) => {
+    const uid = await requireUid(ctx);
+    if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 120) {
+      throw new Error("Video seconds must be between 1 and 120");
+    }
+    const amount = Math.max(1, Math.ceil(seconds));
+    return await credit(ctx, {
+      userId: uid,
+      kind: "v",
+      amount,
+      reason: reason ?? "avatar_video_refund",
+    });
+  },
+});
+
 // ---- internal (called from Studio / Maya / media) ----------------------
 
 export const ensure = internalMutation({

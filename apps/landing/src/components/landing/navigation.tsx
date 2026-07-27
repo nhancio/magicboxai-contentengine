@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
-import { APP_URL, appLoginUrl } from "@/lib/config";
+import { APP_URL, appLoginUrl, appSignInUrl } from "@/lib/config";
 import { captureEvent } from "@shared/lib/analytics";
 
 const navLinks = [
@@ -86,7 +86,7 @@ export function Navigation() {
             ) : (
               <>
                 <a
-                  href={`${APP_URL}/login`}
+                  href={appSignInUrl()}
                   className={`text-foreground/70 hover:text-foreground transition-all duration-500 ${isScrolled ? "text-xs" : "text-sm"}`}
                 >
                   Sign in
@@ -154,7 +154,7 @@ export function Navigation() {
             ) : (
               <>
                 <Button asChild variant="outline" className="flex-1 rounded-full h-14 text-base">
-                  <a href={`${APP_URL}/login`}>Sign in</a>
+                  <a href={appSignInUrl()}>Sign in</a>
                 </Button>
                 <Button asChild variant="brand" className="flex-1 rounded-full h-14 text-base">
                   <a

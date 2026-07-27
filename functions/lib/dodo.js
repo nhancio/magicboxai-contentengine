@@ -148,20 +148,44 @@ exports.createDodoCheckout = (0, https_1.onCall)(Object.assign(Object.assign({},
     }
 });
 /**
- * Anonymous checkout is deliberately disabled: payment entitlements must be
- * attached to a verified Firebase uid before money is accepted.
+ * Guest checkout: creates a real Dodo hosted-checkout session for a visitor
+ * with no Firebase account yet. The visitor pays with whatever email they
+ * enter on Dodo's page; no `uid` is attached at creation time. Entitlement is
+ * granted once they sign in with that same (Google-verified) email — the
+ * webhook below stores it under `pendingEntitlements/{email}`, and
+ * `welcome.ts` claims it into `subscriptions/{uid}` on every login.
  */
-exports.createGuestCheckout = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+exports.createGuestCheckout = (0, https_1.onRequest)({ cors: true, secrets: [exports.dodoApiKey] }, async (req, res) => {
     var _a, _b;
-    const plan = String((_a = req.query.plan) !== null && _a !== void 0 ? _a : "").toLowerCase();
+    const planRaw = String((_a = req.query.plan) !== null && _a !== void 0 ? _a : "").toLowerCase();
     const billing = String((_b = req.query.billing) !== null && _b !== void 0 ? _b : "monthly") === "annual" ? "annual" : "monthly";
-    if (plan !== "pro" && plan !== "max") {
+    if (planRaw !== "pro" && planRaw !== "max") {
         res.redirect(302, `${LANDING_BASE_URL}/#pricing`);
         return;
     }
-    const destination = `/pricing?plan=${plan}&billing=${billing}`;
-    res.set("Cache-Control", "no-store");
-    res.redirect(302, `${APP_BASE_URL}/login?redirect=${encodeURIComponent(destination)}`);
+    const plan = planRaw;
+    try {
+        const mapping = productFor(plan, billing);
+        // Reuses the app's existing "?checkout=returned" handling on /pricing
+        // (shows a confirmation toast, refetches the subscription) — the same
+        // path an authenticated checkout return already goes through.
+        const destination = "/pricing?checkout=returned";
+        const url = await createDodoCheckoutSession({
+            productId: mapping.productId,
+            returnUrl: `${APP_BASE_URL}/login?intent=google&redirect=${encodeURIComponent(destination)}`,
+            metadata: { planId: plan, billing, guest: "true" },
+        });
+        res.set("Cache-Control", "no-store");
+        res.redirect(302, url);
+    }
+    catch (error) {
+        logger.error("[createGuestCheckout] failed", {
+            plan,
+            billing,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        res.redirect(302, `${LANDING_BASE_URL}/#pricing`);
+    }
 });
 exports.createDodoPortal = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { secrets: [exports.dodoApiKey] }), async (request) => {
     var _a;
@@ -210,7 +234,7 @@ function eventStatus(type, providerStatus) {
     return null;
 }
 exports.dodoWebhook = (0, https_1.onRequest)({ cors: false, secrets: [exports.dodoWebhookSecret] }, async (req, res) => {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const rawBody = (_b = (_a = req.rawBody) === null || _a === void 0 ? void 0 : _a.toString("utf8")) !== null && _b !== void 0 ? _b : JSON.stringify(req.body);
     const secret = webhookSecret();
     if (!secret) {
@@ -228,7 +252,7 @@ exports.dodoWebhook = (0, https_1.onRequest)({ cors: false, secrets: [exports.do
     try {
         event = JSON.parse(rawBody);
     }
-    catch (_f) {
+    catch (_j) {
         res.status(400).send("bad payload");
         return;
     }
@@ -243,13 +267,15 @@ exports.dodoWebhook = (0, https_1.onRequest)({ cors: false, secrets: [exports.do
     const businessMatches = !expectedBusinessId || event.business_id === expectedBusinessId;
     const metadataUid = (_e = data.metadata) === null || _e === void 0 ? void 0 : _e.uid;
     const uid = typeof metadataUid === "string" && metadataUid.length <= 128 ? metadataUid : null;
+    const isGuestCheckout = ((_f = data.metadata) === null || _f === void 0 ? void 0 : _f.guest) === "true";
+    const guestEmail = ((_h = (_g = data.customer) === null || _g === void 0 ? void 0 : _g.email) === null || _h === void 0 ? void 0 : _h.trim().toLowerCase()) || null;
     const mapping = productById(data.product_id);
     const status = eventStatus(type, data.status);
     const isSubscriptionEvent = type.startsWith("subscription.");
     const eventRef = core_1.db.collection("paymentWebhookEvents").doc(verification.webhookId);
     try {
         const result = await core_1.db.runTransaction(async (tx) => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
             const seen = await tx.get(eventRef);
             if (seen.exists)
                 return "duplicate";
@@ -260,6 +286,48 @@ exports.dodoWebhook = (0, https_1.onRequest)({ cors: false, secrets: [exports.do
                 providerEventAt: Timestamp.fromDate(eventDate),
                 receivedAt: FieldValue.serverTimestamp(),
             };
+            // No Firebase account exists yet for a guest checkout — stash the paid
+            // entitlement under the payer's email instead of a uid. `welcome.ts`
+            // claims it into `subscriptions/{uid}` the moment that email signs in.
+            if (!uid &&
+                isGuestCheckout &&
+                businessMatches &&
+                isSubscriptionEvent &&
+                mapping &&
+                status === "active") {
+                if (!guestEmail) {
+                    tx.create(eventRef, Object.assign(Object.assign({}, baseRecord), { outcome: "ignored", reason: "guest-missing-email" }));
+                    return "ignored";
+                }
+                const periodEnd = (0, dodo_webhook_1.parseIsoTimestamp)(data.next_billing_date);
+                if (!periodEnd) {
+                    tx.create(eventRef, Object.assign(Object.assign({}, baseRecord), { outcome: "ignored", reason: "missing-period-end" }));
+                    return "ignored";
+                }
+                const pendingRef = core_1.db.collection("pendingEntitlements").doc(guestEmail);
+                const pending = await tx.get(pendingRef);
+                // Same guarantee as the subscriptions branch below: an out-of-order
+                // webhook must not clobber a newer one already recorded.
+                const pendingEventAt = (_b = pending.data()) === null || _b === void 0 ? void 0 : _b.providerEventAt;
+                if (pendingEventAt && pendingEventAt.toMillis() > eventDate.getTime()) {
+                    tx.create(eventRef, Object.assign(Object.assign({}, baseRecord), { outcome: "ignored", reason: "out-of-order" }));
+                    return "out-of-order";
+                }
+                tx.set(pendingRef, {
+                    plan: mapping.plan,
+                    billing: mapping.billing,
+                    status: "paid",
+                    provider: "dodo",
+                    providerProductId: mapping.productId,
+                    providerSubscriptionId: (_c = data.subscription_id) !== null && _c !== void 0 ? _c : null,
+                    providerCustomerId: (_e = (_d = data.customer) === null || _d === void 0 ? void 0 : _d.customer_id) !== null && _e !== void 0 ? _e : null,
+                    currentPeriodEnd: Timestamp.fromDate(periodEnd),
+                    providerEventAt: Timestamp.fromDate(eventDate),
+                    updatedAt: FieldValue.serverTimestamp(),
+                }, { merge: true });
+                tx.create(eventRef, Object.assign(Object.assign({}, baseRecord), { outcome: "applied-guest", guestEmail, productId: mapping.productId }));
+                return "applied-guest";
+            }
             if (!businessMatches || !isSubscriptionEvent || !uid || !mapping || !status) {
                 tx.create(eventRef, Object.assign(Object.assign({}, baseRecord), { outcome: "ignored", reason: !businessMatches
                         ? "business-mismatch"
@@ -274,13 +342,13 @@ exports.dodoWebhook = (0, https_1.onRequest)({ cors: false, secrets: [exports.do
             }
             const subscriptionRef = core_1.db.collection("subscriptions").doc(uid);
             const subscriptionSnapshot = await tx.get(subscriptionRef);
-            const existing = (_b = subscriptionSnapshot.data()) !== null && _b !== void 0 ? _b : {};
+            const existing = (_f = subscriptionSnapshot.data()) !== null && _f !== void 0 ? _f : {};
             const lastEventAt = existing.providerEventAt;
             if (lastEventAt && lastEventAt.toMillis() > eventDate.getTime()) {
                 tx.create(eventRef, Object.assign(Object.assign({}, baseRecord), { uid, outcome: "ignored", reason: "out-of-order" }));
                 return "out-of-order";
             }
-            const providerFields = Object.assign(Object.assign({ provider: "dodo", providerProductId: mapping.productId, providerSubscriptionId: (_d = (_c = data.subscription_id) !== null && _c !== void 0 ? _c : existing.providerSubscriptionId) !== null && _d !== void 0 ? _d : null, providerCustomerId: (_g = (_f = (_e = data.customer) === null || _e === void 0 ? void 0 : _e.customer_id) !== null && _f !== void 0 ? _f : existing.providerCustomerId) !== null && _g !== void 0 ? _g : null }, (data.payment_id ? { providerPaymentId: data.payment_id } : {})), { providerEventAt: Timestamp.fromDate(eventDate), updatedAt: FieldValue.serverTimestamp() });
+            const providerFields = Object.assign(Object.assign({ provider: "dodo", providerProductId: mapping.productId, providerSubscriptionId: (_h = (_g = data.subscription_id) !== null && _g !== void 0 ? _g : existing.providerSubscriptionId) !== null && _h !== void 0 ? _h : null, providerCustomerId: (_l = (_k = (_j = data.customer) === null || _j === void 0 ? void 0 : _j.customer_id) !== null && _k !== void 0 ? _k : existing.providerCustomerId) !== null && _l !== void 0 ? _l : null }, (data.payment_id ? { providerPaymentId: data.payment_id } : {})), { providerEventAt: Timestamp.fromDate(eventDate), updatedAt: FieldValue.serverTimestamp() });
             if (status === "active") {
                 const periodEnd = (0, dodo_webhook_1.parseIsoTimestamp)(data.next_billing_date);
                 if (!periodEnd) {
@@ -297,7 +365,7 @@ exports.dodoWebhook = (0, https_1.onRequest)({ cors: false, secrets: [exports.do
             else {
                 tx.set(subscriptionRef, Object.assign(Object.assign({}, providerFields), { plan: "free", status, videosLimit: 0 }), { merge: true });
             }
-            tx.create(eventRef, Object.assign(Object.assign({}, baseRecord), { uid, outcome: "applied", providerSubscriptionId: (_h = data.subscription_id) !== null && _h !== void 0 ? _h : null, providerCustomerId: (_k = (_j = data.customer) === null || _j === void 0 ? void 0 : _j.customer_id) !== null && _k !== void 0 ? _k : null, productId: mapping.productId }));
+            tx.create(eventRef, Object.assign(Object.assign({}, baseRecord), { uid, outcome: "applied", providerSubscriptionId: (_m = data.subscription_id) !== null && _m !== void 0 ? _m : null, providerCustomerId: (_p = (_o = data.customer) === null || _o === void 0 ? void 0 : _o.customer_id) !== null && _p !== void 0 ? _p : null, productId: mapping.productId }));
             return "applied";
         });
         res.status(200).json({ received: true, result });

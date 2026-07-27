@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
 import type { Automation, Post, PostStatus, SocialAccount } from "@shared/types";
 import { getAutomations, getPosts, getSocialAccounts } from "@shared/lib/automations";
@@ -10,7 +10,6 @@ import { Button } from "@shared/components/ui/button";
 import { cn } from "@shared/lib/utils";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
-import { trialClock, trialStatusCopy } from "../lib/credits";
 import {
   ArrowRight,
   Bot,
@@ -19,6 +18,7 @@ import {
   Facebook,
   Instagram,
   Linkedin,
+  MessageCircle,
   Plus,
   ShieldAlert,
   Twitter,
@@ -32,6 +32,20 @@ const PLATFORM_ICONS: Record<string, typeof Instagram> = {
   linkedin: Linkedin,
   youtube: Youtube,
   facebook: Facebook,
+  whatsapp: MessageCircle,
+};
+
+/** Brand colours so each connected channel shows its real platform logo colour. */
+const PLATFORM_BRAND: Record<string, { bg: string; label: string }> = {
+  instagram: {
+    bg: "linear-gradient(45deg,#F58529,#DD2A7B,#8134AF,#515BD4)",
+    label: "Instagram",
+  },
+  youtube: { bg: "#FF0000", label: "YouTube" },
+  linkedin: { bg: "#0A66C2", label: "LinkedIn" },
+  facebook: { bg: "#1877F2", label: "Facebook" },
+  twitter: { bg: "#000000", label: "Twitter / X" },
+  whatsapp: { bg: "#25D366", label: "WhatsApp" },
 };
 
 type ChannelRow = {
@@ -70,13 +84,6 @@ export default function Dashboard() {
   const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
   const convexPostsRaw = useQuery(api.posts.list, isConvexConfigured ? { limit: 200 } : "skip");
   const mayaDeck = useQuery(api.maya.deck, isConvexConfigured ? {} : "skip");
-  const creditBalance = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
-  const claimTrial = useMutation(api.credits.claimTrial);
-
-  useEffect(() => {
-    if (!isConvexConfigured || !creditBalance?.needsTrialClaim) return;
-    claimTrial({}).catch((e) => console.warn("[dashboard] claimTrial", e));
-  }, [creditBalance?.needsTrialClaim, claimTrial]);
 
   useEffect(() => {
     if (!user) return;
@@ -267,7 +274,8 @@ export default function Dashboard() {
         ) : accounts.length === 0 ? (
           <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border p-5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
-              No channels connected yet. Connect YouTube, LinkedIn, or Instagram in Settings.
+              No channels connected yet. Connect YouTube, LinkedIn, Instagram, Facebook, or WhatsApp
+              in Settings.
             </p>
             <Button asChild variant="outline" size="sm">
               <Link to="/settings">
@@ -279,6 +287,7 @@ export default function Dashboard() {
           <div className="flex flex-wrap gap-2.5">
             {accounts.map((account) => {
               const Icon = PLATFORM_ICONS[account.platform] ?? Instagram;
+              const brand = PLATFORM_BRAND[account.platform];
               const raw = (account.username || account.displayName || "").trim();
               const handle = raw ? (raw.startsWith("@") ? raw : `@${raw}`) : account.platform;
               return (
@@ -286,7 +295,10 @@ export default function Dashboard() {
                   key={account.id}
                   className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2"
                 >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-foreground">
+                  <div
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-white"
+                    style={{ background: brand?.bg ?? "#6b7280" }}
+                  >
                     <Icon className="h-4 w-4" />
                   </div>
                   <div className="pr-1">
@@ -406,8 +418,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Usage + automations strip */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
+      {/* Automations strip */}
+      <div className="mt-6">
         <div className="glass-card p-5">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-display text-xl">Your automations</h2>
@@ -443,71 +455,6 @@ export default function Dashboard() {
                   {automation.name}
                 </Link>
               ))}
-            </div>
-          )}
-        </div>
-
-        <div className="glass-card p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-display text-xl">Credits</h2>
-            <Link to="/pricing" className="text-xs font-mono uppercase tracking-widest text-brand hover:text-brand/80">
-              Top up →
-            </Link>
-          </div>
-          {isConvexConfigured && creditBalance === undefined ? (
-            <div className="h-14 animate-pulse rounded-lg bg-secondary" />
-          ) : creditBalance && !creditBalance.needsTrialClaim ? (
-            <div className="space-y-3">
-              <div>
-                <div className="flex items-baseline justify-between text-sm">
-                  <span className="text-muted-foreground">i-credits</span>
-                  <span className="tabular-nums text-foreground">{creditBalance.iCredits}</span>
-                </div>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  1 credit = 1 text / image post (or AI image)
-                </p>
-              </div>
-              <div>
-                <div className="flex items-baseline justify-between text-sm">
-                  <span className="text-muted-foreground">v-credits</span>
-                  <span className="tabular-nums text-foreground">{creditBalance.vCredits}</span>
-                </div>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  1 credit = 1 second of video
-                </p>
-              </div>
-              {creditBalance.trialGranted && (
-                <p className="text-[11px] text-muted-foreground">
-                  Free trial includes {creditBalance.freeTrial.i} i + {creditBalance.freeTrial.v} v
-                  {creditBalance.freeTrial.days
-                    ? ` for ${creditBalance.freeTrial.days} days`
-                    : ""}
-                  .
-                </p>
-              )}
-              {(() => {
-                const clock = trialClock(creditBalance);
-                if (!clock || creditBalance.hasPaidPlan) return null;
-                return (
-                  <p
-                    className={cn(
-                      "text-[11px] font-medium",
-                      clock.expired ? "text-destructive" : "text-brand",
-                    )}
-                  >
-                    {clock.expired
-                      ? "Trial ended — upgrade to keep creating."
-                      : `${trialStatusCopy(clock)}${clock.endsOnLabel ? ` · ends ${clock.endsOnLabel}` : ""}`}
-                  </p>
-                );
-              })()}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground">
-              Free trial: 50 i-credits + 100 v-credits for 7 days.{" "}
-              <Link to="/studio" className="text-brand hover:underline">
-                Start creating
-              </Link>
             </div>
           )}
         </div>

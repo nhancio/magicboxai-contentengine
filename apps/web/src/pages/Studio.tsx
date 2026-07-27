@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
+import { useAuth } from "@shared/lib/auth";
+import { getPhotoAvatars, type PhotoAvatarRecord } from "@shared/lib/firestore";
+import { rewriteAsUGC } from "@shared/lib/gemini";
 import { Button } from "@shared/components/ui/button";
 import { Input } from "@shared/components/ui/input";
 import { Label } from "@shared/components/ui/label";
 import { Textarea } from "@shared/components/ui/textarea";
 import { cn } from "@shared/lib/utils";
+import Carousel from "./Carousel";
 import {
   Sparkles,
   Loader2,
@@ -27,15 +31,31 @@ import {
   Film,
   Type,
   RefreshCw,
+  Layers,
+  User,
 } from "lucide-react";
 
 /**
- * STUDIO — preset-driven creation, wired end-to-end to the Convex pipeline.
+ * STUDIO — unified create surface.
  *
- * Flow: pick a preset → fill its inputs → generate copy → generate (or upload)
- * media → post now / schedule / save draft. Media rendering is a separate,
- * explicit step so the user approves the copy before spending a Veo render.
+ * Top modes: Video · Carousel · Post. Templates for the active mode appear
+ * underneath. Carousel embeds the carousel creator; Video/Post use Convex presets.
  */
+
+type StudioMode = "video" | "carousel" | "post";
+
+const STUDIO_MODES: {
+  id: StudioMode;
+  label: string;
+  icon: typeof Film;
+  blurb: string;
+}[] = [
+  { id: "video", label: "Video", icon: Film, blurb: "Reels, Shorts, talking-head" },
+  { id: "carousel", label: "Carousel", icon: Layers, blurb: "Multi-slide branded posts" },
+  { id: "post", label: "Post", icon: Type, blurb: "Image or text-only" },
+];
+
+const TONES = ["Professional", "Casual", "Funny", "Inspirational", "Educational", "Bold"] as const;
 
 const PLATFORM_ICON: Record<string, typeof Instagram> = {
   instagram: Instagram,
@@ -61,7 +81,16 @@ type Preset = {
 
 type Copy = { hook: string; caption: string; hashtags: string[]; mediaPrompt?: string };
 
+function modeFromParam(raw: string | null): StudioMode {
+  if (raw === "carousel" || raw === "post" || raw === "video") return raw;
+  return "video";
+}
+
 export default function Studio() {
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const mode = modeFromParam(searchParams.get("mode"));
+
   const presets = useQuery(api.studio.presets, isConvexConfigured ? {} : "skip") as
     | Preset[]
     | undefined;
@@ -79,6 +108,12 @@ export default function Studio() {
   const [prompt, setPrompt] = useState("");
   const [context, setContext] = useState("");
   const [productName, setProductName] = useState("");
+  const [tone, setTone] = useState<(typeof TONES)[number]>("Casual");
+  const [avatars, setAvatars] = useState<PhotoAvatarRecord[]>([]);
+  const [avatarId, setAvatarId] = useState("");
+  const [productImage, setProductImage] = useState<{ url: string; source: string } | null>(null);
+  const [uploadingProduct, setUploadingProduct] = useState(false);
+  const [rewriting, setRewriting] = useState(false);
 
   const [copy, setCopy] = useState<Copy | null>(null);
   const [caption, setCaption] = useState("");
@@ -95,6 +130,38 @@ export default function Studio() {
   const [renderingMedia, setRenderingMedia] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [posting, setPosting] = useState<null | "now" | "schedule" | "draft">(null);
+
+  const filteredPresets = useMemo(() => {
+    if (!presets) return undefined;
+    if (mode === "video") return presets.filter((p) => p.mediaType === "video");
+    if (mode === "post") return presets.filter((p) => p.mediaType === "image" || p.mediaType === "none");
+    return [];
+  }, [presets, mode]);
+
+  useEffect(() => {
+    if (!user) return;
+    getPhotoAvatars(user.uid)
+      .then((list) => setAvatars(list.filter((a) => a.status === "ready")))
+      .catch(() => setAvatars([]));
+  }, [user]);
+
+  // Clear preset when switching away from a format that doesn't include it.
+  useEffect(() => {
+    if (mode === "carousel") {
+      setPreset(null);
+      return;
+    }
+    if (preset && filteredPresets && !filteredPresets.some((p) => p.id === preset.id)) {
+      setPreset(null);
+    }
+  }, [mode, filteredPresets, preset]);
+
+  function setMode(next: StudioMode) {
+    const nextParams = new URLSearchParams(searchParams);
+    if (next === "video") nextParams.delete("mode");
+    else nextParams.set("mode", next);
+    setSearchParams(nextParams, { replace: true });
+  }
 
   // Poll the Veo job until the video is ready (reactive — no manual polling).
   const job = useQuery(api.media.job, videoJobId ? { jobId: videoJobId as any } : "skip");
@@ -122,23 +189,30 @@ export default function Studio() {
     setCopy(null);
     setMedia(null);
     setVideoJobId(null);
+    setProductImage(null);
   }
+
+  const selectedAvatar = avatars.find((a) => a.id === avatarId) ?? null;
 
   const requiredInputs = preset?.inputs.filter((i) => i.required).map((i) => i.key) ?? [];
   const missingRequired =
-    requiredInputs.includes("prompt") && !prompt.trim()
-      ? true
-      : requiredInputs.includes("productName") && !productName.trim();
+    (requiredInputs.includes("prompt") && !prompt.trim()) ||
+    (requiredInputs.includes("productName") && !productName.trim()) ||
+    (requiredInputs.includes("avatar") && !avatarId) ||
+    (requiredInputs.includes("images") && !productImage);
 
   async function handleGenerateCopy() {
     if (!preset) return;
     setWriting(true);
     try {
+      const avatarContext = selectedAvatar
+        ? `Avatar: ${selectedAvatar.name}. Personality: ${selectedAvatar.personality}. Voice: ${selectedAvatar.voiceTone}.`
+        : "";
       const r = (await generateCopy({
         presetId: preset.id,
         platform,
         prompt: prompt || undefined,
-        context: context || undefined,
+        context: [tone && `Tone: ${tone}`, avatarContext, context].filter(Boolean).join("\n") || undefined,
         productName: productName || undefined,
       })) as Copy;
       setCopy(r);
@@ -148,6 +222,50 @@ export default function Studio() {
       toast.error(`Couldn't write copy: ${String(e).slice(0, 120)}`);
     } finally {
       setWriting(false);
+    }
+  }
+
+  async function handleRewriteUgc() {
+    if (!caption.trim()) {
+      toast.error("Write or generate a caption first.");
+      return;
+    }
+    setRewriting(true);
+    try {
+      const rewritten = await rewriteAsUGC({
+        text: caption,
+        avatarPersonality: selectedAvatar?.personality || "Friendly creator",
+        tone,
+      });
+      setCaption(rewritten);
+      toast.success("Rewrote in UGC voice");
+    } catch (e) {
+      toast.error(`Rewrite failed: ${String(e).slice(0, 120)}`);
+    } finally {
+      setRewriting(false);
+    }
+  }
+
+  async function handleProductImageUpload(file: File) {
+    setUploadingProduct(true);
+    try {
+      const url = await uploadUrl({});
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const { storageId } = (await res.json()) as { storageId: string };
+      const resolved = await resolveUpload({ storageId });
+      setProductImage({ url: resolved.url, source: "upload" });
+      // Also seed final media if none yet — product shot can be the post image.
+      if (!media) setMedia({ type: "image", url: resolved.url, source: "upload" });
+      toast.success("Product photo added");
+    } catch (e) {
+      toast.error(`Upload failed: ${String(e).slice(0, 120)}`);
+    } finally {
+      setUploadingProduct(false);
     }
   }
 
@@ -305,45 +423,78 @@ export default function Studio() {
           <Sparkles className="h-7 w-7 text-brand" /> Studio
         </h1>
         <p className="mt-2 text-muted-foreground">
-          Pick a format, generate the content, and post or schedule it.
+          Pick Video, Carousel, or Post — then choose a template and create.
         </p>
       </header>
 
-      {/* Step 1 — preset picker */}
-      <section>
-        <h2 className="mb-3 text-sm font-mono uppercase tracking-widest text-muted-foreground">
-          1 · Choose a format
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {(presets ?? []).map((p) => {
-            const MediaIcon = MEDIA_ICON[p.mediaType];
-            const active = preset?.id === p.id;
-            return (
-              <button
-                key={p.id}
-                onClick={() => choosePreset(p)}
-                className={cn(
-                  "rounded-xl border p-4 text-left transition-all",
-                  active
-                    ? "border-brand bg-brand/5 ring-1 ring-brand"
-                    : "border-border bg-card hover:border-brand/40",
-                )}
-              >
-                <div className="mb-2 flex items-center gap-2">
-                  <MediaIcon className="h-4 w-4 text-brand" />
-                  <span className="font-medium text-foreground">{p.name}</span>
+      {/* Mode switcher — Video / Carousel / Post */}
+      <div className="flex flex-wrap gap-2">
+        {STUDIO_MODES.map((m) => {
+          const Icon = m.icon;
+          const active = mode === m.id;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setMode(m.id)}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors",
+                active
+                  ? "border-brand bg-brand/10 text-brand ring-1 ring-brand/30"
+                  : "border-border bg-card text-muted-foreground hover:border-brand/40 hover:text-foreground",
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {m.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {mode === "carousel" ? (
+        <Carousel embedded />
+      ) : (
+        <>
+          {/* Templates for active mode */}
+          <section>
+            <h2 className="mb-3 text-sm font-mono uppercase tracking-widest text-muted-foreground">
+              {mode === "video" ? "Video templates" : "Post templates"}
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {(filteredPresets ?? []).map((p) => {
+                const MediaIcon = MEDIA_ICON[p.mediaType];
+                const active = preset?.id === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => choosePreset(p)}
+                    className={cn(
+                      "rounded-xl border p-4 text-left transition-all",
+                      active
+                        ? "border-brand bg-brand/5 ring-1 ring-brand"
+                        : "border-border bg-card hover:border-brand/40",
+                    )}
+                  >
+                    <div className="mb-2 flex items-center gap-2">
+                      <MediaIcon className="h-4 w-4 text-brand" />
+                      <span className="font-medium text-foreground">{p.name}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{p.description}</p>
+                  </button>
+                );
+              })}
+              {filteredPresets === undefined && (
+                <div className="col-span-full flex justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
-                <p className="text-xs text-muted-foreground">{p.description}</p>
-              </button>
-            );
-          })}
-          {presets === undefined && (
-            <div className="col-span-full flex justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              )}
+              {filteredPresets?.length === 0 && (
+                <p className="col-span-full text-sm text-muted-foreground">
+                  No templates for this format yet.
+                </p>
+              )}
             </div>
-          )}
-        </div>
-      </section>
+          </section>
 
       {preset && (
         <>
@@ -400,6 +551,113 @@ export default function Studio() {
                 </div>
               </div>
             )}
+
+            {preset.inputs.some((i) => i.key === "avatar") && (
+              <div className="space-y-2">
+                <Label>
+                  Avatar
+                  {requiredInputs.includes("avatar") ? "" : " (optional)"}
+                </Label>
+                {avatars.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No ready avatars.{" "}
+                    <Link to="/avatars" className="text-brand hover:underline">
+                      Create one
+                    </Link>
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {avatars.map((a) => {
+                      const active = avatarId === a.id;
+                      const thumb = a.photoUrls?.[0];
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => setAvatarId(a.id ?? "")}
+                          className={cn(
+                            "flex w-[88px] flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors",
+                            active
+                              ? "border-brand bg-brand/10 ring-1 ring-brand"
+                              : "border-border hover:border-brand/40",
+                          )}
+                        >
+                          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-secondary">
+                            {thumb ? (
+                              <img src={thumb} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <User className="h-5 w-5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <span className="w-full truncate text-[10px] font-medium">{a.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {preset.inputs.some((i) => i.key === "images") && (
+              <div className="space-y-2">
+                <Label>
+                  Product photo
+                  {requiredInputs.includes("images") ? "" : " (optional)"}
+                </Label>
+                {productImage ? (
+                  <div className="relative w-32 overflow-hidden rounded-xl border border-border">
+                    <img src={productImage.url} alt="" className="aspect-square w-full object-cover" />
+                    <button
+                      type="button"
+                      className="absolute right-1 top-1 rounded-md bg-background/90 px-1.5 text-[10px]"
+                      onClick={() => setProductImage(null)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground hover:border-brand/40 hover:text-foreground">
+                    {uploadingProduct ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ImagePlus className="h-4 w-4" />
+                    )}
+                    Upload product photo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={uploadingProduct}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void handleProductImageUpload(f);
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Tone</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {TONES.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTone(t)}
+                    className={cn(
+                      "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+                      tone === t
+                        ? "border-brand bg-brand/10 text-brand"
+                        : "border-border text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {preset.inputs.some((i) => i.key === "productName") && (
               <div className="space-y-1.5">
@@ -466,6 +724,21 @@ export default function Studio() {
                   <div className="space-y-1.5">
                     <Label>Caption</Label>
                     <Textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={6} />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      disabled={rewriting || !caption.trim()}
+                      onClick={() => void handleRewriteUgc()}
+                    >
+                      {rewriting ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      Rewrite as UGC
+                    </Button>
                   </div>
                   <div className="space-y-1.5">
                     <Label>Hashtags</Label>
@@ -586,6 +859,8 @@ export default function Studio() {
               </div>
             </section>
           )}
+        </>
+      )}
         </>
       )}
     </div>

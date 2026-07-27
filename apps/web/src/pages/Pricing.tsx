@@ -16,9 +16,12 @@ import {
   ArrowRight,
   Shield,
   Zap,
+  CalendarClock,
 } from "lucide-react";
 
-const CALENDLY_URL = "mailto:support@magicboxai.in?subject=MagicBox%20sales";
+/** Google Calendar appointment scheduling page — opens the booking UI. */
+const BOOK_APPOINTMENT_URL =
+  "https://calendar.google.com/calendar/appointments/schedules/AcZssZ1YKzgDTFE-TKk-D-IbMr5_pDVKssRUCqSfmsRjLTRUVlP1yxfKihFa9Uqjxd1k7P7cxUqbP4Fl?gv=true";
 
 type PlanId = "free" | "pro" | "max" | "custom";
 
@@ -138,11 +141,15 @@ export default function Pricing() {
     if (checkout) window.history.replaceState({}, "", window.location.pathname);
   }, [user]);
 
+  const openBooking = (source: string) => {
+    captureEvent("book_appointment_clicked", { source });
+    window.open(BOOK_APPOINTMENT_URL, "_blank", "noopener,noreferrer");
+  };
+
   const handleSubscribe = async (plan: PlanConfig) => {
     if (plan.id === "free") return;
     if (plan.custom) {
-      captureEvent("support_contact_requested", { surface: "pricing" });
-      window.open(CALENDLY_URL, "_blank", "noopener,noreferrer");
+      openBooking("custom_plan");
       return;
     }
     if (!user) {
@@ -240,25 +247,14 @@ export default function Pricing() {
               <div
                 key={plan.id}
                 className={cn(
-                  "relative bg-background p-8 flex flex-col",
-                  plan.popular && "lg:-my-4 lg:py-12 border-2 border-brand",
+                  "group relative bg-background p-8 flex flex-col border-2 border-transparent transition-all duration-300",
+                  "hover:border-brand hover:lg:-my-4 hover:lg:py-12",
                   requestedPlan === plan.id && "ring-2 ring-brand ring-offset-2 ring-offset-background"
                 )}
               >
-                {plan.popular && (
-                  <span className="absolute -top-3 left-8 px-3 py-1 bg-brand text-brand-foreground text-xs font-mono uppercase tracking-widest">
-                    Most popular
-                  </span>
-                )}
-
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-4">
-                    <div
-                      className={cn(
-                        "w-11 h-11 rounded-lg flex items-center justify-center",
-                        plan.popular ? "bg-brand text-brand-foreground" : "bg-foreground text-background"
-                      )}
-                    >
+                    <div className="w-11 h-11 rounded-lg flex items-center justify-center bg-foreground text-background transition-colors duration-300 group-hover:bg-brand group-hover:text-brand-foreground">
                       <Icon className="w-5 h-5" />
                     </div>
                     {isCurrentPlan && (
@@ -292,12 +288,7 @@ export default function Pricing() {
                 <ul className="space-y-3 mb-8 flex-1">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-2.5">
-                      <Check
-                        className={cn(
-                          "w-4 h-4 mt-0.5 shrink-0",
-                          plan.popular ? "text-brand" : "text-foreground"
-                        )}
-                      />
+                      <Check className="w-4 h-4 mt-0.5 shrink-0 text-foreground transition-colors duration-300 group-hover:text-brand" />
                       <span className="text-sm text-muted-foreground">{feature}</span>
                     </li>
                   ))}
@@ -325,8 +316,8 @@ export default function Pricing() {
                   <Button
                     onClick={() => handleSubscribe(plan)}
                     disabled={processing !== null}
-                    variant={plan.popular ? "default" : "outline"}
-                    className="w-full h-11 gap-2"
+                    variant="outline"
+                    className="w-full h-11 gap-2 transition-colors duration-300 group-hover:bg-brand group-hover:text-brand-foreground group-hover:border-brand group-hover:hover:bg-brand/90"
                   >
                     {processing === plan.id ? (
                       <>
@@ -335,8 +326,8 @@ export default function Pricing() {
                       </>
                     ) : (
                       <>
-                        {plan.custom ? "Contact support" : requestedPlan === plan.id ? `Continue with ${plan.name}` : "Get started"}
-                        <ArrowRight className="w-4 h-4" />
+                        {plan.custom ? "Book an appointment" : requestedPlan === plan.id ? `Continue with ${plan.name}` : "Get started"}
+                        {plan.custom ? <CalendarClock className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
                       </>
                     )}
                   </Button>
@@ -344,6 +335,30 @@ export default function Pricing() {
               </div>
             );
           })}
+        </div>
+
+        {/* Agency — done-for-you managed service */}
+        <div className="rounded-2xl border border-brand/25 bg-brand/[0.06] p-6 sm:p-8 md:flex md:items-center md:justify-between md:gap-8">
+          <div className="max-w-2xl">
+            <span className="eyebrow">
+              <Sparkles className="w-3.5 h-3.5" />
+              Managed service
+            </span>
+            <h2 className="mt-2 font-display text-2xl text-foreground sm:text-3xl">
+              Want more scale? We'll run it for you.
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              We run an agency service where we manage everything for you — buying accounts,
+              warming, and done-for-you posting.
+            </p>
+          </div>
+          <Button
+            onClick={() => openBooking("agency_managed_service")}
+            className="mt-5 h-11 shrink-0 gap-2 md:mt-0"
+          >
+            <CalendarClock className="w-4 h-4" />
+            Book an appointment
+          </Button>
         </div>
 
         {/* Trust */}

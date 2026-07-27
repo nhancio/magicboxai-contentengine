@@ -62,8 +62,6 @@ export function CtaSection() {
                   <Button asChild size="lg" variant="outline" className="h-14 px-8 text-base rounded-full">
                     <a
                       href={CALENDLY_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       onClick={() => captureEvent("landing_cta_clicked", { cta: "footer_contact_support", destination: "support" })}
                     >
                       Contact support
