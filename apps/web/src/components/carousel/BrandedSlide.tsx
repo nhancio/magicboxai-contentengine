@@ -96,7 +96,7 @@ export default function BrandedSlide({
           // e.g. title 5.6% × 1080 ≈ 60px. No compounding (siblings, not nested).
           fontSize: w,
           fontFamily:
-            '"Inter", "Segoe UI", system-ui, -apple-system, sans-serif',
+            '"Instrument Sans", "Segoe UI", system-ui, -apple-system, sans-serif',
         }}
       >
         <BackgroundLayer brand={brand} />

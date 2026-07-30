@@ -4,7 +4,7 @@
 
 /*
   MagicBox Suite web app — editorial monochrome design system with purple primary.
-  Typography: Open Sans for all text (body, headings, labels).
+  Typography: Instrument Sans body, Instrument Serif display, JetBrains Mono labels.
   Colors are RGB channel triplets so Tailwind opacity modifiers (/10, /60) work.
 */
 :root {
@@ -33,9 +33,9 @@
 
   --radius: 0.5rem;
 
-  --font-sans: "Open Sans", system-ui, sans-serif;
-  --font-display: "Open Sans", system-ui, sans-serif;
-  --font-mono: "Open Sans", system-ui, sans-serif;
+  --font-sans: "Instrument Sans", system-ui, sans-serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 @layer base {

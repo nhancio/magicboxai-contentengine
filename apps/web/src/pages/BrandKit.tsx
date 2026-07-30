@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useMutation } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { api } from "@convex/_generated/api";
 import { useAuth } from "@shared/lib/auth";
 import type { BrandProfile } from "@shared/types";
 import {
@@ -15,6 +17,7 @@ import {
 import { Button } from "@shared/components/ui/button";
 import { Input } from "@shared/components/ui/input";
 import { cn } from "@shared/lib/utils";
+import { isConvexConfigured } from "../lib/convex";
 import {
   ArrowRight,
   Check,
@@ -60,6 +63,8 @@ function Swatch({ hex, label }: { hex?: string; label: string }) {
 
 export default function BrandKit() {
   const { user } = useAuth();
+  const upsertWebsiteBrand = useMutation(api.brands.upsertFromWebsite);
+  const removeWebsiteBrand = useMutation(api.brands.removeByLegacyId);
   const [brands, setBrands] = useState<BrandProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [url, setUrl] = useState("");
@@ -142,6 +147,34 @@ export default function BrandKit() {
           ? extracted.sampleCaptions
           : undefined,
       });
+      if (isConvexConfigured) {
+        try {
+          await upsertWebsiteBrand({
+            legacyId: id,
+            name: extracted.companyName || new URL(extractedUrl).hostname,
+            websiteUrl: extractedUrl,
+            logoUrl: extracted.logoUrl || undefined,
+            colors: {
+              primary: extracted.colors.primary || "#111111",
+              secondary: extracted.colors.secondary,
+              accent: extracted.colors.accent,
+            },
+            industry: extracted.industry || undefined,
+            toneOfVoice: extracted.tone || undefined,
+            audience: extracted.audience || undefined,
+            hashtagSets: {
+              default: (extracted.hashtags ?? [])
+                .map((hashtag) => hashtag.replace(/^#/, ""))
+                .filter(Boolean),
+            },
+            sampleCaptions: extracted.sampleCaptions?.length
+              ? extracted.sampleCaptions
+              : undefined,
+          });
+        } catch (error) {
+          console.warn("[brand-kit] Convex brand sync will retry from the saved kit", error);
+        }
+      }
       setSelectedId(id);
       setExtracted(null);
       setUrl("");
@@ -159,6 +192,13 @@ export default function BrandKit() {
       return;
     }
     await deleteBrandProfile(id);
+    if (isConvexConfigured) {
+      try {
+        await removeWebsiteBrand({ legacyId: id });
+      } catch (error) {
+        console.warn("[brand-kit] Convex brand deletion sync failed", error);
+      }
+    }
     if (selectedId === id) setSelectedId(null);
     await refresh();
     toast.success("Brand kit deleted");

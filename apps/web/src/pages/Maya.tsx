@@ -5,11 +5,17 @@ import { motion, useMotionValue, useTransform, type PanInfo } from "framer-motio
 import { toast } from "sonner";
 import { api } from "@convex/_generated/api";
 import { Button } from "@shared/components/ui/button";
+import { captureEvent, PRODUCT_EVENTS } from "@shared/lib/analytics";
 import { cn } from "@shared/lib/utils";
 import type { SocialPlatform } from "@shared/types";
 import { isConvexConfigured } from "../lib/convex";
+import { useMayaActivation } from "../hooks/useMayaActivation";
 import PlatformPreview, { type PreviewContent } from "../components/previews/PlatformPreview";
 import {
+  ArrowRight,
+  CheckCircle2,
+  Globe2,
+  LockKeyhole,
   Sparkles,
   X,
   Instagram,
@@ -39,6 +45,16 @@ const PLATFORM_ICON: Record<string, typeof Instagram> = {
 };
 
 const SWIPE_THRESHOLD = 110;
+
+type MayaActivation = {
+  hasWebsite: boolean;
+  hasChannel: boolean;
+  ready: boolean;
+  websiteUrl?: string;
+  brandName?: string;
+  activePlatforms: string[];
+  channelCount: number;
+};
 
 function formatSlot(ms: number) {
   return new Date(ms).toLocaleString(undefined, {
@@ -168,27 +184,154 @@ function Card({
   );
 }
 
+function ActivationGate({ activation }: { activation: MayaActivation }) {
+  const nextPath = activation.hasWebsite ? "/onboarding/channels" : "/onboarding";
+
+  return (
+    <div className="mx-auto max-w-3xl py-4 sm:py-10">
+      <div className="relative overflow-hidden rounded-[1.75rem] border border-border bg-card">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-70"
+          style={{
+            background:
+              "radial-gradient(circle at 12% 5%, rgb(var(--brand) / 0.14), transparent 36%), linear-gradient(135deg, transparent 62%, rgb(var(--foreground) / 0.04))",
+          }}
+        />
+        <div className="relative border-b border-border px-6 py-8 sm:px-10 sm:py-10">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            <LockKeyhole className="h-3.5 w-3.5 text-brand" />
+            Maya is waiting
+          </div>
+          <h1 className="max-w-xl font-display text-4xl leading-[1.02] tracking-tight text-foreground sm:text-5xl">
+            Give Maya a brand to understand and somewhere to publish.
+          </h1>
+          <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Your website teaches Maya the offer, audience, voice, logo, and visual language.
+            A connected channel tells her where the finished work can go.
+          </p>
+        </div>
+
+        <div className="relative grid gap-px bg-border sm:grid-cols-2">
+          <div className="bg-card p-6 sm:p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary">
+                <Globe2 className="h-5 w-5 text-foreground" />
+              </div>
+              {activation.hasWebsite ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" /> Complete
+                </span>
+              ) : (
+                <span className="font-mono text-[10px] uppercase tracking-widest text-brand">
+                  Step 1
+                </span>
+              )}
+            </div>
+            <h2 className="mt-6 font-display text-2xl text-foreground">Link your website</h2>
+            <p className="mt-2 min-h-10 text-sm leading-relaxed text-muted-foreground">
+              {activation.hasWebsite
+                ? `${activation.brandName || "Your brand"} is ready for Maya.`
+                : "We will extract your brand kit and content evidence before Maya writes anything."}
+            </p>
+            {!activation.hasWebsite && (
+              <Button asChild className="mt-6 w-full">
+                <Link to="/onboarding">
+                  Add website <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
+          </div>
+
+          <div className={cn("bg-card p-6 sm:p-8", !activation.hasWebsite && "opacity-55")}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary">
+                <Link2 className="h-5 w-5 text-foreground" />
+              </div>
+              {activation.hasChannel ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" /> Complete
+                </span>
+              ) : (
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Step 2
+                </span>
+              )}
+            </div>
+            <h2 className="mt-6 font-display text-2xl text-foreground">Connect a social channel</h2>
+            <p className="mt-2 min-h-10 text-sm leading-relaxed text-muted-foreground">
+              {activation.hasChannel
+                ? `${activation.channelCount} active ${activation.channelCount === 1 ? "channel" : "channels"} connected.`
+                : activation.hasWebsite
+                  ? "Connect at least one destination. Nothing is posted without your approval."
+                  : "This unlocks after your website is linked."}
+            </p>
+            {activation.hasWebsite && !activation.hasChannel && (
+              <Button asChild className="mt-6 w-full">
+                <Link to="/onboarding/channels">
+                  Connect a channel <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="relative flex items-center justify-between gap-4 bg-foreground px-6 py-4 text-background sm:px-10">
+          <p className="text-xs leading-relaxed text-background/70">
+            Maya activates automatically when both steps are complete.
+          </p>
+          <Link
+            to={nextPath}
+            className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-background underline decoration-background/35 underline-offset-4"
+          >
+            Continue setup
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Maya() {
   const [generating, setGenerating] = useState(false);
+  const activation = useMayaActivation();
+  const trackedActivationState = useRef<string | null>(null);
 
   // Convex is optional at runtime (the client is null when unconfigured), so
   // skip the queries entirely rather than crash the route.
   const deck = useQuery(api.maya.deck, isConvexConfigured ? {} : "skip");
-  const accounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
   const ensureConfig = useMutation(api.maya.ensureConfig);
   const swipe = useMutation(api.maya.swipe);
   const generateNow = useAction(api.maya.generateNow);
 
+  useEffect(() => {
+    if (activation === undefined) return;
+    const state = activation.ready
+      ? "ready"
+      : `blocked:${activation.hasWebsite}:${activation.hasChannel}`;
+    if (trackedActivationState.current === state) return;
+    trackedActivationState.current = state;
+    if (activation.ready) {
+      captureEvent(PRODUCT_EVENTS.mayaActivated, {
+        channel_count: activation.channelCount,
+      });
+    } else {
+      captureEvent(PRODUCT_EVENTS.mayaActivationBlocked, {
+        missing_website: !activation.hasWebsite,
+        missing_channel: !activation.hasChannel,
+      });
+    }
+  }, [activation]);
+
   // Idempotent bootstrap: config + pillars + seeded best-time slots.
   useEffect(() => {
-    if (!isConvexConfigured) return;
+    if (!isConvexConfigured || !activation?.ready) return;
     ensureConfig({
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }).catch((e) => console.warn("[maya] ensureConfig failed", e));
-  }, [ensureConfig]);
+  }, [activation?.ready, ensureConfig]);
 
   const pending = useMemo(() => (deck?.pending ?? []) as unknown as Suggestion[], [deck]);
-  const hasChannel = (accounts ?? []).some((a: any) => a.status === "active");
 
   async function decide(
     s: Suggestion,
@@ -232,6 +375,9 @@ export default function Maya() {
   async function handleGenerate() {
     setGenerating(true);
     try {
+      await ensureConfig({
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
       const r = await generateNow({ force: true });
       if (r.created > 0) toast.success(`Maya wrote ${r.created} new posts.`);
       else toast(`Nothing new to add (${r.reason ?? "no changes"}).`);
@@ -252,6 +398,18 @@ export default function Maya() {
     );
   }
 
+  if (activation === undefined) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!activation.ready) {
+    return <ActivationGate activation={activation} />;
+  }
+
   return (
     <div className="mx-auto w-full max-w-3xl">
       <header className="mb-6 sm:mb-8">
@@ -269,18 +427,6 @@ export default function Maya() {
           <span className="sm:hidden">. Use the buttons below on mobile.</span>
         </p>
       </header>
-
-      {!hasChannel && accounts !== undefined && (
-        <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 sm:items-center">
-          <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 sm:mt-0" />
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            No channel connected — approvals will be saved as drafts.{" "}
-            <Link to="/settings" className="font-medium text-brand underline underline-offset-2">
-              Connect one
-            </Link>
-          </p>
-        </div>
-      )}
 
       {/* Deck — only the top card is in flow so action buttons stay visible below */}
       <div className="relative">

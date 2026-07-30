@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from"react";
-import { useNavigate, useSearchParams } from"react-router-dom";
-import { useAction, useQuery } from"convex/react";
+import { useEffect, useMemo, useRef, useState } from"react";
+import { useLocation, useNavigate, useSearchParams } from"react-router-dom";
+import { useAction, useMutation, useQuery } from"convex/react";
 import { getPreset } from"@/lib/presets";
 import { motion, AnimatePresence } from"framer-motion";
 import { toast } from"sonner";
-import { doc, setDoc } from"firebase/firestore";
+import { doc, serverTimestamp, setDoc } from"firebase/firestore";
 import { db } from"@shared/lib/firebase";
 import { useAuth } from"@shared/lib/auth";
 import { api } from"@convex/_generated/api";
@@ -19,32 +19,47 @@ import { Button } from"@shared/components/ui/button";
 import { Input } from"@shared/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from"@shared/components/ui/avatar";
 import { cn } from"@shared/lib/utils";
-import { captureEvent } from"@shared/lib/analytics";
+import { captureEvent, PRODUCT_EVENTS } from"@shared/lib/analytics";
 import PreviewModule from"../components/previews/PreviewModule";
+import BrandedSlide from"../components/carousel/BrandedSlide";
+import { exportSlidePngs } from"../components/carousel/exportSlides";
+import {
+ ASPECT_SIZE,
+ PLATFORM_ASPECT,
+ defaultBrand,
+ type CarouselBrand,
+ type CarouselPack,
+ type CarouselPlatform,
+} from"../components/carousel/types";
+import WebsitePostCard from"../components/creative/WebsitePostCard";
 import {
  ArrowRight,
  CalendarClock,
  Check,
+ CheckCircle2,
  ChevronLeft,
  Facebook,
  Globe2,
+ Image as ImageIcon,
  Instagram,
+ Layers,
  Link2,
  Linkedin,
  Loader2,
  MessageCircle,
- PanelRight,
  Send,
+ ShieldCheck,
  Sparkles,
  Twitter,
  Youtube,
 } from"lucide-react";
 
 const SCAN_STEPS = [
- "Fetching your site",
- "Finding logo & icons",
+ "Reading your homepage",
+ "Finding logo & strongest imagery",
  "Sampling brand colors",
- "Reading voice & audience",
+ "Extracting audience, offer & voice",
+ "Preparing content evidence",
 ];
 
 function normalizeInputUrl(raw: string): string {
@@ -93,9 +108,23 @@ const PREVIEW_PLATFORMS: SocialPlatform[] = [
 
 type SamplePost = {
  id: string;
+ hook: string;
  caption: string;
  hashtags: string[];
+ whyShare?: string;
+ trendUsed?: string;
 };
+
+function firstSentence(value: string): string {
+ const line = value.split(/\n+/).map((part) => part.trim()).find(Boolean) ?? value.trim();
+ const sentence = line.match(/^.{1,110}?[.!?](?:\s|$)/)?.[0]?.trim() ?? line;
+ return sentence.slice(0, 110).replace(/[.!?]+$/, "");
+}
+
+function supportingCopy(value: string, hook: string): string {
+ const rest = value.replace(hook, "").replace(/^[\s.!?—:-]+/, "").trim();
+ return (rest || value).slice(0, 180);
+}
 
 function buildBrandSamples(
  extracted: BrandExtractResult | null,
@@ -119,23 +148,26 @@ function buildBrandSamples(
  const captions = (fromSite.length >= 1 ? fromSite : fallbacks).slice(0, 3);
  return captions.map((caption, i) => ({
  id: `sample-${i}`,
+ hook: firstSentence(caption),
  caption,
  hashtags: tags,
  }));
 }
 
 const STEPS = [
- { title: "Connect your channels", icon: Link2 },
  { title: "Your website", icon: Globe2 },
- { title: "See it in action", icon: Sparkles },
+ { title: "Connect your channels", icon: Link2 },
+ { title: "Review & approve", icon: ShieldCheck },
 ];
 
 export default function Onboarding() {
  const { user } = useAuth();
  const navigate = useNavigate();
+ const location = useLocation();
  const [searchParams] = useSearchParams();
  const preset = getPreset(searchParams.get("preset"));
- const [step, setStep] = useState(0);
+ const channelSetupOnly = location.pathname.endsWith("/channels");
+ const [step, setStep] = useState(channelSetupOnly ? 1 : 0);
  const [legacyAccounts, setLegacyAccounts] = useState<SocialAccount[]>([]);
  const [connecting, setConnecting] = useState<
  "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp" | null
@@ -147,6 +179,10 @@ export default function Onboarding() {
  const connectUrl = useAction(api.social.connectUrl);
  const createPost = useAction(api.studio.createPost);
  const generateCopy = useAction(api.studio.generateCopy);
+ const generateCarousel = useAction(api.carousel.generate);
+ const uploadUrl = useMutation(api.studio.uploadUrl);
+ const resolveUpload = useMutation(api.studio.resolveUpload);
+ const upsertWebsiteBrand = useMutation(api.brands.upsertFromWebsite);
 
  const accounts: SocialAccount[] = useMemo(() => {
  if (isConvexConfigured && convexAccounts) {
@@ -174,6 +210,7 @@ export default function Onboarding() {
  }
  return map;
  }, [accounts]);
+ const hasActiveChannel = accounts.some((account) => account.status === "active");
 
  // brand — website fetch only
  const [websiteUrl, setWebsiteUrl] = useState("");
@@ -190,12 +227,42 @@ export default function Onboarding() {
  const [samples, setSamples] = useState<SamplePost[]>([]);
  const [activeSampleId, setActiveSampleId] = useState<string>("sample-0");
  const [generating, setGenerating] = useState(false);
+ const [creativeMode, setCreativeMode] = useState<"image" | "carousel">("image");
  const [previewImageUrl, setPreviewImageUrl] = useState("");
- const [publishableImageUrl, setPublishableImageUrl] = useState("");
+ const [carouselPack, setCarouselPack] = useState<CarouselPack | null>(null);
+ const [carouselGenerating, setCarouselGenerating] = useState(false);
+ const [activeCarouselSlide, setActiveCarouselSlide] = useState(0);
+ const [clientApproved, setClientApproved] = useState(false);
  const [posting, setPosting] = useState(false);
  const [previewCollapsed, setPreviewCollapsed] = useState(false);
+ const imageCardRef = useRef<HTMLDivElement | null>(null);
+ const carouselSlideRefs = useRef<(HTMLDivElement | null)[]>([]);
+ const contentHydratedRef = useRef(false);
+ const viewedStepRef = useRef<string | null>(null);
 
  const timezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+
+ const carouselPlatform: CarouselPlatform =
+ previewPlatform === "instagram" || previewPlatform === "linkedin"
+ ? previewPlatform
+ : "instagram";
+ const carouselAspect = PLATFORM_ASPECT[carouselPlatform];
+ const carouselPreviewScale = 340 / ASPECT_SIZE[carouselAspect].w;
+ const creativeBrand: CarouselBrand = useMemo(
+ () =>
+ defaultBrand({
+ name: brandName || extracted?.companyName || "Your Brand",
+ logoUrl: extracted?.logoUrl,
+ colors: {
+ primary: extracted?.colors.primary || "#171614",
+ secondary: extracted?.colors.secondary || extracted?.colors.accent || "#5f4b8b",
+ accent: extracted?.colors.accent || extracted?.colors.secondary || "#f2c14e",
+ text: "#ffffff",
+ muted: "rgba(255,255,255,0.78)",
+ },
+ }),
+ [brandName, extracted],
+ );
 
  useEffect(() => {
  if (!user || isConvexConfigured) return;
@@ -203,8 +270,38 @@ export default function Onboarding() {
  }, [user]);
 
  useEffect(() => {
- captureEvent("onboarding_started", { preset: preset?.label ?? "none" });
+ captureEvent(PRODUCT_EVENTS.onboardingStarted, {
+ preset: preset?.label ?? "none",
+ entry: channelSetupOnly ? "explicit_channel_setup" : "initial",
+ });
  }, [preset?.label]);
+
+ useEffect(() => {
+ const stepKey = `${channelSetupOnly ? "explicit" : "initial"}:${step}`;
+ if (viewedStepRef.current === stepKey) return;
+ viewedStepRef.current = stepKey;
+ const stepLabel = step === 0 ? "website" : step === 1 ? "social" : "review";
+ captureEvent(PRODUCT_EVENTS.onboardingStepViewed, {
+ step: stepLabel,
+ entry: channelSetupOnly ? "explicit_channel_setup" : "initial",
+ });
+
+ // The automatic social-channel chooser is presented only in the initial
+ // website-first attempt. If it is skipped, OnboardingGate lets the user into
+ // the dashboard; a later chooser opens only after an explicit setup action.
+ if (step === 1 && !channelSetupOnly && user && db) {
+ void setDoc(
+ doc(db, "users", user.uid),
+ {
+ socialSetupAttempted: true,
+ socialSetupPresentedAt: serverTimestamp(),
+ onboardingDeferred: true,
+ onboardingLastAction: "social_setup_presented",
+ },
+ { merge: true },
+ );
+ }
+ }, [channelSetupOnly, step, user]);
 
  // Returning from the OAuth round-trip: surface the result and refresh.
  useEffect(() => {
@@ -212,7 +309,10 @@ export default function Onboarding() {
  const social = params.get("social");
  if (!social) return;
  if (social === "connected") {
- captureEvent("channel_connected", { channel: params.get("provider") ?? "unknown", source: "onboarding" });
+ captureEvent(PRODUCT_EVENTS.channelConnected, {
+ channel: params.get("provider") ?? "unknown",
+ source: "onboarding",
+ });
  toast.success(`${params.get("provider") ?? "Channel"} connected`);
  if (user && !isConvexConfigured) {
  getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
@@ -231,7 +331,10 @@ export default function Onboarding() {
  const handleConnect = async (
  provider: "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp",
  ) => {
- captureEvent("channel_connect_started", { channel: provider, source: "onboarding" });
+ captureEvent(PRODUCT_EVENTS.channelConnectStarted, {
+ channel: provider,
+ source: "onboarding",
+ });
  setConnecting(provider);
  try {
  if (!isConvexConfigured) {
@@ -241,7 +344,7 @@ export default function Onboarding() {
  }
  const { url, redirectUri } = await connectUrl({
  provider,
- returnTo: "/onboarding",
+ returnTo: "/onboarding/channels",
  returnOrigin: window.location.origin,
  loginHint: user?.email ?? undefined,
  });
@@ -272,8 +375,12 @@ export default function Onboarding() {
  toast.error("Enter your website URL first.");
  return;
  }
+ captureEvent(PRODUCT_EVENTS.onboardingWebsiteFetchStarted, {
+ source: "onboarding",
+ });
  setBrandPhase("scanning");
  setExtracted(null);
+ contentHydratedRef.current = false;
  try {
  const result = await extractBrandFromWebsite({ url });
  if (!result.companyName && !result.logoUrl && !result.colors?.primary) {
@@ -322,17 +429,80 @@ export default function Onboarding() {
  : undefined,
  brandedImageUrl: extracted.brandedImageUrl || undefined,
  });
+ if (isConvexConfigured) {
+ try {
+ await upsertWebsiteBrand({
+ legacyId: id,
+ name: extracted.companyName || new URL(extractedUrl).hostname,
+ websiteUrl: extractedUrl,
+ logoUrl: extracted.logoUrl || undefined,
+ colors: {
+ primary: extracted.colors.primary || "#111111",
+ secondary: extracted.colors.secondary,
+ accent: extracted.colors.accent,
+ },
+ industry: extracted.industry || undefined,
+ toneOfVoice: extracted.tone || undefined,
+ audience: extracted.audience || undefined,
+ hashtagSets: {
+ default: (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean),
+ },
+ sampleCaptions: extracted.sampleCaptions?.length
+ ? extracted.sampleCaptions
+ : undefined,
+ });
+ } catch (error) {
+ console.warn("[onboarding] Convex brand sync will retry from the saved kit", error);
+ }
+ }
  setBrandProfileId(id);
  setBrandName(extracted.companyName || new URL(extractedUrl).hostname);
  setToneOfVoice(extracted.tone || "");
+ if (db) {
+ await setDoc(
+ doc(db, "users", user.uid),
+ {
+ websiteSetupEnabledAt: serverTimestamp(),
+ onboardingLastAction: "website_enabled",
+ },
+ { merge: true },
+ );
+ }
  captureEvent("brand_kit_completed", { source: "onboarding", has_website: true });
- setStep(2);
+ captureEvent(PRODUCT_EVENTS.onboardingWebsiteEnabled, {
+ source: "onboarding",
+ });
+ setStep(1);
  } catch (error) {
  toast.error(error instanceof Error ? error.message :"Could not save brand");
  setBrandPhase("ready");
  } finally {
  setSaving(false);
  }
+ };
+
+ const deferOnboarding = async (section: "website" | "social") => {
+ if (user && db) {
+ await setDoc(
+ doc(db, "users", user.uid),
+ {
+ onboardingDeferred: true,
+ onboardingLastAction: `${section}_skipped`,
+ ...(section === "website"
+ ? { websiteSetupSkippedAt: serverTimestamp() }
+ : { socialSetupSkippedAt: serverTimestamp() }),
+ },
+ { merge: true },
+ );
+ }
+ captureEvent(
+ section === "website"
+ ? PRODUCT_EVENTS.onboardingWebsiteSkipped
+ : PRODUCT_EVENTS.onboardingSocialSkipped,
+ { entry: channelSetupOnly ? "explicit_channel_setup" : "initial" },
+ );
+ toast("Setup saved for later. Maya stays locked until both steps are complete.");
+ navigate("/");
  };
 
  const activeSample = samples.find((s) => s.id === activeSampleId) ?? samples[0] ?? null;
@@ -349,38 +519,77 @@ export default function Onboarding() {
  setActiveSampleId(local[0]?.id ?? "sample-0");
  const discoveredImage = extracted?.websiteImages?.[0]?.url ?? "";
  setPreviewImageUrl(extracted?.brandedImageUrl || discoveredImage);
- setPublishableImageUrl(extracted?.brandedImageUrl || "");
 
- // Best-effort AI polish via Convex — never blocks the UI if it fails.
+ // Best-effort AI polish via Convex — local website-derived samples stay
+ // visible while the trend-aware image copy and carousel are prepared.
  if (!isConvexConfigured) return;
  setGenerating(true);
- try {
- const polished = await generateCopy({
+ setCarouselGenerating(true);
+ const websiteEvidence = [
+ extractedUrl && `Website: ${extractedUrl}`,
+ extracted?.industry && `Industry: ${extracted.industry}`,
+ extracted?.audience && `Audience: ${extracted.audience}`,
+ toneOfVoice && `Tone: ${toneOfVoice}`,
+ extracted?.sampleCaptions?.length &&
+ `Website-derived voice examples:\n${extracted.sampleCaptions.map((caption) => `- ${caption}`).join("\n")}`,
+ ]
+ .filter(Boolean)
+ .join("\n");
+ const carouselTopic =
+ extracted?.sampleCaptions?.[0] ||
+ (extracted?.audience
+ ? `A practical idea ${extracted.audience} can use today`
+ : `A practical guide from ${brandName || extracted?.companyName || "this brand"}`);
+
+ const [copyResult, carouselResult] = await Promise.allSettled([
+ generateCopy({
  presetId: "text-post",
  platform: previewPlatform,
  prompt: SAMPLE_BRIEF,
  productName: brandName || extracted?.companyName || undefined,
- context: [
- extracted?.industry && `Industry: ${extracted.industry}`,
- extracted?.audience && `Audience: ${extracted.audience}`,
- toneOfVoice && `Tone: ${toneOfVoice}`,
- extractedUrl && `Website: ${extractedUrl}`,
- ]
- .filter(Boolean)
- .join("\n"),
- });
+ context: websiteEvidence,
+ }),
+ generateCarousel({
+ topic: carouselTopic,
+ brandName: brandName || extracted?.companyName || "Your Brand",
+ brandTone: toneOfVoice || undefined,
+ audience: extracted?.audience || undefined,
+ industry: extracted?.industry || undefined,
+ websiteUrl: extractedUrl || undefined,
+ websiteContext: websiteEvidence || undefined,
+ platform: carouselPlatform,
+ slideCount: 5,
+ }),
+ ]);
+
+ if (copyResult.status === "fulfilled") {
+ const polished = copyResult.value;
  const next: SamplePost = {
  id: "ai-0",
+ hook: polished.hook || firstSentence(polished.caption),
  caption: polished.caption,
  hashtags: (polished.hashtags ?? []).map((h) => h.replace(/^#/, "")),
+ whyShare: polished.whyShare,
+ trendUsed: polished.trendUsed,
  };
  setSamples((prev) => [next, ...prev.filter((s) => s.id !== "ai-0")].slice(0, 3));
  setActiveSampleId("ai-0");
- } catch {
- // Local brand samples already on screen.
- } finally {
- setGenerating(false);
  }
+ if (carouselResult.status === "fulfilled") {
+ const result = carouselResult.value;
+ setCarouselPack({
+ topic: result.topic,
+ caption: result.caption,
+ hashtags: result.hashtags,
+ hookFamily: result.hookFamily,
+ trendUsed: result.trendUsed,
+ whySave: result.whySave,
+ slides: result.slides as CarouselPack["slides"],
+ });
+ setActiveCarouselSlide(0);
+ }
+ setGenerating(false);
+ setCarouselGenerating(false);
  };
 
  const handlePreviewPlatform = (platform: SocialPlatform) => {
@@ -388,15 +597,59 @@ export default function Onboarding() {
  };
 
  useEffect(() => {
- if (step !== 2) return;
+ setClientApproved(false);
+ }, [activeSampleId, creativeMode, previewPlatform]);
+
+ useEffect(() => {
+ if (step !== 2 || contentHydratedRef.current) return;
+ contentHydratedRef.current = true;
  void hydrateSamples();
  // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [step]);
 
+ const activeCaption =
+ creativeMode === "carousel" ? carouselPack?.caption ?? "" : activeSample?.caption ?? "";
+ const activeHashtags =
+ creativeMode === "carousel" ? carouselPack?.hashtags ?? [] : activeSample?.hashtags ?? [];
+ const activeHook =
+ creativeMode === "carousel"
+ ? carouselPack?.slides[0]?.title ?? ""
+ : activeSample?.hook || firstSentence(activeSample?.caption ?? "");
+ const activeSupporting =
+ creativeMode === "carousel"
+ ? carouselPack?.slides[0]?.body ?? ""
+ : supportingCopy(activeSample?.caption ?? "", activeHook);
+ const activeTrend =
+ creativeMode === "carousel" ? carouselPack?.trendUsed : activeSample?.trendUsed;
+ const activeShareReason =
+ creativeMode === "carousel" ? carouselPack?.whySave : activeSample?.whyShare;
+
+ const uploadCreativePngs = async (dataUrls: string[]): Promise<string[]> => {
+ const urls: string[] = [];
+ for (const dataUrl of dataUrls) {
+ const blob = await (await fetch(dataUrl)).blob();
+ const target = await uploadUrl({});
+ const response = await fetch(target, {
+ method: "POST",
+ headers: { "Content-Type": "image/png" },
+ body: blob,
+ });
+ if (!response.ok) throw new Error("Creative upload failed");
+ const { storageId } = (await response.json()) as { storageId: string };
+ const resolved = await resolveUpload({ storageId: storageId as any });
+ urls.push(resolved.url);
+ }
+ return urls;
+ };
+
  const handleQuickPost = async (mode: "now" | "schedule") => {
- if (!activeSample) return;
+ if (!activeCaption) return;
  if (!isConvexConfigured) {
  toast.error("Convex is not configured — can't publish yet.");
+ return;
+ }
+ if (!clientApproved) {
+ toast.error("Please approve the copy and creative before posting.");
  return;
  }
  if (!activeAccountForPreview) {
@@ -408,24 +661,41 @@ export default function Onboarding() {
  toast.error("YouTube requires a video. Use this branded creative as the visual direction in Studio.");
  return;
  }
- if (!publishableImageUrl) {
+ if (creativeMode === "carousel" && !["instagram", "linkedin"].includes(previewPlatform)) {
+ toast.error("Carousel posting is currently available for Instagram and LinkedIn.");
+ return;
+ }
+ if (creativeMode === "image" && !previewImageUrl) {
  toast.error(
  `A finished branded image is required before posting to ${PLATFORM_META[previewPlatform].label}. Fetch the website again or use Studio.`,
  );
  return;
  }
+ if (creativeMode === "carousel" && !carouselPack) {
+ toast.error("The carousel is still being created.");
+ return;
+ }
 
  setPosting(true);
  try {
+ const dataUrls =
+ creativeMode === "carousel"
+ ? await exportSlidePngs(carouselSlideRefs.current)
+ : await exportSlidePngs([imageCardRef.current]);
+ if (!dataUrls.length) throw new Error("Creative preview is not ready to export");
+ const mediaUrls = await uploadCreativePngs(dataUrls);
  const result = await createPost({
- caption: activeSample.caption,
- hashtags: activeSample.hashtags,
+ caption: activeCaption,
+ hashtags: activeHashtags,
  platforms: [previewPlatform],
  socialAccountIds: [activeAccountForPreview.id],
- mediaUrl: publishableImageUrl || undefined,
- mediaType: publishableImageUrl ? "image" : undefined,
- mediaSource: publishableImageUrl ? "upload" : undefined,
- brief: SAMPLE_BRIEF,
+ mediaUrls,
+ mediaType: "image",
+ mediaSource: "upload",
+ brief:
+ creativeMode === "carousel"
+ ? carouselPack?.topic || SAMPLE_BRIEF
+ : SAMPLE_BRIEF,
  brandProfileId: brandProfileId || undefined,
  mode,
  timezone,
@@ -435,8 +705,8 @@ export default function Onboarding() {
  if (result.status === "posted") captureEvent("post_published", { channel: previewPlatform, source: "onboarding" });
  toast.success(
  result.status === "posted"
- ? `Posted to ${PLATFORM_META[previewPlatform].label}`
- : `Sending to ${PLATFORM_META[previewPlatform].label} now…`,
+ ? `${creativeMode === "carousel" ? "Carousel" : "Image"} posted to ${PLATFORM_META[previewPlatform].label}`
+ : `Approved — sending to ${PLATFORM_META[previewPlatform].label} now…`,
  );
  } else {
  captureEvent("post_scheduled", { channel: previewPlatform, source: "onboarding" });
@@ -462,13 +732,47 @@ export default function Onboarding() {
 
  const finish = async (goToWizard: boolean) => {
  if (!user || !db) return;
+ if (!brandProfileId) {
+ toast.error("Link your website before completing setup.");
+ setStep(0);
+ return;
+ }
+ if (!hasActiveChannel) {
+ toast.error("Connect at least one social channel before activating Maya.");
+ setStep(1);
+ return;
+ }
  await setDoc(
  doc(db, "users", user.uid),
- { onboardingComplete: true },
+ {
+ onboardingComplete: true,
+ onboardingDeferred: false,
+ onboardingCompletedAt: serverTimestamp(),
+ },
  { merge: true },
  );
- captureEvent("onboarding_completed", { next: goToWizard ? "automation_wizard" : "dashboard" });
+ captureEvent(PRODUCT_EVENTS.onboardingCompleted, {
+ next: goToWizard ? "automation_wizard" : "dashboard",
+ });
  navigate(goToWizard ? "/automations/new" : "/");
+ };
+
+ const activateMayaAfterChannel = async () => {
+ if (!user || !db || !hasActiveChannel) return;
+ await setDoc(
+ doc(db, "users", user.uid),
+ {
+ onboardingComplete: true,
+ onboardingDeferred: false,
+ onboardingCompletedAt: serverTimestamp(),
+ },
+ { merge: true },
+ );
+ captureEvent(PRODUCT_EVENTS.onboardingCompleted, {
+ next: "maya",
+ source: "channel_setup",
+ });
+ navigate("/maya");
  };
 
  return (
@@ -481,12 +785,12 @@ export default function Onboarding() {
  >
  <div className="mb-10 text-center">
  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-foreground text-background">
- {step === 0 ? <Link2 className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
+ {step === 0 ? <Globe2 className="h-6 w-6" /> : step === 1 ? <Link2 className="h-6 w-6" /> : <ShieldCheck className="h-6 w-6" />}
  </div>
  <span className="eyebrow">Get started</span>
- <h1 className="mt-2 font-display text-4xl tracking-tight">Welcome to MagicBox</h1>
+ <h1 className="mt-2 font-display text-4xl tracking-tight">Turn your website into a campaign</h1>
  <p className="mt-2 text-muted-foreground">
- Connect channels, fetch your brand, see a sample post.
+ Start with your site. Review the creative. Nothing posts without your approval.
  </p>
  </div>
 
@@ -518,7 +822,7 @@ export default function Onboarding() {
  exit={{ opacity: 0, y: -10 }}
  transition={{ duration: 0.2 }}
  >
- {step === 0 && (
+ {step === 1 && (
  <div className="glass-card space-y-5 p-6">
  {preset && (
  <div className="rounded-lg border border-brand/20 bg-brand/[0.06] p-4">
@@ -546,10 +850,10 @@ export default function Onboarding() {
  </div>
  )}
  <div>
- <h2 className="font-display text-2xl">{STEPS[0].title}</h2>
+ <h2 className="font-display text-2xl">{STEPS[1].title}</h2>
  <p className="mt-1 text-sm text-muted-foreground">
- Connect the accounts MagicBox should publish to. Instagram needs a Business or
- Creator account linked to a Facebook Page. You can skip and connect later in Settings.
+ Connect at least one channel where approved content can go. Nothing is posted
+ at this step; the connection activates Maya after your website is ready.
  </p>
  </div>
 
@@ -617,9 +921,9 @@ export default function Onboarding() {
  )}
 
  {accounts.length === 0 && (
- <div className="rounded-lg border border-border bg-secondary/50 p-3 text-xs text-muted-foreground">
+ <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3 text-xs text-muted-foreground">
  YouTube connects via Google. Instagram and LinkedIn may need app review for other
- users. You can skip and connect later in Settings.
+ users. Choose at least one channel to continue.
  </div>
  )}
 
@@ -653,28 +957,44 @@ export default function Onboarding() {
  })}
  </div>
 
- {accounts.length > 0 ? (
- <Button onClick={() => setStep(1)} className="w-full py-5">
- Continue <ArrowRight className="ml-1.5 h-4 w-4" />
- </Button>
- ) : (
+ <div className="grid gap-2 sm:grid-cols-[auto_auto_1fr]">
  <Button
- onClick={() => setStep(1)}
- variant="outline"
+ onClick={() => setStep(0)}
+ variant="ghost"
+ className="text-muted-foreground"
+ >
+ Back to website
+ </Button>
+ <Button
+ onClick={() => void deferOnboarding("social")}
+ variant="ghost"
+ className="text-muted-foreground"
+ >
+ Skip for now
+ </Button>
+ <Button
+ onClick={() => channelSetupOnly ? void activateMayaAfterChannel() : setStep(2)}
+ disabled={!hasActiveChannel}
  className="w-full py-5"
  >
- Skip for now <ArrowRight className="ml-1.5 h-4 w-4" />
+ {hasActiveChannel
+ ? channelSetupOnly
+ ? "Activate Maya"
+ : "Review my campaign"
+ : "Connect one channel to continue"}
+ <ArrowRight className="ml-1.5 h-4 w-4" />
  </Button>
- )}
+ </div>
  </div>
  )}
 
- {step === 1 && (
+ {step === 0 && (
  <div className="glass-card space-y-5 p-6">
  <div>
  <h2 className="font-display text-2xl">Your website</h2>
  <p className="mt-1 text-sm text-muted-foreground">
- Paste your site URL. We fetch logo, colors, voice, and audience — no manual brand form.
+ Paste your site URL. MagicBox extracts the strongest content, imagery, logo,
+ palette, audience, and voice — then turns them into campaign drafts.
  </p>
  </div>
 
@@ -721,7 +1041,7 @@ export default function Onboarding() {
  ) : (
  <Sparkles className="mr-1.5 h-4 w-4" />
  )}
- {brandPhase === "scanning" ? "Fetching…" : "Fetch brand"}
+ {brandPhase === "scanning" ? "Building…" : "Build my campaign"}
  </Button>
  </div>
  </div>
@@ -827,10 +1147,10 @@ export default function Onboarding() {
  <div className="flex gap-3 pt-1">
  <Button
  variant="ghost"
- onClick={() => setStep(2)}
+ onClick={() => void deferOnboarding("website")}
  className="flex-1 text-muted-foreground hover:text-foreground"
  >
- Skip for now
+ Skip setup for now
  </Button>
  <Button
  onClick={() => void handleSaveBrand()}
@@ -838,7 +1158,7 @@ export default function Onboarding() {
  className="flex-1 bg-brand hover:bg-brand"
  >
  {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
- Save & continue
+ Save brand & continue
  </Button>
  </div>
  </div>
@@ -859,113 +1179,226 @@ export default function Onboarding() {
  !previewCollapsed && "pb-[min(52vh,440px)] lg:pb-0",
  )}
  >
- <div className="glass-card p-6">
+ <div className="glass-card overflow-hidden">
+ <div className="border-b border-border bg-secondary/35 p-6">
  <div className="flex flex-wrap items-start justify-between gap-3">
  <div>
- <h2 className="font-display text-2xl">{STEPS[2].title}</h2>
- <p className="mt-1 text-sm text-muted-foreground">
- Sample posts use your website imagery, brand colors, logo, and voice. Post now
- if a channel is connected.
+ <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-brand">
+ <ShieldCheck className="h-3.5 w-3.5" />
+ Approval workspace
+ </div>
+ <h2 className="font-display text-3xl">{STEPS[2].title}</h2>
+ <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+ MagicBox used the website&apos;s strongest imagery, logo, palette, audience, and
+ voice. Review the hook and finished creative before granting permission to post.
  </p>
  </div>
- <div className="flex items-center gap-2">
  {(extracted?.logoUrl || brandName) && (
- <div className="flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1.5">
+ <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 shadow-sm">
  {extracted?.logoUrl ? (
  <img
  src={extracted.logoUrl}
  alt=""
- className="h-6 w-6 rounded-full object-cover"
+ className="h-7 w-7 rounded-full object-contain"
  />
  ) : null}
- <span className="text-xs font-medium">{brandName || "Your brand"}</span>
+ <span className="text-xs font-semibold">{brandName || "Your brand"}</span>
  </div>
  )}
- {previewCollapsed && (
- <Button
- type="button"
- variant="outline"
- size="sm"
- className="lg:hidden"
- onClick={() => setPreviewCollapsed(false)}
- >
- <PanelRight className="mr-1.5 h-3.5 w-3.5" />
- Show preview
- </Button>
- )}
+ </div>
+ <div className="mt-5 grid gap-2 sm:grid-cols-3">
+ {[
+ ["Website grounded", "Copy follows the supplied site"],
+ ["Logo locked", "Brand mark stays consistent"],
+ ["Permission first", "No automatic publishing"],
+ ].map(([label, detail]) => (
+ <div key={label} className="rounded-lg border border-border bg-card px-3 py-2.5">
+ <div className="flex items-center gap-1.5 text-xs font-semibold">
+ <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+ {label}
+ </div>
+ <p className="mt-0.5 text-[11px] text-muted-foreground">{detail}</p>
+ </div>
+ ))}
  </div>
  </div>
 
- {samples.length > 1 && (
- <div className="mt-4 flex flex-wrap gap-2">
- {samples.map((s, i) => (
+ <div className="space-y-5 p-6">
+ <div className="grid grid-cols-2 gap-2 rounded-xl bg-secondary p-1.5">
  <button
- key={s.id}
  type="button"
- onClick={() => setActiveSampleId(s.id)}
+ onClick={() => setCreativeMode("image")}
  className={cn(
- "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
- activeSampleId === s.id
- ? "border-brand/60 bg-brand/15 text-brand"
+ "flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-all",
+ creativeMode === "image"
+ ? "bg-card text-foreground shadow-sm ring-1 ring-border"
+ : "text-muted-foreground hover:text-foreground",
+ )}
+ >
+ <ImageIcon className="h-4 w-4" />
+ Image post
+ </button>
+ <button
+ type="button"
+ onClick={() => setCreativeMode("carousel")}
+ className={cn(
+ "flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-all",
+ creativeMode === "carousel"
+ ? "bg-card text-foreground shadow-sm ring-1 ring-border"
+ : "text-muted-foreground hover:text-foreground",
+ )}
+ >
+ <Layers className="h-4 w-4" />
+ Carousel {carouselPack ? `· ${carouselPack.slides.length} slides` : ""}
+ </button>
+ </div>
+
+ {creativeMode === "image" && samples.length > 1 && (
+ <div className="flex flex-wrap gap-2">
+ {samples.map((sample, index) => (
+ <button
+ key={sample.id}
+ type="button"
+ onClick={() => setActiveSampleId(sample.id)}
+ className={cn(
+ "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+ activeSampleId === sample.id
+ ? "border-foreground bg-foreground text-background"
  : "border-border text-muted-foreground hover:bg-secondary",
  )}
  >
- Sample {i + 1}
+ Hook {index + 1}
  </button>
  ))}
  </div>
  )}
 
- {generating && (
- <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
- {activeSample ? "Polishing with AI…" : "Writing samples in your brand voice…"}
- </p>
+ {creativeMode === "carousel" && carouselPack && (
+ <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-2">
+ {carouselPack.slides.map((slide, index) => (
+ <button
+ key={`${slide.title}-${index}`}
+ type="button"
+ onClick={() => setActiveCarouselSlide(index)}
+ className={cn(
+ "snap-start rounded-lg border px-3 py-2 text-left transition-colors",
+ activeCarouselSlide === index
+ ? "border-foreground bg-foreground text-background"
+ : "border-border bg-card text-muted-foreground hover:bg-secondary",
  )}
-
- {!activeSample && !generating && (
- <div className="mt-5 flex h-40 items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
- Go back and fetch a website to unlock branded samples.
+ >
+ <span className="font-mono text-[9px] uppercase tracking-widest">
+ {index + 1}/{carouselPack.slides.length}
+ </span>
+ <span className="mt-0.5 block max-w-36 truncate text-xs font-semibold">
+ {slide.title}
+ </span>
+ </button>
+ ))}
  </div>
  )}
 
- {activeSample && (
- <div className="mt-5 space-y-2">
+ {(generating || carouselGenerating) && (
+ <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
+ <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
+ {generating && carouselGenerating
+ ? "Writing the strongest hooks and building the carousel…"
+ : carouselGenerating
+ ? "Building the carousel…"
+ : "Polishing the image-post copy…"}
+ </div>
+ )}
+
+ {activeCaption ? (
+ <div className="rounded-xl border border-border bg-card p-4">
+ <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+ {creativeMode === "carousel" ? "Carousel caption" : "Post copy"}
+ </div>
+ <h3 className="mt-2 font-display text-xl leading-tight">{activeHook}</h3>
+ <p className="mt-2 line-clamp-5 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
+ {activeCaption}
+ </p>
+ <div className="mt-3 flex flex-wrap gap-1.5">
+ {activeHashtags.slice(0, 6).map((tag) => (
+ <span key={tag} className="rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">
+ #{tag.replace(/^#/, "")}
+ </span>
+ ))}
+ </div>
+ {(activeTrend || activeShareReason) ? (
+ <div className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+ {activeTrend ? (
+ <p><span className="font-semibold text-foreground">Trend signal:</span> {activeTrend}</p>
+ ) : null}
+ {activeShareReason ? (
+ <p className="mt-1">
+ <span className="font-semibold text-foreground">
+ {creativeMode === "carousel" ? "Why it earns a save:" : "Why it earns a share:"}
+ </span>{" "}
+ {activeShareReason}
+ </p>
+ ) : null}
+ </div>
+ ) : null}
+ </div>
+ ) : !generating && !carouselGenerating ? (
+ <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
+ Go back and enter a website to unlock branded campaign drafts.
+ </div>
+ ) : null}
+
+ {creativeMode === "carousel" && !["instagram", "linkedin"].includes(previewPlatform) && (
+ <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800">
+ Multi-image publishing is currently available for Instagram and LinkedIn.
+ Switch the preview platform to approve this carousel.
+ </div>
+ )}
+
+ <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-foreground/15 bg-secondary/60 p-4">
+ <input
+ type="checkbox"
+ checked={clientApproved}
+ onChange={(event) => setClientApproved(event.target.checked)}
+ className="mt-0.5 h-4 w-4 accent-black"
+ />
+ <span>
+ <span className="block text-sm font-semibold text-foreground">
+ I approve this copy and creative for {PLATFORM_META[previewPlatform].label}
+ </span>
+ <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+ MagicBox will only post the version visible in the preview. Editing the hook,
+ format, or platform clears this permission and asks again.
+ </span>
+ </span>
+ </label>
+
  {activeAccountForPreview ? (
  <div className="grid gap-2 sm:grid-cols-2">
  <Button
  onClick={() => void handleQuickPost("now")}
- disabled={posting}
+ disabled={posting || !clientApproved || !activeCaption}
  className="w-full py-5"
  >
- {posting ? (
- <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
- ) : (
- <Send className="mr-1.5 h-4 w-4" />
- )}
- Post now
+ {posting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+ Approve & post now
  </Button>
  <Button
  variant="outline"
  onClick={() => void handleQuickPost("schedule")}
- disabled={posting}
+ disabled={posting || !clientApproved || !activeCaption}
  className="w-full py-5"
  >
- {posting ? (
- <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
- ) : (
- <CalendarClock className="mr-1.5 h-4 w-4" />
- )}
- Next best time
+ {posting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CalendarClock className="mr-1.5 h-4 w-4" />}
+ Approve for next best time
  </Button>
  </div>
  ) : (
- <div className="rounded-lg border border-dashed border-border bg-secondary/40 px-4 py-3 text-center text-xs text-muted-foreground">
- Connect {PLATFORM_META[previewPlatform].label} in step 1 to quick-post this
- sample.
- </div>
+ <Button variant="outline" onClick={() => setStep(1)} className="w-full py-5">
+ Connect {PLATFORM_META[previewPlatform].label} to post after approval
+ <ArrowRight className="ml-1.5 h-4 w-4" />
+ </Button>
  )}
  </div>
- )}
  </div>
 
  <div className="flex gap-3">
@@ -1020,16 +1453,38 @@ export default function Onboarding() {
  ? "min-h-[min(48vh,280px)] lg:min-h-[420px]"
  : "max-h-[min(48vh,420px)] min-h-0 lg:min-h-[480px] lg:max-h-[min(80vh,720px)]",
  )}
- title="Post preview"
+ title={clientApproved ? "Approved preview" : "Approval preview"}
  platform={previewPlatform}
  onPlatformChange={handlePreviewPlatform}
  allowedPlatforms={PREVIEW_PLATFORMS}
  content={
- activeSample
+ activeCaption
  ? {
- caption: activeSample.caption,
- hashtags: activeSample.hashtags,
- imageUrl: previewImageUrl || undefined,
+ caption: activeCaption,
+ hashtags: activeHashtags,
+ mediaAspect: creativeMode === "carousel" ? carouselAspect : "4:5",
+ mediaNode:
+ creativeMode === "carousel" && carouselPack
+ ? (
+ <BrandedSlide
+ slide={carouselPack.slides[activeCarouselSlide] ?? carouselPack.slides[0]}
+ brand={creativeBrand}
+ aspect={carouselAspect}
+ index={activeCarouselSlide}
+ total={carouselPack.slides.length}
+ scale={carouselPreviewScale}
+ />
+ )
+ : (
+ <WebsitePostCard
+ brand={creativeBrand}
+ hook={activeHook}
+ supporting={activeSupporting}
+ eyebrow={extracted?.industry || "From your website"}
+ imageUrl={previewImageUrl || undefined}
+ scale={340 / 1080}
+ />
+ ),
  brandName: brandName || "Your Brand",
  handle: brandName
  ? brandName.toLowerCase().replace(/\s+/g, "")
@@ -1040,11 +1495,64 @@ export default function Onboarding() {
  : null
  }
  emptyHint={
- generating
- ? "Writing samples in your brand voice…"
- : "Go back and fetch a website to unlock branded samples."
+ generating || carouselGenerating
+ ? "Building website-grounded campaign drafts…"
+ : "Go back and enter a website to unlock campaign drafts."
+ }
+ footer={
+ <div className="flex items-center gap-2 text-xs">
+ {clientApproved ? (
+ <>
+ <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+ <span className="font-medium text-emerald-700">Client permission confirmed for this version</span>
+ </>
+ ) : (
+ <>
+ <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+ <span className="text-muted-foreground">Waiting for explicit approval</span>
+ </>
+ )}
+ </div>
  }
  />
+ </div>
+ <div
+ aria-hidden
+ style={{
+ position: "fixed",
+ left: -10000,
+ top: 0,
+ pointerEvents: "none",
+ opacity: 0,
+ }}
+ >
+ {activeCaption ? (
+ <WebsitePostCard
+ brand={creativeBrand}
+ hook={activeHook}
+ supporting={activeSupporting}
+ eyebrow={extracted?.industry || "From your website"}
+ imageUrl={previewImageUrl || undefined}
+ scale={1}
+ cardRef={(element) => {
+ imageCardRef.current = element;
+ }}
+ />
+ ) : null}
+ {carouselPack?.slides.map((slide, index) => (
+ <BrandedSlide
+ key={`onboarding-export-${index}`}
+ slide={slide}
+ brand={creativeBrand}
+ aspect={carouselAspect}
+ index={index}
+ total={carouselPack.slides.length}
+ scale={1}
+ slideRef={(element) => {
+ carouselSlideRefs.current[index] = element;
+ }}
+ />
+ ))}
  </div>
  </div>
  )}

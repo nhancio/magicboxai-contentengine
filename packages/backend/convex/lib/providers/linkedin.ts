@@ -39,7 +39,8 @@ class LinkedInProvider extends BaseProvider implements SocialProvider {
   };
   readonly limits = {
     maxCaptionLength: 3000,
-    maxImages: 1,
+    // LinkedIn's organic MultiImage API accepts 2–20 uploaded image URNs.
+    maxImages: 20,
     maxVideos: 1,
     requiresMedia: false,
   };
@@ -110,6 +111,10 @@ class LinkedInProvider extends BaseProvider implements SocialProvider {
     this.validate(this, input);
 
     const video = input.media.find((m) => m.type === "video");
+    const images = input.media.filter((m) => m.type === "image");
+    if (video && images.length > 0) {
+      throw new BadBodyError("LinkedIn posts cannot mix a video with carousel images");
+    }
     if (video) {
       // The Firebase implementation silently dropped video and published the
       // post as text-only — the user saw "published" and got the wrong post.
@@ -120,7 +125,6 @@ class LinkedInProvider extends BaseProvider implements SocialProvider {
     }
 
     const authorUrn = await this.resolveAuthorUrn(t, input);
-    const image = input.media.find((m) => m.type === "image");
 
     const body: Record<string, unknown> = {
       author: authorUrn,
@@ -135,8 +139,25 @@ class LinkedInProvider extends BaseProvider implements SocialProvider {
       isReshareDisabledByAuthor: false,
     };
 
-    if (image) {
-      body.content = { media: { id: await this.uploadImage(t.accessToken, authorUrn, image.url) } };
+    if (images.length === 1) {
+      body.content = {
+        media: { id: await this.uploadImage(t.accessToken, authorUrn, images[0].url) },
+      };
+    } else if (images.length > 1) {
+      const uploaded: string[] = [];
+      // Keep uploads sequential. LinkedIn upload URLs are single-use and a
+      // bounded carousel is fast enough without creating a burst of 20 calls.
+      for (const image of images) {
+        uploaded.push(await this.uploadImage(t.accessToken, authorUrn, image.url));
+      }
+      body.content = {
+        multiImage: {
+          images: uploaded.map((id, index) => ({
+            id,
+            altText: `Carousel slide ${index + 1} of ${uploaded.length}`,
+          })),
+        },
+      };
     }
 
     const postUrn = await this.createPost(t.accessToken, body);

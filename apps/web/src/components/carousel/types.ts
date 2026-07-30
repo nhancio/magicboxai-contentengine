@@ -35,6 +35,9 @@ export interface CarouselPack {
   topic: string;
   caption: string;
   hashtags: string[];
+  hookFamily?: string;
+  trendUsed?: string;
+  whySave?: string;
   slides: CarouselSlideCopy[];
 }
 
@@ -45,8 +48,10 @@ export const ASPECT_SIZE: Record<CarouselAspect, { w: number; h: number }> = {
 };
 
 export const PLATFORM_ASPECT: Record<CarouselPlatform, CarouselAspect> = {
-  linkedin: "1:1",
-  instagram: "1:1",
+  // 4:5 occupies more feed real estate while remaining accepted by both
+  // platforms. X/Facebook/WhatsApp keep the broadly portable square.
+  linkedin: "4:5",
+  instagram: "4:5",
   facebook: "1:1",
   twitter: "1:1",
   whatsapp: "1:1",

@@ -24,6 +24,8 @@ export interface PreviewContent {
  videoUrl?: string;
  /** Live node rendered inside the media slot (e.g. a carousel slide). Wins over image/video. */
  mediaNode?: ReactNode;
+ /** Finished creative ratio. Lets 4:5 feed work display without square cropping. */
+ mediaAspect?: "1:1" | "4:5" | "16:9";
  brandName?: string;
  handle?: string;
  logoUrl?: string;
@@ -53,10 +55,18 @@ function BrandAvatar({ content, className }: { content: PreviewContent; classNam
 }
 
 function MediaSlot({ content, aspect }: { content: PreviewContent; aspect: string }) {
+ const resolvedAspect =
+ content.mediaAspect === "4:5"
+ ? "aspect-[4/5]"
+ : content.mediaAspect === "16:9"
+ ? "aspect-video"
+ : content.mediaAspect === "1:1"
+ ? "aspect-square"
+ : aspect;
  if (content.mediaNode) {
  return (
  <div
- className={`relative flex w-full ${aspect} items-center justify-center overflow-hidden bg-black`}
+ className={`relative flex w-full ${resolvedAspect} items-center justify-center overflow-hidden bg-black`}
  >
  {content.mediaNode}
  </div>
@@ -83,14 +93,14 @@ function MediaSlot({ content, aspect }: { content: PreviewContent; aspect: strin
  );
  }
  if (content.imageUrl) {
- return <img src={content.imageUrl} alt="" className={`w-full ${aspect} object-cover`} />;
+ return <img src={content.imageUrl} alt="" className={`w-full ${resolvedAspect} object-cover`} />;
  }
  const primary = content.brandColors?.primary || "#7c3aed";
  const secondary = content.brandColors?.secondary || "#1e1b4b";
  const accent = content.brandColors?.accent || primary;
  return (
  <div
- className={`relative w-full ${aspect} flex flex-col items-center justify-center gap-3 overflow-hidden`}
+ className={`relative w-full ${resolvedAspect} flex flex-col items-center justify-center gap-3 overflow-hidden`}
  style={{
  background: `linear-gradient(145deg, ${primary} 0%, ${secondary} 55%, ${accent} 100%)`,
  }}

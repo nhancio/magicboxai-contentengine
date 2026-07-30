@@ -92,7 +92,7 @@ function ReelCard({ format, index }: { format: ReelFormat; index: number }) {
 
   return (
     <div
-      className="group relative aspect-[9/16] w-[200px] shrink-0 snap-center overflow-hidden rounded-2xl border border-foreground/10 bg-neutral-900 shadow-sm transition-transform duration-300 hover:-translate-y-1 sm:w-[230px]"
+      className="group relative aspect-[9/16] w-[200px] shrink-0 overflow-hidden rounded-2xl border border-foreground/10 bg-neutral-900 shadow-sm transition-transform duration-300 hover:-translate-y-1 sm:w-[230px]"
       style={{ transitionDelay: `${index * 40}ms` }}
     >
       <div className={`absolute inset-0 bg-gradient-to-br ${format.poster}`} />
@@ -143,6 +143,7 @@ export function ReelsShowcaseSection() {
     let frameId = 0;
     let previousTime = performance.now();
     let edgePauseUntil = 0;
+    let driftPosition = el.scrollLeft;
 
     const drift = (now: number) => {
       const elapsed = Math.min(now - previousTime, 64);
@@ -157,21 +158,24 @@ export function ReelsShowcaseSection() {
         now >= edgePauseUntil;
 
       if (shouldMove) {
-        const pixelsPerSecond = 12;
-        const next =
-          el.scrollLeft + driftDirectionRef.current * pixelsPerSecond * (elapsed / 1000);
+        const pixelsPerSecond = 25;
+        if (Math.abs(el.scrollLeft - driftPosition) > 2) driftPosition = el.scrollLeft;
+        const next = driftPosition + driftDirectionRef.current * pixelsPerSecond * (elapsed / 1000);
 
         if (next >= maxScroll) {
-          el.scrollLeft = maxScroll;
+          driftPosition = maxScroll;
           driftDirectionRef.current = -1;
           edgePauseUntil = now + 1400;
         } else if (next <= 0) {
-          el.scrollLeft = 0;
+          driftPosition = 0;
           driftDirectionRef.current = 1;
           edgePauseUntil = now + 1400;
         } else {
-          el.scrollLeft = next;
+          driftPosition = next;
         }
+        el.scrollLeft = driftPosition;
+      } else {
+        driftPosition = el.scrollLeft;
       }
 
       frameId = window.requestAnimationFrame(drift);
@@ -261,7 +265,7 @@ export function ReelsShowcaseSection() {
           isPointerOverScrollerRef.current = false;
           pauseAutoScroll(900);
         }}
-        className="no-scrollbar flex snap-x snap-proximity gap-4 overflow-x-auto scroll-smooth px-6 pb-2 lg:px-12"
+        className="no-scrollbar flex gap-4 overflow-x-auto px-6 pb-2 lg:px-12"
       >
         {REEL_FORMATS.map((format, index) => (
           <ReelCard key={format.id} format={format} index={index} />

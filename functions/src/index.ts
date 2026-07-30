@@ -40,7 +40,10 @@ export {
 } from "./social";
 export { automationTick, generationTick, postingTick } from "./scheduler";
 export { extractBrandFromWebsite, generateBrandedPostImage } from "./brand";
-export { onUserCreatedSendWelcome } from "./welcome";
+export {
+  onUserCreatedSendWelcome,
+  onUserUpdatedClaimPendingEntitlement,
+} from "./welcome";
 export { createDodoCheckout, createDodoPortal, dodoWebhook, createGuestCheckout } from "./dodo";
 
 type SubscriptionPlan = "free" | "pro" | "max";

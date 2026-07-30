@@ -9,6 +9,7 @@ import { PRESETS, getPreset } from "./lib/presets";
 import { DEFAULT_SLOTS, nextOpenSlot, type Platform, type Slot } from "./lib/bestTime";
 import { getProvider } from "./lib/providers/registry";
 import { DEFAULT_VEO_SECONDS } from "./credits";
+import { buildStaticCreativeRules } from "./lib/contentEngine";
 
 /**
  * STUDIO — preset-driven creation, and the bridge into publishing.
@@ -26,6 +27,10 @@ const COPY_SCHEMA = {
     caption: { type: "string" },
     hashtags: { type: "array", items: { type: "string" } },
     mediaPrompt: { type: "string" },
+    hookFamily: { type: "string" },
+    trendUsed: { type: "string" },
+    whyShare: { type: "string" },
+    altText: { type: "string" },
   },
   required: ["hook", "caption", "hashtags"],
 } as const;
@@ -122,34 +127,80 @@ export const generateCopy = action({
   handler: async (
     ctx,
     args,
-  ): Promise<{ hook: string; caption: string; hashtags: string[]; mediaPrompt?: string }> => {
+  ): Promise<{
+    hook: string;
+    caption: string;
+    hashtags: string[];
+    mediaPrompt?: string;
+    hookFamily?: string;
+    trendUsed?: string;
+    whyShare?: string;
+    altText?: string;
+  }> => {
     await requireUid(ctx);
     const preset = getPreset(args.presetId);
     const provider = getProvider(args.platform);
+    let trendRows: Array<{
+      kind: string;
+      value: string;
+      title?: string;
+      score: number;
+    }> = [];
+    try {
+      const trends = await ctx.runQuery(internal.trends.brief, {
+        platforms: [args.platform],
+        limitPerPlatform: 6,
+      });
+      trendRows = trends[args.platform] ?? [];
+    } catch (error) {
+      console.warn("[studio] live trend brief unavailable; using evergreen engine", error);
+    }
+    const trendBlock = trendRows.length
+      ? trendRows
+          .map(
+            (trend) =>
+              `- [${trend.kind}] ${trend.value}${trend.title ? ` — ${trend.title}` : ""} (${trend.score.toFixed(2)})`,
+          )
+          .join("\n")
+      : "(No supported live trend fits yet. Prefer an evergreen audience need.)";
+    const staticRules = buildStaticCreativeRules([args.platform]);
 
     const result = await geminiJson<{
       hook: string;
       caption: string;
       hashtags: string[];
       mediaPrompt?: string;
+      hookFamily?: string;
+      trendUsed?: string;
+      whyShare?: string;
+      altText?: string;
     }>({
       model: MODELS.text,
-      temperature: 0.9,
+      temperature: 0.82,
       system:
-        "You write social copy that sounds like a real practitioner, never like an AI or a press " +
-        "release. Never invent statistics, testimonials or results.",
+        "You are MagicBox's evidence-led static-content creative director. Write like a specific " +
+        "human practitioner, never like an AI or a press release. Never invent statistics, " +
+        "testimonials, urgency, product capabilities, or results.",
       prompt:
         `Write a ${preset.name} post for ${provider.displayName}.\n\n` +
         `## Structure to follow\n${preset.structure}\n\n` +
         (args.productName ? `## Product\n${args.productName}\n\n` : "") +
         (args.prompt ? `## The brief\n${args.prompt}\n\n` : "") +
-        (args.context ? `## Extra context\n${args.context}\n\n` : "") +
+        (args.context ? `## Website and brand evidence\n${args.context}\n\n` : "") +
+        `## Current trend evidence\n${trendBlock}\n\n` +
+        `${staticRules}\n\n` +
         `## Hard limits\n` +
+        `- Silently test at least two hook mechanisms and return the stronger truthful hook.\n` +
+        `- caption's first line MUST be the hook, then begin the payoff immediately.\n` +
         `- caption MUST be under ${provider.limits.maxCaptionLength} characters.\n` +
         `- Ready to publish. No placeholders like [insert X].\n` +
         `- 3-8 relevant hashtags, no spam walls.\n` +
+        `- hookFamily: the selected hook mechanism id.\n` +
+        `- trendUsed: the exact trend value above, or an empty string when no trend genuinely fits.\n` +
+        `- whyShare: one short sentence naming why a specific reader would pass this on.\n` +
+        `- altText: concise accessible description of the intended finished visual.\n` +
         (preset.mediaType !== "none"
-          ? `- mediaPrompt: a concrete ${preset.mediaType} description for a generator. Directing notes: ${preset.direction}\n`
+          ? `- mediaPrompt: a production-ready ${preset.mediaType} description. Directing notes: ${preset.direction}\n`
           : `- No media; omit mediaPrompt.\n`),
       schema: COPY_SCHEMA as unknown as Record<string, unknown>,
     });
@@ -268,6 +319,8 @@ export const createPost = action({
     platforms: v.array(v.string()),
     socialAccountIds: v.optional(v.array(v.string())),
     mediaUrl: v.optional(v.string()),
+    /** Multiple image URLs form an Instagram carousel / LinkedIn multi-image post. */
+    mediaUrls: v.optional(v.array(v.string())),
     mediaType: v.optional(v.union(v.literal("image"), v.literal("video"))),
     mediaSource: v.optional(v.string()),
     /** For video uploads: seconds to bill as v-credits. Defaults to 8. */
@@ -303,11 +356,30 @@ export const createPost = action({
     }
     assertTextLength(args.brief, "Brief", 4_000);
     assertTextLength(args.brandProfileId, "Brand profile id", 256);
-    if (args.mediaUrl !== undefined && !args.mediaType) {
+    if (args.mediaUrl !== undefined && args.mediaUrls !== undefined) {
+      throw new Error("Use mediaUrl or mediaUrls, not both");
+    }
+    const mediaInputs =
+      args.mediaUrls !== undefined
+        ? args.mediaUrls
+        : args.mediaUrl !== undefined
+          ? [args.mediaUrl]
+          : [];
+    if (
+      mediaInputs.length > 20 ||
+      new Set(mediaInputs).size !== mediaInputs.length ||
+      mediaInputs.some((url) => !url.trim())
+    ) {
+      throw new Error("Use at most 20 unique media files");
+    }
+    if (mediaInputs.length > 0 && !args.mediaType) {
       throw new Error("Media type is required when a media URL is provided");
     }
-    if (args.mediaType && !args.mediaUrl) {
+    if (args.mediaType && mediaInputs.length === 0) {
       throw new Error("Media URL is required when a media type is provided");
+    }
+    if (args.mediaType === "video" && mediaInputs.length > 1) {
+      throw new Error("Only one video can be attached to a post");
     }
     if (
       args.mediaSource !== undefined &&
@@ -353,12 +425,12 @@ export const createPost = action({
     }
 
     const media =
-      args.mediaUrl && args.mediaType
-        ? [{
-            type: args.mediaType,
-            url: trustedMediaUrl(args.mediaUrl),
+      mediaInputs.length > 0 && args.mediaType
+        ? mediaInputs.map((url) => ({
+            type: args.mediaType!,
+            url: trustedMediaUrl(url),
             source: (args.mediaSource ?? "upload") as any,
-          }]
+          }))
         : undefined;
 
     // Fail fast on platform limits before creating anything — a post that can
@@ -370,6 +442,18 @@ export const createPost = action({
       }
       if (provider.limits.requiresMedia && !media) {
         throw new Error(`${provider.displayName} requires an image or video.`);
+      }
+      const imageCount = media?.filter((item) => item.type === "image").length ?? 0;
+      const videoCount = media?.filter((item) => item.type === "video").length ?? 0;
+      if (imageCount > provider.limits.maxImages) {
+        throw new Error(
+          `${provider.displayName} accepts at most ${provider.limits.maxImages} image${provider.limits.maxImages === 1 ? "" : "s"} per post.`,
+        );
+      }
+      if (videoCount > provider.limits.maxVideos) {
+        throw new Error(
+          `${provider.displayName} accepts at most ${provider.limits.maxVideos} video${provider.limits.maxVideos === 1 ? "" : "s"} per post.`,
+        );
       }
     }
 

@@ -47,7 +47,8 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
 
   readonly limits = {
     maxCaptionLength: 2200,
-    maxImages: 1,
+    // Instagram carousel containers accept 2–10 child images/videos.
+    maxImages: 10,
     maxVideos: 1,
     requiresMedia: true,
   };
@@ -159,29 +160,65 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
     const igUserId = t.igUserId;
     if (!igUserId) throw new BadBodyError("Instagram account missing igUserId");
 
+    const images = input.media.filter((item) => item.type === "image");
+    const videos = input.media.filter((item) => item.type === "video");
+    if (images.length > 0 && videos.length > 0) {
+      throw new BadBodyError("Mixed image/video Instagram carousels are not supported yet");
+    }
     const media = input.media[0];
     if (!media) throw new BadBodyError("Instagram requires an image or video");
 
     // Meta crawls image_url / video_url from its servers — private or
     // bot-blocked hosts return container ERROR / "Media ID is not available".
-    if (!/^https:\/\//i.test(media.url)) {
+    if (input.media.some((item) => !/^https:\/\//i.test(item.url))) {
       throw new BadBodyError("Instagram media URL must be a public https link");
     }
 
     const caption = this.composeText(input);
+    let creationId: string | undefined;
 
-    const containerParams = new URLSearchParams({ caption, access_token: t.accessToken });
-    if (media.type === "video") {
-      containerParams.set("media_type", "REELS");
-      containerParams.set("video_url", media.url);
+    if (images.length > 1) {
+      const childIds: string[] = [];
+      for (const image of images) {
+        const child = await this.http(`${GRAPH}/${igUserId}/media`, {
+          method: "POST",
+          body: new URLSearchParams({
+            image_url: image.url,
+            is_carousel_item: "true",
+            access_token: t.accessToken,
+          }),
+        });
+        if (!child.id) {
+          throw new BadBodyError("Instagram carousel child returned no creation id");
+        }
+        await this.waitForContainer(child.id, t.accessToken);
+        childIds.push(child.id);
+      }
+
+      const parent = await this.http(`${GRAPH}/${igUserId}/media`, {
+        method: "POST",
+        body: new URLSearchParams({
+          media_type: "CAROUSEL",
+          children: childIds.join(","),
+          caption,
+          access_token: t.accessToken,
+        }),
+      });
+      creationId = parent.id;
     } else {
-      containerParams.set("image_url", media.url);
+      const containerParams = new URLSearchParams({ caption, access_token: t.accessToken });
+      if (media.type === "video") {
+        containerParams.set("media_type", "REELS");
+        containerParams.set("video_url", media.url);
+      } else {
+        containerParams.set("image_url", media.url);
+      }
+      const created = await this.http(`${GRAPH}/${igUserId}/media`, {
+        method: "POST",
+        body: containerParams,
+      });
+      creationId = created.id;
     }
-    const created = await this.http(`${GRAPH}/${igUserId}/media`, {
-      method: "POST",
-      body: containerParams,
-    });
-    const creationId: string | undefined = created.id;
     if (!creationId) throw new BadBodyError("IG container returned no creation id");
 
     // Images AND videos must reach FINISHED before media_publish — publishing

@@ -24,6 +24,7 @@ import { auth, db, googleProvider, isAuthDomainFirstParty } from "./firebase";
  * `isAuthDomainFirstParty`). `auto` picks per browser.
  */
 export type SignInMode = "auto" | "popup" | "redirect";
+export type SignInResult = "signed_in" | "redirecting" | "cancelled";
 
 interface AuthContextType {
   user: User | null;
@@ -32,7 +33,7 @@ interface AuthContextType {
   redirecting: boolean;
   /** Whether a gesture-free redirect sign-in can actually complete here. */
   canAutoRedirect: boolean;
-  signInWithGoogle: (mode?: SignInMode) => Promise<void>;
+  signInWithGoogle: (mode?: SignInMode) => Promise<SignInResult>;
   signOut: () => Promise<void>;
 }
 
@@ -141,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const signInWithGoogle = async (mode: SignInMode = "auto") => {
+  const signInWithGoogle = async (mode: SignInMode = "auto"): Promise<SignInResult> => {
     if (!auth || !googleProvider)
       throw new Error("Firebase not configured. Add your Firebase config to .env.");
 
@@ -153,16 +154,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRedirecting(false);
         throw e;
       }
-      // Navigation is underway; this promise intentionally never resolves
-      // further so callers don't flash a "done" state before the tab leaves.
-      return;
+      // Navigation is underway. The caller keeps its handoff state visible
+      // until the browser leaves for Google.
+      return "redirecting";
     }
 
     try {
       await signInWithPopup(auth, googleProvider);
+      return "signed_in";
     } catch (e) {
       const code = e instanceof FirebaseError ? e.code : "";
-      if (POPUP_CANCELLED_CODES.has(code)) return;
+      if (POPUP_CANCELLED_CODES.has(code)) return "cancelled";
       if (!POPUP_FALLBACK_CODES.has(code)) throw e;
       // Popup was refused by the browser. Redirect is the only remaining path,
       // and we still hold the user's gesture, so take it even where the auth
@@ -170,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRedirecting(true);
       try {
         await signInWithRedirect(auth, googleProvider);
+        return "redirecting";
       } catch (redirectError) {
         setRedirecting(false);
         throw redirectError;

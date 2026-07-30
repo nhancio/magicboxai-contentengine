@@ -160,6 +160,9 @@ export default function Carousel({ embedded = false }: { embedded?: boolean }) {
         topic: result.topic,
         caption: result.caption,
         hashtags: result.hashtags,
+        hookFamily: result.hookFamily,
+        trendUsed: result.trendUsed,
+        whySave: result.whySave,
         slides: result.slides as CarouselPack["slides"],
       });
       setActiveSlide(0);
@@ -203,10 +206,10 @@ export default function Carousel({ embedded = false }: { embedded?: boolean }) {
     }
     setSavingLibrary(true);
     try {
-      let mediaUrl: string | undefined;
       const urls = await exportSlidePngs(slideEls.current);
-      if (urls[0]) {
-        const blob = await (await fetch(urls[0])).blob();
+      const mediaUrls: string[] = [];
+      for (const url of urls) {
+        const blob = await (await fetch(url)).blob();
         const postUrl = await uploadUrl({});
         const res = await fetch(postUrl, {
           method: "POST",
@@ -216,15 +219,15 @@ export default function Carousel({ embedded = false }: { embedded?: boolean }) {
         if (!res.ok) throw new Error("Slide upload failed");
         const { storageId } = (await res.json()) as { storageId: string };
         const resolved = await resolveUpload({ storageId: storageId as any });
-        mediaUrl = resolved.url;
+        mediaUrls.push(resolved.url);
       }
       await createPost({
         caption: pack.caption,
         hashtags: pack.hashtags,
         platforms: [platform === "twitter" ? "twitter" : platform],
-        mediaUrl,
-        mediaType: mediaUrl ? "image" : undefined,
-        mediaSource: mediaUrl ? "upload" : undefined,
+        mediaUrls: mediaUrls.length ? mediaUrls : undefined,
+        mediaType: mediaUrls.length ? "image" : undefined,
+        mediaSource: mediaUrls.length ? "upload" : undefined,
         brief: pack.topic,
         brandProfileId: brandId || undefined,
         mode: "draft",
@@ -483,6 +486,7 @@ export default function Carousel({ embedded = false }: { embedded?: boolean }) {
                       secondary: brand.colors.secondary,
                       accent: brand.colors.accent,
                     },
+                    mediaAspect: aspect,
                     // Render the live active slide inside the phone frame.
                     mediaNode: (
                       <BrandedSlide

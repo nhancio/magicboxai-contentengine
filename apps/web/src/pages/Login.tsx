@@ -3,6 +3,7 @@ import { Navigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/button";
 import { useAuth } from "@shared/lib/auth";
+import { captureEvent, PRODUCT_EVENTS } from "@shared/lib/analytics";
 import { Loader2 } from "lucide-react";
 import "./login.css";
 
@@ -65,13 +66,22 @@ export default function Login() {
     if (!autoPending || loading || autoStarted.current) return;
     autoStarted.current = true;
     writeAttempted(true);
-    signInWithGoogle("redirect").catch((err) => {
-      // The handoff never started — drop back to the card rather than leaving
-      // the visitor on a spinner that will never resolve.
-      writeAttempted(false);
-      setAutoPending(false);
-      toast.error(err instanceof Error ? err.message : "Failed to sign in with Google");
-    });
+    captureEvent(PRODUCT_EVENTS.loginStarted, { method: "google", mode: "auto" });
+    signInWithGoogle("redirect")
+      .then((result) => {
+        if (result !== "cancelled") return;
+        captureEvent(PRODUCT_EVENTS.loginCancelled, { method: "google", mode: "auto" });
+        writeAttempted(false);
+        setAutoPending(false);
+      })
+      .catch((err) => {
+        // The handoff never started — drop back to the card rather than leaving
+        // the visitor on a spinner that will never resolve.
+        captureEvent(PRODUCT_EVENTS.loginFailed, { method: "google", mode: "auto" });
+        writeAttempted(false);
+        setAutoPending(false);
+        toast.error(err instanceof Error ? err.message : "Failed to sign in with Google");
+      });
   }, [autoPending, loading, user, signInWithGoogle]);
 
   if (user) {
@@ -93,9 +103,14 @@ export default function Login() {
 
   const handleSignIn = async () => {
     setSigningIn(true);
+    captureEvent(PRODUCT_EVENTS.loginStarted, { method: "google", mode: "manual" });
     try {
-      await signInWithGoogle();
+      const result = await signInWithGoogle();
+      if (result === "cancelled") {
+        captureEvent(PRODUCT_EVENTS.loginCancelled, { method: "google", mode: "manual" });
+      }
     } catch (err) {
+      captureEvent(PRODUCT_EVENTS.loginFailed, { method: "google", mode: "manual" });
       toast.error(err instanceof Error ? err.message : "Failed to sign in with Google");
     } finally {
       setSigningIn(false);

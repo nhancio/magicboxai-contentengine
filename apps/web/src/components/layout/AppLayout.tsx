@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
+import { captureEvent, PRODUCT_EVENTS } from "@shared/lib/analytics";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/components/ui/avatar";
 import { Button } from "@shared/components/ui/button";
 import { cn } from "@shared/lib/utils";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "@/lib/convex";
 import { CreditsTrialCard } from "@/components/CreditsTrialCard";
+import { useMayaActivation } from "@/hooks/useMayaActivation";
 import {
   BarChart3,
   Bot,
@@ -16,6 +18,7 @@ import {
   Film,
   FolderOpen,
   LayoutDashboard,
+  LockKeyhole,
   LogOut,
   Menu,
   Palette,
@@ -67,6 +70,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const claimTrial = useMutation(api.credits.claimTrial);
+  const mayaActivation = useMayaActivation();
 
   useEffect(() => {
     if (!isConvexConfigured || !credits?.needsTrialClaim) return;
@@ -90,6 +94,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     : "U";
 
   const closeSidebar = () => setSidebarOpen(false);
+  const trackModuleAccess = (module: string, path: string, setupRedirect = false) => {
+    captureEvent(PRODUCT_EVENTS.sidebarModuleAccessed, {
+      module,
+      path,
+      setup_redirect: setupRedirect,
+    });
+    closeSidebar();
+  };
 
   const sidebarContent = (
     <div className="flex h-full min-h-0 flex-col">
@@ -123,18 +135,40 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 {section.heading}
               </div>
             )}
-            {section.items.map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                end={item.path === "/"}
-                onClick={closeSidebar}
-                className={navLinkClass}
-              >
-                <item.icon className="h-4 w-4 shrink-0" />
-                {item.label}
-              </NavLink>
-            ))}
+            {section.items.map((item) => {
+              const mayaLocked = item.path === "/maya" && mayaActivation?.ready !== true;
+              const target =
+                mayaLocked && mayaActivation?.hasWebsite
+                  ? "/onboarding/channels"
+                  : mayaLocked
+                    ? "/onboarding"
+                    : item.path;
+              return (
+                <NavLink
+                  key={item.path}
+                  to={target}
+                  end={item.path === "/"}
+                  onClick={() => trackModuleAccess(item.label, target, mayaLocked)}
+                  aria-label={
+                    mayaLocked
+                      ? `Maya locked. ${mayaActivation?.hasWebsite ? "Connect a social channel" : "Link your website"} to continue.`
+                      : undefined
+                  }
+                  className={({ isActive }) =>
+                    cn(navLinkClass({ isActive }), mayaLocked && "text-muted-foreground/70")
+                  }
+                >
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  {item.label}
+                  {mayaLocked && (
+                    <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider">
+                      <LockKeyhole className="h-3 w-3" />
+                      Setup
+                    </span>
+                  )}
+                </NavLink>
+              );
+            })}
           </div>
         ))}
       </nav>
@@ -144,7 +178,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <NavLink
             key={item.path}
             to={item.path}
-            onClick={closeSidebar}
+            onClick={() => trackModuleAccess(item.label, item.path)}
             className={navLinkClass}
           >
             <item.icon className="h-4 w-4 shrink-0" />
@@ -171,7 +205,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => signOut()}
+            onClick={() => {
+              captureEvent(PRODUCT_EVENTS.logoutCompleted, { source: "sidebar" });
+              void signOut();
+            }}
             className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-accent hover:text-foreground"
             aria-label="Sign out"
           >

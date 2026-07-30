@@ -9,6 +9,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Users = lazy(() => import("./pages/Users"));
 const Avatars = lazy(() => import("./pages/Avatars"));
 const ApiLogs = lazy(() => import("./pages/ApiLogs"));
+const ProductAnalytics = lazy(() => import("./pages/ProductAnalytics"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 
 function RouteFallback() {
@@ -65,6 +66,14 @@ export default function App() {
           element={
             <AdminGuard>
               <ApiLogs />
+            </AdminGuard>
+          }
+        />
+        <Route
+          path="/product-analytics"
+          element={
+            <AdminGuard>
+              <ProductAnalytics />
             </AdminGuard>
           }
         />

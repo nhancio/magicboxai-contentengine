@@ -14,6 +14,7 @@ const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
 const SENDER = { name: "MagicBox", email: "hello@magicboxai.in" } as const;
 const SUPPORT_EMAIL = "hello@magicboxai.in";
 const APP_URL = "https://app.magicboxai.in";
+const ONBOARDING_URL = `${APP_URL}/onboarding`;
 const PRICING_URL = "https://app.magicboxai.in/pricing";
 
 // --- Editorial brand palette ---
@@ -197,11 +198,11 @@ function p(html: string): string {
 
 // --- Onboarding email ---------------------------------------------------------
 
-function buildOnboardingHtml(name: string): string {
+export function buildOnboardingHtml(name: string): string {
   const steps = [
-    ["Connect a channel", "Link Instagram, X, or LinkedIn in a couple of clicks."],
-    ["Describe your brand & campaign", "Tell MagicBox who you are and what you want to say."],
-    ["Approve, then let it autopilot", "Review the first drafts, then let MagicBox publish on schedule."],
+    ["Link your website", "MagicBox extracts your logo, palette, audience, offer, and voice."],
+    ["Connect one social channel", "Choose where approved content can be published."],
+    ["Review and approve", "Check the hook, copy, image, or carousel before anything goes live."],
   ]
     .map(
       ([heading, detail], i) => `<tr>
@@ -217,25 +218,24 @@ function buildOnboardingHtml(name: string): string {
     .join("\n");
 
   const bodyHtml = `${p(`Hey ${escapeHtml(name)},`)}
-${p("I'm thrilled you're here. We built MagicBox so that great social marketing no longer has to mean living inside a content calendar.")}
-${p("In short: describe your brand once, and MagicBox turns a simple prompt into on-brand posts and images, then auto-publishes them to Instagram, X, and LinkedIn on the schedule you choose.")}
-<p style="margin:0 0 14px 0; font-family:${SERIF}; font-size:18px; color:${INK}; font-weight:bold;">Get your first post live in 2 minutes</p>
+${p("Welcome to MagicBox. Your first campaign starts with the source that already knows your brand best: your website.")}
+${p("MagicBox turns that brand evidence into on-brand image posts and carousels, then asks for your approval before publishing to a connected channel.")}
+<p style="margin:0 0 14px 0; font-family:${SERIF}; font-size:18px; color:${INK}; font-weight:bold;">Create your first campaign</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
 ${steps}
 </table>
-${calloutBox("<strong>For the next 7 days, trial every feature free.</strong> Explore automations, AI images, scheduling, and multi-channel publishing with no limits.")}
+${calloutBox("<strong>Maya activates after both setup steps are complete.</strong> You can explore the dashboard first, but Maya needs a website and at least one active social channel. Nothing posts without your approval.")}
 <div style="height:24px; line-height:24px;">&nbsp;</div>
-${p("When you're ready, choose a plan &mdash; <strong>Starter, Growth, or Scale</strong> &mdash; for unlimited posts, more channels, and analytics.")}
-${ctaButton("Open MagicBox", APP_URL)}
+${ctaButton("Complete your setup", ONBOARDING_URL)}
 <div style="height:28px; line-height:28px;">&nbsp;</div>
 ${p(`Questions? Just reply, or reach us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${PURPLE}; text-decoration:none;">${SUPPORT_EMAIL}</a>. A real human will help.`)}
 <p style="margin:8px 0 0 0; font-family:${SERIF}; font-size:17px; line-height:1.6; color:${BODY_TEXT};">To your success,<br /><strong style="color:${INK};">The MagicBox team</strong></p>`;
 
   return renderShell({
     title: "Welcome to MagicBox",
-    headerTitle: "Welcome to MagicBox ✨",
+    headerTitle: "Your website is the starting point",
     preheader:
-      "Get your first post live in 2 minutes. Connect a channel, describe your brand, and let MagicBox autopilot.",
+      "Link your website, connect one channel, and approve your first campaign.",
     bodyHtml,
   });
 }
@@ -251,7 +251,7 @@ export async function sendOnboardingEmail(
   return sendViaBrevo({
     email: args.email,
     toName: args.name?.trim() || given,
-    subject: "Welcome to MagicBox",
+    subject: "Welcome to MagicBox — start with your website",
     html: buildOnboardingHtml(given),
   });
 }

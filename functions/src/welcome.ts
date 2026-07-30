@@ -1,9 +1,11 @@
-// Firestore trigger on users/{uid}: on every create *and* update — i.e. every
-// sign-in, since shared/lib/auth.tsx setDoc-merges lastLoginAt each time —
-// claim any guest-checkout entitlement paid under this (Google-verified)
-// email, and send the one-time welcome email on first creation.
+// Firestore triggers on users/{uid}. Creation dispatches the first-signup
+// welcome email. Later updates keep the guest-checkout entitlement claim path
+// alive without ever re-sending that email.
 
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import {
+  onDocumentCreated,
+  onDocumentUpdated,
+} from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import { brevoApiKey, sendOnboardingEmail } from "./brevo";
@@ -83,7 +85,7 @@ async function claimPendingEntitlement(uid: string, email: string): Promise<void
   }
 }
 
-export const onUserCreatedSendWelcome = onDocumentWritten(
+export const onUserCreatedSendWelcome = onDocumentCreated(
   {
     document: "users/{uid}",
     // Firestore triggers must run in the database's region (asia-south2).
@@ -92,8 +94,8 @@ export const onUserCreatedSendWelcome = onDocumentWritten(
     secrets: [brevoApiKey],
   },
   async (event) => {
-    const snap = event.data?.after;
-    if (!snap?.exists) return; // deletion — nothing to do
+    const snap = event.data;
+    if (!snap?.exists) return;
 
     const data = snap.data() as {
       email?: string;
@@ -138,5 +140,18 @@ export const onUserCreatedSendWelcome = onDocumentWritten(
       // block the user. welcomeEmailSent stays false so a manual/replayed
       // create could retry.
     }
+  }
+);
+
+export const onUserUpdatedClaimPendingEntitlement = onDocumentUpdated(
+  {
+    document: "users/{uid}",
+    region: "asia-south2",
+  },
+  async (event) => {
+    const data = event.data?.after.data() as { email?: string } | undefined;
+    const email = data?.email?.trim();
+    if (!email) return;
+    await claimPendingEntitlement(event.params.uid, email);
   }
 );

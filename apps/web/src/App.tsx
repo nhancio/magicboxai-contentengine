@@ -1,9 +1,15 @@
-import { lazy, Suspense, useEffect, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@shared/lib/auth";
 import { ConvexClientProvider } from "./lib/convex";
-import { capturePageview, identifyUser, resetAnalytics } from "@shared/lib/analytics";
+import {
+  captureEvent,
+  capturePageview,
+  identifyUser,
+  PRODUCT_EVENTS,
+  resetAnalytics,
+} from "@shared/lib/analytics";
 import AuthGuard from "./components/layout/AuthGuard";
 import OnboardingGate from "./components/layout/OnboardingGate";
 import AppLayout from "./components/layout/AppLayout";
@@ -42,6 +48,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 function AnalyticsTracker() {
   const location = useLocation();
   const { user } = useAuth();
+  const trackedUser = useRef<string | null>(null);
 
   useEffect(() => {
     capturePageview();
@@ -52,7 +59,15 @@ function AnalyticsTracker() {
       // Firebase uid is the pseudonymous analytics identifier. Do not copy
       // email or display name into product analytics.
       identifyUser(user.uid, { app: "web" });
+      if (trackedUser.current !== user.uid) {
+        captureEvent(PRODUCT_EVENTS.loginCompleted, {
+          method: "google",
+          app: "web",
+        });
+        trackedUser.current = user.uid;
+      }
     } else {
+      trackedUser.current = null;
       resetAnalytics();
     }
   }, [user]);
@@ -72,6 +87,14 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route
                   path="/onboarding"
+                  element={
+                    <AuthGuard>
+                      <Onboarding />
+                    </AuthGuard>
+                  }
+                />
+                <Route
+                  path="/onboarding/channels"
                   element={
                     <AuthGuard>
                       <Onboarding />

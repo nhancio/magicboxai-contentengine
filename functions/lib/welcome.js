@@ -1,8 +1,7 @@
 "use strict";
-// Firestore trigger on users/{uid}: on every create *and* update — i.e. every
-// sign-in, since shared/lib/auth.tsx setDoc-merges lastLoginAt each time —
-// claim any guest-checkout entitlement paid under this (Google-verified)
-// email, and send the one-time welcome email on first creation.
+// Firestore triggers on users/{uid}. Creation dispatches the first-signup
+// welcome email. Later updates keep the guest-checkout entitlement claim path
+// alive without ever re-sending that email.
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -37,7 +36,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onUserCreatedSendWelcome = void 0;
+exports.onUserUpdatedClaimPendingEntitlement = exports.onUserCreatedSendWelcome = void 0;
 const firestore_1 = require("firebase-functions/v2/firestore");
 const logger = __importStar(require("firebase-functions/logger"));
 const admin = __importStar(require("firebase-admin"));
@@ -86,19 +85,19 @@ async function claimPendingEntitlement(uid, email) {
         });
     }
 }
-exports.onUserCreatedSendWelcome = (0, firestore_1.onDocumentWritten)({
+exports.onUserCreatedSendWelcome = (0, firestore_1.onDocumentCreated)({
     document: "users/{uid}",
     // Firestore triggers must run in the database's region (asia-south2).
     // Pinned so the global us-central1 default (set in core.ts) can't move it.
     region: "asia-south2",
     secrets: [brevo_1.brevoApiKey],
 }, async (event) => {
-    var _a, _b;
-    const snap = (_a = event.data) === null || _a === void 0 ? void 0 : _a.after;
+    var _a;
+    const snap = event.data;
     if (!(snap === null || snap === void 0 ? void 0 : snap.exists))
-        return; // deletion — nothing to do
+        return;
     const data = snap.data();
-    const email = (_b = data.email) === null || _b === void 0 ? void 0 : _b.trim();
+    const email = (_a = data.email) === null || _a === void 0 ? void 0 : _a.trim();
     if (!email) {
         logger.warn("[onUserCreatedSendWelcome] user doc has no email, skipping", {
             uid: event.params.uid,
@@ -130,5 +129,16 @@ exports.onUserCreatedSendWelcome = (0, firestore_1.onDocumentWritten)({
         // block the user. welcomeEmailSent stays false so a manual/replayed
         // create could retry.
     }
+});
+exports.onUserUpdatedClaimPendingEntitlement = (0, firestore_1.onDocumentUpdated)({
+    document: "users/{uid}",
+    region: "asia-south2",
+}, async (event) => {
+    var _a, _b;
+    const data = (_a = event.data) === null || _a === void 0 ? void 0 : _a.after.data();
+    const email = (_b = data === null || data === void 0 ? void 0 : data.email) === null || _b === void 0 ? void 0 : _b.trim();
+    if (!email)
+        return;
+    await claimPendingEntitlement(event.params.uid, email);
 });
 //# sourceMappingURL=welcome.js.map

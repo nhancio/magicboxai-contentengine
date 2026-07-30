@@ -9,7 +9,7 @@ import {
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireUid } from "./lib/auth";
 import { geminiEmbed, geminiJson } from "./lib/gemini";
 import { MODELS } from "./lib/models";
@@ -61,6 +61,35 @@ const DEFAULT_PILLARS = [
   { name: "Behind the Scenes", description: "How the work actually gets done; the human side." },
   { name: "Trend Reaction", description: "Take on something happening in the niche right now." },
 ];
+
+type DbContext = Pick<QueryCtx | MutationCtx, "db">;
+
+async function activationForUser(ctx: DbContext, userId: string) {
+  const brands = await ctx.db
+    .query("brandProfiles")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .collect();
+  const brand = brands
+    .filter((candidate) => candidate.websiteUrl?.trim())
+    .sort(
+      (a, b) =>
+        (b.updatedAt ?? b.createdAt ?? b._creationTime) -
+        (a.updatedAt ?? a.createdAt ?? a._creationTime),
+    )[0];
+  const accounts = await ctx.db
+    .query("socialAccounts")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .collect();
+  const activeAccounts = accounts.filter((account) => account.status === "active");
+
+  return {
+    hasWebsite: !!brand,
+    hasChannel: activeAccounts.length > 0,
+    ready: !!brand && activeAccounts.length > 0,
+    brand,
+    activeAccounts,
+  };
+}
 
 const SUGGESTION_SCHEMA = {
   type: "object",
@@ -268,6 +297,13 @@ export const ensureConfig = mutation({
   },
   handler: async (ctx, args) => {
     const uid = await requireUid(ctx);
+    const activation = await activationForUser(ctx, uid);
+    if (!activation.hasWebsite) {
+      throw new Error("Add a website before activating Maya");
+    }
+    if (!activation.hasChannel) {
+      throw new Error("Connect at least one social channel before activating Maya");
+    }
     return await bootstrapUserInner(
       ctx,
       uid,
@@ -305,6 +341,24 @@ export const config = query({
   },
 });
 
+/** Website + channel prerequisites that control every Maya entry point. */
+export const activation = query({
+  args: {},
+  handler: async (ctx) => {
+    const uid = await requireUid(ctx);
+    const state = await activationForUser(ctx, uid);
+    return {
+      hasWebsite: state.hasWebsite,
+      hasChannel: state.hasChannel,
+      ready: state.ready,
+      websiteUrl: state.brand?.websiteUrl,
+      brandName: state.brand?.name,
+      activePlatforms: state.activeAccounts.map((account) => account.platform),
+      channelCount: state.activeAccounts.length,
+    };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Deck + swipe (what the UI talks to)
 // ---------------------------------------------------------------------------
@@ -314,6 +368,7 @@ export const deck = query({
   args: { batchDate: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const uid = await requireUid(ctx);
+    const activation = await activationForUser(ctx, uid);
     const cfg = await ctx.db
       .query("mayaConfig")
       .withIndex("by_userId", (q) => q.eq("userId", uid))
@@ -328,14 +383,15 @@ export const deck = query({
 
     return {
       batchDate,
+      locked: !activation.ready,
       // Strip the 768-float embedding — it's dedup-only server state and just
       // bloats every card's payload to the browser.
-      pending: rows
+      pending: (activation.ready ? rows : [])
         .filter((r) => r.status === "pending")
         .sort((a, b) => a.slot - b.slot)
         .map(({ embedding, ...r }) => r),
-      decided: rows.filter((r) => r.status !== "pending").length,
-      total: rows.length,
+      decided: activation.ready ? rows.filter((r) => r.status !== "pending").length : 0,
+      total: activation.ready ? rows.length : 0,
     };
   },
 });
@@ -372,6 +428,9 @@ export const swipe = mutation({
   },
   handler: async (ctx, args) => {
     const uid = await requireUid(ctx);
+    const activation = await activationForUser(ctx, uid);
+    if (!activation.hasWebsite) throw new Error("Add a website before using Maya");
+    if (!activation.hasChannel) throw new Error("Connect a social channel before using Maya");
     const now = Date.now();
     const publishMode = args.publishMode ?? "schedule";
 
@@ -552,6 +611,7 @@ export const swipe = mutation({
 export const loadGenerationContext = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, { userId }) => {
+    const activation = await activationForUser(ctx, userId);
     const cfg = await ctx.db
       .query("mayaConfig")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -566,7 +626,7 @@ export const loadGenerationContext = internalQuery({
           .query("brandProfiles")
           .withIndex("by_userId", (q) => q.eq("userId", userId))
           .first();
-    return { cfg, pillars: pillars.filter((p) => p.active), brand };
+    return { cfg, pillars: pillars.filter((p) => p.active), brand, activation };
   },
 });
 
@@ -692,9 +752,11 @@ function pickPillars<T extends { _id: string; name: string; weight: number; last
 export const generateForUser = internalAction({
   args: { userId: v.string(), force: v.optional(v.boolean()) },
   handler: async (ctx, { userId, force }): Promise<{ created: number; reason?: string }> => {
-    const { cfg, pillars, brand } = await ctx.runQuery(internal.maya.loadGenerationContext, {
+    const { cfg, pillars, brand, activation } = await ctx.runQuery(internal.maya.loadGenerationContext, {
       userId,
     });
+    if (!activation.hasWebsite) return { created: 0, reason: "website_required" };
+    if (!activation.hasChannel) return { created: 0, reason: "social_channel_required" };
     if (!cfg) return { created: 0, reason: "no_config" };
     if (!cfg.enabled && !force) return { created: 0, reason: "disabled" };
 
