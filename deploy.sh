@@ -35,7 +35,7 @@
 set -euo pipefail
 # Select the GitHub account for this repository before every push.
 # Override GITHUB_ACCOUNT when a repository is intentionally owned by a different account.
-GITHUB_ACCOUNT="${GITHUB_ACCOUNT:-nhancio}"
+GITHUB_ACCOUNT="${GITHUB_ACCOUNT:-didigamnithin}"
 
 ensure_github_account() {
   command -v gh >/dev/null 2>&1 || {

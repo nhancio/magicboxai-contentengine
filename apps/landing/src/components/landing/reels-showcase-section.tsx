@@ -120,6 +120,9 @@ export function ReelsShowcaseSection() {
   const [isVisible, setIsVisible] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const isPointerOverScrollerRef = useRef(false);
+  const resumeAutoScrollAtRef = useRef(0);
+  const driftDirectionRef = useRef<1 | -1>(1);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -132,9 +135,61 @@ export function ReelsShowcaseSection() {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || !isVisible) return;
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let frameId = 0;
+    let previousTime = performance.now();
+    let edgePauseUntil = 0;
+
+    const drift = (now: number) => {
+      const elapsed = Math.min(now - previousTime, 64);
+      previousTime = now;
+      const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+      const shouldMove =
+        maxScroll > 1 &&
+        !reducedMotion.matches &&
+        document.visibilityState === "visible" &&
+        !isPointerOverScrollerRef.current &&
+        now >= resumeAutoScrollAtRef.current &&
+        now >= edgePauseUntil;
+
+      if (shouldMove) {
+        const pixelsPerSecond = 12;
+        const next =
+          el.scrollLeft + driftDirectionRef.current * pixelsPerSecond * (elapsed / 1000);
+
+        if (next >= maxScroll) {
+          el.scrollLeft = maxScroll;
+          driftDirectionRef.current = -1;
+          edgePauseUntil = now + 1400;
+        } else if (next <= 0) {
+          el.scrollLeft = 0;
+          driftDirectionRef.current = 1;
+          edgePauseUntil = now + 1400;
+        } else {
+          el.scrollLeft = next;
+        }
+      }
+
+      frameId = window.requestAnimationFrame(drift);
+    };
+
+    frameId = window.requestAnimationFrame(drift);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isVisible]);
+
+  const pauseAutoScroll = (milliseconds = 3200) => {
+    resumeAutoScrollAtRef.current = performance.now() + milliseconds;
+  };
+
   const scrollByCards = (direction: 1 | -1) => {
     const el = scrollerRef.current;
     if (!el) return;
+    pauseAutoScroll();
+    driftDirectionRef.current = direction;
     el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: "smooth" });
   };
 
@@ -183,7 +238,30 @@ export function ReelsShowcaseSection() {
 
       <div
         ref={scrollerRef}
-        className="no-scrollbar flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth px-6 pb-2 lg:px-12"
+        onPointerEnter={() => {
+          isPointerOverScrollerRef.current = true;
+        }}
+        onPointerLeave={() => {
+          isPointerOverScrollerRef.current = false;
+          pauseAutoScroll(900);
+        }}
+        onPointerDown={() => {
+          isPointerOverScrollerRef.current = true;
+          pauseAutoScroll();
+        }}
+        onPointerUp={(event) => {
+          isPointerOverScrollerRef.current = event.pointerType === "mouse";
+          pauseAutoScroll();
+        }}
+        onWheel={() => pauseAutoScroll()}
+        onFocusCapture={() => {
+          isPointerOverScrollerRef.current = true;
+        }}
+        onBlurCapture={() => {
+          isPointerOverScrollerRef.current = false;
+          pauseAutoScroll(900);
+        }}
+        className="no-scrollbar flex snap-x snap-proximity gap-4 overflow-x-auto scroll-smooth px-6 pb-2 lg:px-12"
       >
         {REEL_FORMATS.map((format, index) => (
           <ReelCard key={format.id} format={format} index={index} />

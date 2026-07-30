@@ -16,6 +16,7 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_bestTime from "../lib/bestTime.js";
+import type * as lib_contentEngine from "../lib/contentEngine.js";
 import type * as lib_gemini from "../lib/gemini.js";
 import type * as lib_models from "../lib/models.js";
 import type * as lib_presets from "../lib/presets.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/auth": typeof lib_auth;
   "lib/bestTime": typeof lib_bestTime;
+  "lib/contentEngine": typeof lib_contentEngine;
   "lib/gemini": typeof lib_gemini;
   "lib/models": typeof lib_models;
   "lib/presets": typeof lib_presets;
