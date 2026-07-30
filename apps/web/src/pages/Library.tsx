@@ -148,9 +148,9 @@ function videoToUiPost(v: VideoRecord): UiPost {
       hashtags: [],
     },
     media: v.videoUrl
-      ? [{ type: "video", url: v.videoUrl }]
+      ? [{ type: "video", url: v.videoUrl, source: "veo" }]
       : v.thumbnailUrl
-        ? [{ type: "image", url: v.thumbnailUrl }]
+        ? [{ type: "image", url: v.thumbnailUrl, source: "veo" }]
         : undefined,
     platforms: [platformFromVideo(v.platform)],
     socialAccountIds: [],

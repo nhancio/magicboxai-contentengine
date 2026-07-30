@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Bot, CalendarClock, Send } from "lucide-react";
-import { CALENDLY_URL, appLoginUrl } from "@/lib/config";
+import { BOOKING_URL, appLoginUrl } from "@/lib/config";
 import { captureEvent } from "@shared/lib/analytics";
 
 export function CtaSection() {
@@ -61,7 +61,9 @@ export function CtaSection() {
                   </Button>
                   <Button asChild size="lg" variant="outline" className="h-14 px-8 text-base rounded-full">
                     <a
-                      href={CALENDLY_URL}
+                      href={BOOKING_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       onClick={() => captureEvent("landing_cta_clicked", { cta: "footer_contact_support", destination: "support" })}
                     >
                       Contact support

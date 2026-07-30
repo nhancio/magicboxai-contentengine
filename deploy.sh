@@ -33,6 +33,33 @@
 #   cd apps/web     && npx vercel link --yes --project magicboxai-web     --scope didigamnithins-projects
 #   cd apps/admin   && npx vercel link --yes --project magicboxai-admin   --scope didigamnithins-projects
 set -euo pipefail
+# Select the GitHub account for this repository before every push.
+# Override GITHUB_ACCOUNT when a repository is intentionally owned by a different account.
+GITHUB_ACCOUNT="${GITHUB_ACCOUNT:-nhancio}"
+
+ensure_github_account() {
+  command -v gh >/dev/null 2>&1 || {
+    echo "GitHub CLI (gh) is required to push as $GITHUB_ACCOUNT." >&2
+    echo "Install gh and authenticate with: gh auth login --hostname github.com" >&2
+    return 1
+  }
+  gh auth token --hostname github.com --user "$GITHUB_ACCOUNT" >/dev/null 2>&1 || {
+    echo "GitHub CLI is not authenticated as $GITHUB_ACCOUNT." >&2
+    echo "Authenticate that account first, then rerun this deploy." >&2
+    return 1
+  }
+  gh auth switch --hostname github.com --user "$GITHUB_ACCOUNT" >/dev/null || {
+    echo "Could not switch GitHub CLI to $GITHUB_ACCOUNT." >&2
+    return 1
+  }
+  echo "Using GitHub account: $GITHUB_ACCOUNT"
+}
+
+push_with_github_account() {
+  ensure_github_account
+  git push "$@"
+}
+
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
@@ -150,7 +177,7 @@ push_to_github() {
   local branch
   branch="$(git symbolic-ref --short HEAD)"
   echo "  Pushing '$branch' to $REMOTE_NAME..."
-  git push -u "$REMOTE_NAME" "$branch"
+  push_with_github_account -u "$REMOTE_NAME" "$branch"
 }
 
 # ---------------------------------------------------------------------------

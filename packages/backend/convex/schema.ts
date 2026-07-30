@@ -417,6 +417,25 @@ export default defineSchema({
         prompt: v.optional(v.string()),
       }),
     ),
+    // Versioned strategy metadata from the content engine. This makes each
+    // suggestion explainable and lets later performance analytics learn which
+    // hook/format mechanisms work for this user without guessing from copy.
+    creativePlan: v.optional(
+      v.object({
+        engineVersion: v.string(),
+        formatId: v.string(),
+        hookFamily: v.string(),
+        openingVisual: v.string(),
+        contentBeats: v.array(v.string()),
+        retentionDevices: v.array(v.string()),
+        hookPayoff: v.string(),
+        whyShare: v.string(),
+        claimSafety: v.string(),
+        ctaType: v.string(),
+        qualityScore: v.number(),
+        auditIssues: v.array(v.string()),
+      }),
+    ),
     media: v.optional(
       v.array(
         v.object({

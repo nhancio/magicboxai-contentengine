@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { geminiGrounded, geminiJson } from "./lib/gemini";
 import { MODELS } from "./lib/models";
+import { buildTrendDiscoveryPrompt } from "./lib/contentEngine";
 
 /**
  * Maya's trend ingestion layer.
@@ -101,14 +102,10 @@ async function fetchGroundedTrends(region: string): Promise<NormalizedTrend[]> {
 
   // Step 1: let the model search the live web.
   const { text, sources } = await geminiGrounded({
-    prompt:
-      `Today is ${today}. Search the web for what is ACTUALLY trending RIGHT NOW on social media in ${region}.\n` +
-      `Cover: Instagram Reels, TikTok-style short video, X/Twitter, LinkedIn, YouTube.\n` +
-      `For each, list concrete trending topics, hashtags, audio/sounds, and content FORMATS ` +
-      `(e.g. "POV skit", "day-in-the-life", "green-screen react").\n` +
-      `Only report things you found evidence for. Prefer the last 7 days.`,
+    prompt: buildTrendDiscoveryPrompt({ today, region }),
     system:
-      "You are a social media trend researcher. Report only what your search results support. Never invent a trend.",
+      "You are a skeptical social media trend researcher. Report only what current search evidence " +
+      "supports, separate durable audience interest from surface formats, and never invent momentum.",
   });
 
   // Step 2: structure it. Grounding and responseSchema can't be combined in one

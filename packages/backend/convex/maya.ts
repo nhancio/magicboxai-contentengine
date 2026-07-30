@@ -26,6 +26,14 @@ import {
   ensureTrialBalance,
   spendICredits,
 } from "./credits";
+import {
+  CONTENT_ENGINE_VERSION,
+  auditEngineCandidate,
+  buildMayaContentEngineRules,
+  type ClaimSafety,
+  type ContentFormatId,
+  type HookFamilyId,
+} from "./lib/contentEngine";
 
 /**
  * MAYA — the autonomous daily content agent.
@@ -74,8 +82,72 @@ const SUGGESTION_SCHEMA = {
           mediaType: { type: "string", enum: ["none", "image", "video"] },
           mediaPrompt: { type: "string" },
           trendUsed: { type: "string" },
+          formatId: {
+            type: "string",
+            enum: [
+              "proof_demo",
+              "problem_solution",
+              "before_after",
+              "three_beats",
+              "story_turn",
+              "comparison_test",
+              "comment_response",
+              "process_bts",
+            ],
+          },
+          hookFamily: {
+            type: "string",
+            enum: [
+              "pain_mirror",
+              "outcome_first",
+              "proof_first",
+              "visual_demonstration",
+              "contrarian_correction",
+              "mistake_diagnosis",
+              "open_loop",
+              "identity_relevance",
+              "sequence_preview",
+              "story_in_motion",
+              "comparison_test",
+              "objection_test",
+            ],
+          },
+          openingVisual: { type: "string" },
+          contentBeats: { type: "array", items: { type: "string" } },
+          retentionDevices: { type: "array", items: { type: "string" } },
+          hookPayoff: { type: "string" },
+          whyShare: { type: "string" },
+          claimSafety: {
+            type: "string",
+            enum: [
+              "verified_source",
+              "brand_provided",
+              "demonstration",
+              "opinion",
+              "no_external_claim",
+              "unverified_claim",
+            ],
+          },
+          ctaType: { type: "string" },
         },
-        required: ["pillarName", "platform", "hook", "angle", "caption", "hashtags", "mediaType"],
+        required: [
+          "pillarName",
+          "platform",
+          "hook",
+          "angle",
+          "caption",
+          "hashtags",
+          "mediaType",
+          "formatId",
+          "hookFamily",
+          "openingVisual",
+          "contentBeats",
+          "retentionDevices",
+          "hookPayoff",
+          "whyShare",
+          "claimSafety",
+          "ctaType",
+        ],
       },
     },
   },
@@ -92,6 +164,15 @@ type Candidate = {
   mediaType: "none" | "image" | "video";
   mediaPrompt?: string;
   trendUsed?: string;
+  formatId: ContentFormatId;
+  hookFamily: HookFamilyId;
+  openingVisual: string;
+  contentBeats: string[];
+  retentionDevices: string[];
+  hookPayoff: string;
+  whyShare: string;
+  claimSafety: ClaimSafety;
+  ctaType: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -535,6 +616,7 @@ export const insertSuggestion = internalMutation({
     caption: v.string(),
     hashtags: v.array(v.string()),
     mediaPlan: v.optional(v.any()),
+    creativePlan: v.optional(v.any()),
     trendRefs: v.optional(v.array(v.id("trends"))),
     embedding: v.optional(v.array(v.float64())),
   },
@@ -563,6 +645,7 @@ export const insertSuggestion = internalMutation({
       caption: args.caption,
       hashtags: args.hashtags,
       mediaPlan: args.mediaPlan,
+      creativePlan: args.creativePlan,
       trendRefs: args.trendRefs,
       embedding: args.embedding,
       createdAt: now,
@@ -654,13 +737,15 @@ export const generateForUser = internalAction({
       .filter(Boolean)
       .join("\n");
 
+    const contentEngineRules = buildMayaContentEngineRules(platforms);
     const result = await geminiJson<{ suggestions: Candidate[] }>({
       model: MODELS.text,
-      temperature: 0.95,
+      temperature: 0.82,
       system:
-        "You are Maya, an expert social media strategist. You write copy that sounds like a human " +
-        "practitioner, never like an AI or a press release. You ground every idea in a real trend " +
-        "and a specific brand angle. You never invent fake statistics, testimonials, or results.",
+        "You are Maya, MagicBox's evidence-led social content strategist. Write like a specific " +
+        "human practitioner, never like an AI or a press release. Optimize for audience relevance, " +
+        "hook/payoff continuity, useful or emotional sharing value, and truthful proof. Virality is " +
+        "probabilistic: never guarantee it and never invent statistics, testimonials, urgency, or results.",
       prompt:
         `Create exactly ${want + CANDIDATE_BUFFER} distinct post suggestions for today (${batchDate}).\n\n` +
         `## Brand\n${brandBlock}\n\n` +
@@ -668,6 +753,7 @@ export const generateForUser = internalAction({
         chosen.map((p, i) => `${i + 1}. ${p.name} — ${p.description ?? ""}`).join("\n") +
         `\n\n## Live trends (real, from web search today)\n${trendBlock || "(none available)"}\n\n` +
         `## Target platforms\n${platforms.join(", ")}\n\n` +
+        `${contentEngineRules}\n\n` +
         `## Rules\n` +
         `- Each suggestion targets ONE platform from the list, and the copy must be native to it ` +
         `(LinkedIn = professional insight; Instagram = punchy + visual; X = short and sharp).\n` +
@@ -678,16 +764,20 @@ export const generateForUser = internalAction({
         `- hashtags: 3-8, relevant, no generic spam walls.\n` +
         `- mediaType: "video" for short-form-first platforms, "image" where a visual helps, "none" for text-first.\n` +
         `- mediaPrompt: if mediaType isn't "none", a concrete visual description for an image/video generator.\n` +
-        `- All ${want + CANDIDATE_BUFFER} must be genuinely DIFFERENT ideas — not rewordings of each other.`,
+        `- All ${want + CANDIDATE_BUFFER} must be genuinely DIFFERENT ideas — not rewordings of each other.\n` +
+        `- Before returning, silently test at least two hook mechanisms for each idea and return only the ` +
+        `stronger truthful version. Never mention this internal comparison in the output.`,
       schema: SUGGESTION_SCHEMA as unknown as Record<string, unknown>,
     });
 
-    const candidates = (result.suggestions ?? []).filter(
-      (c) => c.caption?.trim() && platforms.includes(c.platform),
-    );
+    const candidates = (result.suggestions ?? [])
+      .filter((c) => c.caption?.trim() && platforms.includes(c.platform))
+      .map((candidate) => ({ candidate, audit: auditEngineCandidate(candidate) }))
+      .filter(({ audit }) => !audit.blocked)
+      .sort((a, b) => b.audit.score - a.audit.score);
 
     let created = 0;
-    for (const c of candidates) {
+    for (const { candidate: c, audit } of candidates) {
       if (created >= want) break;
 
       // Semantic dedup against this user's recent decks. Vector search catches
@@ -732,6 +822,20 @@ export const generateForUser = internalAction({
           c.mediaType && c.mediaType !== "none"
             ? { type: c.mediaType, prompt: c.mediaPrompt }
             : { type: "none" },
+        creativePlan: {
+          engineVersion: CONTENT_ENGINE_VERSION,
+          formatId: c.formatId,
+          hookFamily: c.hookFamily,
+          openingVisual: c.openingVisual,
+          contentBeats: c.contentBeats,
+          retentionDevices: c.retentionDevices,
+          hookPayoff: c.hookPayoff,
+          whyShare: c.whyShare,
+          claimSafety: c.claimSafety,
+          ctaType: c.ctaType,
+          qualityScore: audit.score,
+          auditIssues: audit.issues,
+        },
         trendRefs: trendRefs.length ? trendRefs : undefined,
         embedding,
       });

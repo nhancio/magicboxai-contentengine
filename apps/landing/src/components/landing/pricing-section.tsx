@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, CalendarDays, Check, Headphones, Sparkles } from "lucide-react";
-import { CALENDLY_URL, appLoginUrl, guestCheckoutUrl } from "@/lib/config";
+import { BOOKING_URL, appLoginUrl, guestCheckoutUrl } from "@/lib/config";
 import { captureEvent } from "@shared/lib/analytics";
 
 type Plan = {
@@ -71,7 +71,7 @@ const plans: Plan[] = [
       "Request launch support",
     ],
     cta: "Contact support",
-    href: CALENDLY_URL,
+    href: BOOKING_URL,
     custom: true,
   },
 ];
@@ -145,6 +145,8 @@ export function PricingSection() {
                     ? guestCheckoutUrl(plan.planId, isAnnual ? "annual" : "monthly")
                     : plan.href
                 }
+                target={plan.custom ? "_blank" : undefined}
+                rel={plan.custom ? "noopener noreferrer" : undefined}
                 onClick={() => captureEvent("pricing_cta_clicked", { plan: plan.name.toLowerCase(), billing: isAnnual ? "annual" : "monthly" })}
                 className="w-full py-4 flex items-center justify-center gap-2 text-sm font-medium transition-all group border border-foreground/20 text-foreground group-hover/card:bg-brand group-hover/card:text-brand-foreground group-hover/card:border-brand"
               >
@@ -180,7 +182,9 @@ export function PricingSection() {
               </div>
 
               <a
-                href={CALENDLY_URL}
+                href={BOOKING_URL}
+                target="_blank"
+                rel="noopener noreferrer"
                 onClick={() =>
                   captureEvent("pricing_cta_clicked", {
                     plan: "managed-service",

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { isConvexConfigured } from "../lib/convex";
 import { useAuth } from "@shared/lib/auth";
 import { getPhotoAvatars, type PhotoAvatarRecord } from "@shared/lib/firestore";
@@ -256,7 +257,7 @@ export default function Studio() {
         body: file,
       });
       if (!res.ok) throw new Error("Upload failed");
-      const { storageId } = (await res.json()) as { storageId: string };
+      const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
       const resolved = await resolveUpload({ storageId });
       setProductImage({ url: resolved.url, source: "upload" });
       // Also seed final media if none yet — product shot can be the post image.
@@ -306,7 +307,7 @@ export default function Studio() {
         headers: { "Content-Type": file.type },
         body: file,
       });
-      const { storageId } = await res.json();
+      const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
       const resolved = await resolveUpload({ storageId });
       setMedia({
         type: file.type.startsWith("video") ? "video" : "image",

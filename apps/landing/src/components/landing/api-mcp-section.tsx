@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Send, Moon, Bot, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CALENDLY_URL } from "@/lib/config";
+import { BOOKING_URL } from "@/lib/config";
 
 const capabilities = [
   { icon: FileText, label: "Create content" },
@@ -64,7 +64,7 @@ export function ApiMcpSection() {
                 and platforms run the full engine as their own.
               </p>
               <Button asChild size="lg" variant="brand" className="px-8 h-14 text-base rounded-full group">
-                <a href={CALENDLY_URL}>
+                <a href={BOOKING_URL} target="_blank" rel="noopener noreferrer">
                   Enquire
                   <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
                 </a>

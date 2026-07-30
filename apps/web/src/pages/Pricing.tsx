@@ -20,8 +20,7 @@ import {
 } from "lucide-react";
 
 /** Google Calendar appointment scheduling page — opens the booking UI. */
-const BOOK_APPOINTMENT_URL =
-  "https://calendar.google.com/calendar/appointments/schedules/AcZssZ1YKzgDTFE-TKk-D-IbMr5_pDVKssRUCqSfmsRjLTRUVlP1yxfKihFa9Uqjxd1k7P7cxUqbP4Fl?gv=true";
+const BOOK_APPOINTMENT_URL = "https://calendar.app.google/AATNUxb5m9xcTKEQ9";
 
 type PlanId = "free" | "pro" | "max" | "custom";
 
