@@ -296,6 +296,7 @@ export interface PostMediaDoc {
 }
 
 export interface PostDoc {
+  id?: string;
   userId: string;
   automationId?: string;
   brandProfileId?: string;
@@ -330,6 +331,7 @@ export interface PostDoc {
     status: "pending" | "posted" | "failed";
     permalink?: string;
     error?: string;
+    creationId?: string;
   }>;
   attempts: number;
   maxAttempts: number;

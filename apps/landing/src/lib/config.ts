@@ -51,4 +51,4 @@ export function guestCheckoutUrl(planId: "pro" | "max", billing: "monthly" | "an
 
 // Google Calendar appointment scheduling page — same booking link the app's
 // Pricing page (apps/web/src/pages/Pricing.tsx) opens for its Custom plan CTA.
-export const BOOKING_URL = "https://calendar.app.google/AATNUxb5m9xcTKEQ9";
+export const BOOKING_URL = "https://calendar.app.google/TH9bgDRMEdDpLvD68";

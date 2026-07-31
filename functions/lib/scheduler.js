@@ -225,7 +225,7 @@ exports.postingTick = (0, scheduler_1.onSchedule)({
         if (!claimedPost)
             continue;
         try {
-            const results = await (0, publishing_1.publishPost)(claimedPost);
+            const results = await (0, publishing_1.publishPost)(Object.assign(Object.assign({}, claimedPost), { id: docSnap.id }));
             const anyPosted = results.some((r) => r.status === "posted");
             if (!anyPosted) {
                 const reason = results.map((r) => r.error).filter(Boolean).join("; ") ||

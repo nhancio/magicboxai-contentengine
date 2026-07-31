@@ -178,6 +178,8 @@ function MediaBackdrop({
           playsInline
           autoPlay
           preload="auto"
+          title="Social post preview video"
+          aria-label="Social post preview video"
         />
       </>
     );

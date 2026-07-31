@@ -175,51 +175,90 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
     }
 
     const caption = this.composeText(input);
-    let creationId: string | undefined;
+    let creationId: string | undefined = input.creationId;
 
-    if (images.length > 1) {
-      const childIds: string[] = [];
-      for (const image of images) {
-        const child = await this.http(`${GRAPH}/${igUserId}/media`, {
+    if (creationId) {
+      try {
+        const containerStatus = await this.checkContainerStatus(creationId, t.accessToken);
+        if (containerStatus.status_code === "PUBLISHED") {
+          let permalink: string | undefined;
+          try {
+            const link = await this.http(
+              `${GRAPH}/${creationId}?` +
+                new URLSearchParams({ fields: "permalink", access_token: t.accessToken }).toString(),
+              { retries: 0 },
+            );
+            permalink = link.permalink;
+          } catch {
+            /* non-fatal */
+          }
+          return { externalId: creationId, permalink, creationId };
+        } else if (
+          containerStatus.status_code === "FINISHED" ||
+          containerStatus.status_code === "IN_PROGRESS"
+        ) {
+          // Container exists and is valid
+        } else {
+          creationId = undefined;
+        }
+      } catch {
+        creationId = undefined;
+      }
+    }
+
+    if (!creationId) {
+      if (images.length > 1) {
+        const childIds: string[] = [];
+        for (const image of images) {
+          const child = await this.http(`${GRAPH}/${igUserId}/media`, {
+            method: "POST",
+            body: new URLSearchParams({
+              image_url: image.url,
+              is_carousel_item: "true",
+              access_token: t.accessToken,
+            }),
+          });
+          if (!child.id) {
+            throw new BadBodyError("Instagram carousel child returned no creation id");
+          }
+          await this.waitForContainer(child.id, t.accessToken);
+          childIds.push(child.id);
+        }
+
+        const parent = await this.http(`${GRAPH}/${igUserId}/media`, {
           method: "POST",
           body: new URLSearchParams({
-            image_url: image.url,
-            is_carousel_item: "true",
+            media_type: "CAROUSEL",
+            children: childIds.join(","),
+            caption,
             access_token: t.accessToken,
           }),
         });
-        if (!child.id) {
-          throw new BadBodyError("Instagram carousel child returned no creation id");
-        }
-        await this.waitForContainer(child.id, t.accessToken);
-        childIds.push(child.id);
-      }
-
-      const parent = await this.http(`${GRAPH}/${igUserId}/media`, {
-        method: "POST",
-        body: new URLSearchParams({
-          media_type: "CAROUSEL",
-          children: childIds.join(","),
-          caption,
-          access_token: t.accessToken,
-        }),
-      });
-      creationId = parent.id;
-    } else {
-      const containerParams = new URLSearchParams({ caption, access_token: t.accessToken });
-      if (media.type === "video") {
-        containerParams.set("media_type", "REELS");
-        containerParams.set("video_url", media.url);
+        creationId = parent.id;
       } else {
-        containerParams.set("image_url", media.url);
+        const containerParams = new URLSearchParams({ caption, access_token: t.accessToken });
+        if (media.type === "video") {
+          containerParams.set("media_type", "REELS");
+          containerParams.set("video_url", media.url);
+        } else {
+          containerParams.set("image_url", media.url);
+        }
+        const created = await this.http(`${GRAPH}/${igUserId}/media`, {
+          method: "POST",
+          body: containerParams,
+        });
+        creationId = created.id;
       }
-      const created = await this.http(`${GRAPH}/${igUserId}/media`, {
-        method: "POST",
-        body: containerParams,
-      });
-      creationId = created.id;
+      if (!creationId) throw new BadBodyError("IG container returned no creation id");
+
+      if (input.onCreationId) {
+        try {
+          await input.onCreationId(creationId);
+        } catch {
+          /* non-fatal persistence error */
+        }
+      }
     }
-    if (!creationId) throw new BadBodyError("IG container returned no creation id");
 
     // Images AND videos must reach FINISHED before media_publish — publishing
     // early is the usual cause of OAuthException 9007 "Media ID is not available".
@@ -239,6 +278,20 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
           "Instagram could not fetch the media URL (must be public https). Re-upload the image/video in Studio and try again.",
         );
       }
+      if (/already published|2207001|2207003/i.test(msg)) {
+        let permalink: string | undefined;
+        try {
+          const link = await this.http(
+            `${GRAPH}/${creationId}?` +
+              new URLSearchParams({ fields: "permalink", access_token: t.accessToken }).toString(),
+            { retries: 0 },
+          );
+          permalink = link.permalink;
+        } catch {
+          /* non-fatal */
+        }
+        return { externalId: creationId, permalink, creationId };
+      }
       throw e;
     }
     const mediaId: string | undefined = published.id;
@@ -256,13 +309,25 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
       /* non-fatal */
     }
 
-    return { externalId: mediaId, ...(permalink ? { permalink } : {}) };
+    return { externalId: mediaId, ...(permalink ? { permalink } : {}), creationId };
+  }
+
+  private async checkContainerStatus(
+    creationId: string,
+    accessToken: string,
+  ): Promise<{ status_code?: string; status?: string }> {
+    return await this.http(
+      `${GRAPH}/${creationId}?` +
+        new URLSearchParams({
+          fields: "status_code,status",
+          access_token: accessToken,
+        }).toString(),
+      { retries: 0 },
+    );
   }
 
   private async waitForContainer(creationId: string, accessToken: string): Promise<void> {
     for (let i = 0; i < POLL_ATTEMPTS; i++) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-
       const status = await this.http(
         `${GRAPH}/${creationId}?` +
           new URLSearchParams({
@@ -270,7 +335,7 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
             access_token: accessToken,
           }).toString(),
       );
-      if (status.status_code === "FINISHED") return;
+      if (status.status_code === "FINISHED" || status.status_code === "PUBLISHED") return;
       if (status.status_code === "ERROR") {
         const detail =
           typeof status.status === "string" && status.status
@@ -280,6 +345,7 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
           `Instagram media processing failed${detail}. Use a public https image/video URL (Studio upload), not a private or hotlink-blocked host.`,
         );
       }
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     }
     throw new BadBodyError("Instagram media processing timed out — try again in a minute");
   }

@@ -97,9 +97,11 @@ export function PricingSection() {
         <div className="flex items-center gap-4 mb-14">
           <span className={`text-sm transition-colors ${!isAnnual ? "text-foreground" : "text-muted-foreground"}`}>Monthly</span>
           <button
+            type="button"
             onClick={() => setIsAnnual(!isAnnual)}
             aria-label={`Switch to ${isAnnual ? "monthly" : "annual"} billing`}
-            className="relative w-14 h-7 bg-foreground/10 rounded-full p-1 transition-colors hover:bg-foreground/20"
+            aria-pressed={isAnnual}
+            className="relative w-14 h-7 bg-foreground/10 rounded-full p-1 transition-colors hover:bg-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
           >
             <div className={`w-5 h-5 bg-brand rounded-full transition-transform duration-300 ${isAnnual ? "translate-x-7" : "translate-x-0"}`} />
           </button>

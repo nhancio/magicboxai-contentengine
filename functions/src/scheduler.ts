@@ -261,7 +261,7 @@ export const postingTick = onSchedule(
       if (!claimedPost) continue;
 
       try {
-        const results = await publishPost(claimedPost);
+        const results = await publishPost({ ...claimedPost, id: docSnap.id });
         const anyPosted = results.some((r) => r.status === "posted");
 
         if (!anyPosted) {

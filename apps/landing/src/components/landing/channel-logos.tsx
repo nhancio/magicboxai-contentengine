@@ -6,10 +6,11 @@ import type { SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
-const base = (props: IconProps) => ({
+const base = (props: IconProps): IconProps => ({
   viewBox: "0 0 24 24",
   fill: "currentColor",
   xmlns: "http://www.w3.org/2000/svg",
+  "aria-hidden": true,
   ...props,
 });
 

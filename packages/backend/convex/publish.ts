@@ -35,6 +35,7 @@ export type DestinationResult = {
   status: "published" | "failed" | "needs_reconnect";
   externalId?: string;
   permalink?: string;
+  creationId?: string;
   error?: string;
   retriable?: boolean;
 };
@@ -93,6 +94,31 @@ export const saveToken = internalMutation({
   },
 });
 
+export const saveCreationId = internalMutation({
+  args: {
+    postId: v.id("posts"),
+    accountId: v.string(),
+    creationId: v.string(),
+  },
+  handler: async (ctx, { postId, accountId, creationId }) => {
+    const post = await ctx.db.get(postId);
+    if (!post) return;
+    const results = [...((post.results as DestinationResult[] | undefined) ?? [])];
+    const idx = results.findIndex((r) => r.accountId === accountId);
+    if (idx >= 0) {
+      results[idx] = { ...results[idx], creationId };
+    } else {
+      results.push({
+        accountId,
+        platform: "instagram",
+        status: "failed",
+        creationId,
+      });
+    }
+    await ctx.db.patch(postId, { results, updatedAt: Date.now() });
+  },
+});
+
 export const finishPost = internalMutation({
   args: {
     postId: v.id("posts"),
@@ -107,7 +133,16 @@ export const finishPost = internalMutation({
     // Deleted mid-flight (e.g. user cancelled while we were publishing).
     if (!post) return { status: "failed", published: 0, of: 0 };
 
-    const rs = results as DestinationResult[];
+    const rawRs = results as DestinationResult[];
+    const rs = rawRs.map((r) => {
+      const existing = (post.results as DestinationResult[] | undefined)?.find(
+        (old) => old.accountId === r.accountId,
+      );
+      return {
+        ...r,
+        creationId: r.creationId ?? existing?.creationId,
+      };
+    });
     const published = rs.filter((r) => r.status === "published").length;
     const attempts = (post.attempts ?? 0) + 1;
     const exhausted = attempts >= (post.maxAttempts ?? 3);
@@ -199,10 +234,23 @@ export const runPost = internalAction({
       >;
       const waOpts = (perPlatform.whatsapp ?? {}) as Record<string, unknown>;
 
+      const existingResult = (post.results as DestinationResult[] | undefined)?.find(
+        (r) => r.accountId === account._id,
+      );
+      const existingCreationId = existingResult?.creationId;
+
       const input = {
         caption: post.content?.caption ?? "",
         hashtags: post.content?.hashtags ?? [],
         media: (post.media ?? []).map((m: any) => ({ type: m.type, url: m.url })),
+        creationId: existingCreationId,
+        onCreationId: async (cid: string) => {
+          await ctx.runMutation(internal.publish.saveCreationId, {
+            postId,
+            accountId: account._id,
+            creationId: cid,
+          });
+        },
         options: {
           ...waOpts,
           recipients: waOpts.recipients,
@@ -219,7 +267,13 @@ export const runPost = internalAction({
 
       try {
         const r = await attemptPublish();
-        results.push({ ...base, status: "published", externalId: r.externalId, permalink: r.permalink });
+        results.push({
+          ...base,
+          status: "published",
+          externalId: r.externalId,
+          permalink: r.permalink,
+          creationId: r.creationId ?? existingCreationId,
+        });
         continue;
       } catch (e) {
         // --- Expired token: refresh once, then retry. -------------------
@@ -239,6 +293,7 @@ export const runPost = internalAction({
               status: "published",
               externalId: r.externalId,
               permalink: r.permalink,
+              creationId: r.creationId ?? existingCreationId,
             });
             continue;
           } catch (refreshErr) {
@@ -252,6 +307,7 @@ export const runPost = internalAction({
               ...base,
               status: "needs_reconnect",
               error: String(refreshErr).slice(0, 200),
+              creationId: existingCreationId,
             });
             continue;
           }
@@ -263,13 +319,23 @@ export const runPost = internalAction({
             accountId: account._id,
             status: "expired",
           });
-          results.push({ ...base, status: "needs_reconnect", error: String(e).slice(0, 200) });
+          results.push({
+            ...base,
+            status: "needs_reconnect",
+            error: String(e).slice(0, 200),
+            creationId: existingCreationId,
+          });
           continue;
         }
 
         // --- Deterministic bad request: terminal, don't burn quota. -----
         if (e instanceof BadBodyError || e instanceof ProviderDeferredError) {
-          results.push({ ...base, status: "failed", error: String(e).slice(0, 200) });
+          results.push({
+            ...base,
+            status: "failed",
+            error: String(e).slice(0, 200),
+            creationId: existingCreationId,
+          });
           continue;
         }
 
@@ -281,6 +347,7 @@ export const runPost = internalAction({
             status: "failed",
             error: String(e).slice(0, 200),
             retriable: true,
+            creationId: existingCreationId,
           });
           continue;
         }
@@ -293,6 +360,7 @@ export const runPost = internalAction({
           status: "failed",
           error: String(e).slice(0, 200),
           retriable: true,
+          creationId: existingCreationId,
         });
       }
     }

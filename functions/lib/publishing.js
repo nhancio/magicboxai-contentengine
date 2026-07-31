@@ -38,6 +38,10 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.trustedStoragePathFromUrl = trustedStoragePathFromUrl;
+exports.publishInstagram = publishInstagram;
+exports.linkedinUploadImage = linkedinUploadImage;
+exports.linkedinUploadVideo = linkedinUploadVideo;
+exports.publishLinkedIn = publishLinkedIn;
 exports.publishPost = publishPost;
 const admin = __importStar(require("firebase-admin"));
 const core_1 = require("./core");
@@ -207,64 +211,128 @@ function firstMedia(post, type) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // --- Instagram ---
-async function publishInstagram(token, caption, media) {
+async function publishInstagram(token, caption, media, options) {
     const igUserId = token.igUserId;
     const accessToken = token.accessToken;
     if (!igUserId)
         throw new Error("Instagram account missing igUserId");
     if (!media)
         throw new Error("Instagram requires an image or video");
-    // 1) create media container
-    const containerParams = new URLSearchParams({ caption, access_token: accessToken });
-    if (media.type === "video") {
-        containerParams.set("media_type", "REELS");
-        containerParams.set("video_url", media.url);
+    let creationId = options === null || options === void 0 ? void 0 : options.creationId;
+    // 1) Check existing creationId if provided
+    if (creationId) {
+        try {
+            const statusRes = await fetch(`${GRAPH}/${creationId}?fields=status_code,status&access_token=${encodeURIComponent(accessToken)}`);
+            if (statusRes.ok) {
+                const statusJson = (await statusRes.json());
+                if (statusJson.status_code === "PUBLISHED") {
+                    let permalink = "https://www.instagram.com/";
+                    try {
+                        const linkRes = await fetch(`${GRAPH}/${creationId}?fields=permalink&access_token=${encodeURIComponent(accessToken)}`);
+                        const linkJson = (await linkRes.json());
+                        if (linkJson.permalink)
+                            permalink = linkJson.permalink;
+                    }
+                    catch (_a) {
+                        /* non-fatal */
+                    }
+                    return { permalink, creationId };
+                }
+                else if (statusJson.status_code === "FINISHED" ||
+                    statusJson.status_code === "IN_PROGRESS") {
+                    // Existing container is valid and can be reused
+                }
+                else {
+                    creationId = undefined;
+                }
+            }
+            else {
+                creationId = undefined;
+            }
+        }
+        catch (_b) {
+            creationId = undefined;
+        }
     }
-    else {
-        containerParams.set("image_url", media.url);
+    // 2) Create media container if no valid creationId exists
+    if (!creationId) {
+        const containerParams = new URLSearchParams({ caption, access_token: accessToken });
+        if (media.type === "video") {
+            containerParams.set("media_type", "REELS");
+            containerParams.set("video_url", media.url);
+        }
+        else {
+            containerParams.set("image_url", media.url);
+        }
+        const createRes = await fetch(`${GRAPH}/${igUserId}/media`, {
+            method: "POST",
+            body: containerParams,
+        });
+        const createText = await createRes.text();
+        if (!createRes.ok)
+            throw new Error(`IG container failed (${createRes.status}): ${createText}`);
+        creationId = JSON.parse(createText).id;
+        if (!creationId)
+            throw new Error("IG container returned no creation id");
+        // Persist creationId before attempting publish
+        if (options === null || options === void 0 ? void 0 : options.onCreationId) {
+            try {
+                await options.onCreationId(creationId);
+            }
+            catch (e) {
+                console.error("Failed to persist Instagram creationId:", e);
+            }
+        }
     }
-    const createRes = await fetch(`${GRAPH}/${igUserId}/media`, {
-        method: "POST",
-        body: containerParams,
-    });
-    const createText = await createRes.text();
-    if (!createRes.ok)
-        throw new Error(`IG container failed (${createRes.status}): ${createText}`);
-    const creationId = JSON.parse(createText).id;
-    // 2) videos process async — poll the container until FINISHED
-    if (media.type === "video") {
-        for (let i = 0; i < 20; i++) {
-            await sleep(6000);
-            const statusRes = await fetch(`${GRAPH}/${creationId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`);
+    // 3) Poll container until FINISHED or PUBLISHED
+    for (let i = 0; i < 20; i++) {
+        const statusRes = await fetch(`${GRAPH}/${creationId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`);
+        if (statusRes.ok) {
             const statusJson = (await statusRes.json());
-            if (statusJson.status_code === "FINISHED")
+            if (statusJson.status_code === "FINISHED" || statusJson.status_code === "PUBLISHED")
                 break;
             if (statusJson.status_code === "ERROR")
                 throw new Error("IG video processing failed");
-            if (i === 19)
-                throw new Error("IG video processing timed out");
         }
+        if (i === 19)
+            throw new Error("IG video processing timed out");
+        await sleep(6000);
     }
-    // 3) publish
+    // 4) Publish container
     const pubRes = await fetch(`${GRAPH}/${igUserId}/media_publish`, {
         method: "POST",
         body: new URLSearchParams({ creation_id: creationId, access_token: accessToken }),
     });
     const pubText = await pubRes.text();
-    if (!pubRes.ok)
+    if (!pubRes.ok) {
+        if (/already published|2207001|2207003/i.test(pubText)) {
+            let permalink = "https://www.instagram.com/";
+            try {
+                const linkRes = await fetch(`${GRAPH}/${creationId}?fields=permalink&access_token=${encodeURIComponent(accessToken)}`);
+                const linkJson = (await linkRes.json());
+                if (linkJson.permalink)
+                    permalink = linkJson.permalink;
+            }
+            catch (_c) {
+                /* non-fatal */
+            }
+            return { permalink, creationId };
+        }
         throw new Error(`IG publish failed (${pubRes.status}): ${pubText}`);
+    }
     const mediaId = JSON.parse(pubText).id;
-    // 4) best-effort permalink
+    // 5) Fetch permalink
+    let permalink = "https://www.instagram.com/";
     try {
         const linkRes = await fetch(`${GRAPH}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(accessToken)}`);
         const linkJson = (await linkRes.json());
         if (linkJson.permalink)
-            return linkJson.permalink;
+            permalink = linkJson.permalink;
     }
-    catch (_a) {
+    catch (_d) {
         /* non-fatal */
     }
-    return `https://www.instagram.com/`;
+    return { permalink, creationId };
 }
 // --- LinkedIn ---
 async function linkedinUploadImage(token, authorUrn, imageUrl) {
@@ -297,6 +365,109 @@ async function linkedinUploadImage(token, authorUrn, imageUrl) {
         throw new Error(`LinkedIn image upload failed (${putRes.status})`);
     return init.value.image;
 }
+async function linkedinUploadVideo(token, authorUrn, videoUrl) {
+    var _a, _b, _c, _d, _e, _f;
+    // 1) fetch asset bytes
+    const assetRes = await fetch(videoUrl);
+    if (!assetRes.ok)
+        throw new Error(`Could not fetch media for LinkedIn (${assetRes.status})`);
+    const bytes = Buffer.from(await assetRes.arrayBuffer());
+    const fileSizeBytes = bytes.length;
+    // 2) initialize video upload
+    const initRes = await fetch("https://api.linkedin.com/rest/videos?action=initializeUpload", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "LinkedIn-Version": LINKEDIN_VERSION,
+            "X-Restli-Protocol-Version": "2.0.0",
+        },
+        body: JSON.stringify({
+            initializeUploadRequest: {
+                owner: authorUrn,
+                fileSizeBytes,
+                uploadCaptions: false,
+                uploadThumbnail: false,
+            },
+        }),
+    });
+    const initText = await initRes.text();
+    if (!initRes.ok)
+        throw new Error(`LinkedIn video init failed (${initRes.status}): ${initText}`);
+    const init = JSON.parse(initText);
+    const videoUrn = (_a = init.value) === null || _a === void 0 ? void 0 : _a.video;
+    const uploadToken = (_c = (_b = init.value) === null || _b === void 0 ? void 0 : _b.uploadToken) !== null && _c !== void 0 ? _c : "";
+    const instructions = (_e = (_d = init.value) === null || _d === void 0 ? void 0 : _d.uploadInstructions) !== null && _e !== void 0 ? _e : [];
+    if (!videoUrn || !instructions.length) {
+        throw new Error("LinkedIn video init returned no video URN or upload instructions");
+    }
+    // 3) upload binary chunks
+    const uploadedPartIds = [];
+    for (const part of instructions) {
+        const chunk = bytes.subarray(part.firstByte, part.lastByte + 1);
+        const putRes = await fetch(part.uploadUrl, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/octet-stream",
+            },
+            body: new Uint8Array(chunk),
+        });
+        if (!putRes.ok) {
+            const text = await putRes.text();
+            throw new Error(`LinkedIn video chunk upload failed (${putRes.status}): ${text}`);
+        }
+        const etagHeader = putRes.headers.get("etag") || putRes.headers.get("ETag");
+        if (!etagHeader) {
+            throw new Error("LinkedIn video chunk upload returned no ETag header");
+        }
+        const etag = etagHeader.replace(/^"|"$/g, "").trim();
+        uploadedPartIds.push(etag);
+    }
+    // 4) finalize upload
+    const finalizeRes = await fetch("https://api.linkedin.com/rest/videos?action=finalizeUpload", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "LinkedIn-Version": LINKEDIN_VERSION,
+            "X-Restli-Protocol-Version": "2.0.0",
+        },
+        body: JSON.stringify({
+            finalizeUploadRequest: {
+                video: videoUrn,
+                uploadToken,
+                uploadedPartIds,
+            },
+        }),
+    });
+    const finalizeText = await finalizeRes.text();
+    if (!finalizeRes.ok) {
+        throw new Error(`LinkedIn video finalize failed (${finalizeRes.status}): ${finalizeText}`);
+    }
+    // 5) check status
+    for (let i = 0; i < 30; i++) {
+        const statusRes = await fetch(`https://api.linkedin.com/rest/videos/${encodeURIComponent(videoUrn)}`, {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "LinkedIn-Version": LINKEDIN_VERSION,
+                "X-Restli-Protocol-Version": "2.0.0",
+            },
+        });
+        const statusText = await statusRes.text();
+        if (!statusRes.ok) {
+            throw new Error(`LinkedIn video status check failed (${statusRes.status}): ${statusText}`);
+        }
+        const statusJson = JSON.parse(statusText);
+        if (statusJson.status === "AVAILABLE") {
+            return videoUrn;
+        }
+        if (statusJson.status === "PROCESSING_FAILED") {
+            throw new Error(`LinkedIn video processing failed: ${(_f = statusJson.processingFailureReason) !== null && _f !== void 0 ? _f : "unknown reason"}`);
+        }
+        await sleep(3000);
+    }
+    throw new Error("LinkedIn video processing timed out");
+}
 async function publishLinkedIn(token, authorUrn, caption, media) {
     const accessToken = token.accessToken;
     const body = {
@@ -311,10 +482,13 @@ async function publishLinkedIn(token, authorUrn, caption, media) {
         lifecycleState: "PUBLISHED",
         isReshareDisabledByAuthor: false,
     };
-    // LinkedIn's Posts API only supports images here; videos fall back to text.
     if (media && media.type === "image") {
         const imageUrn = await linkedinUploadImage(accessToken, authorUrn, media.url);
         body.content = { media: { id: imageUrn } };
+    }
+    else if (media && media.type === "video") {
+        const videoUrn = await linkedinUploadVideo(accessToken, authorUrn, media.url);
+        body.content = { media: { id: videoUrn } };
     }
     const res = await fetch("https://api.linkedin.com/rest/posts", {
         method: "POST",
@@ -383,7 +557,7 @@ async function publishYouTube(accessToken, caption, media) {
  * Returns one result per account; the caller decides overall success.
  */
 async function publishPost(post) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
     if (typeof post.userId !== "string" || !post.userId || post.userId.includes("/")) {
         throw new Error("Post owner is invalid");
     }
@@ -456,8 +630,48 @@ async function publishPost(post) {
         try {
             const accessToken = await freshAccessToken(accountId, account, token);
             let permalink;
+            let creationId;
             if (account.provider === "instagram") {
-                permalink = await publishInstagram(Object.assign(Object.assign({}, token), { accessToken }), perCaption, media);
+                const existingResult = (_o = post.results) === null || _o === void 0 ? void 0 : _o.find((r) => r.accountId === accountId || r.platform === account.platform);
+                const existingCreationId = existingResult === null || existingResult === void 0 ? void 0 : existingResult.creationId;
+                const onCreationId = async (cid) => {
+                    const docId = post.id || post.idempotencyKey;
+                    if (!docId)
+                        return;
+                    try {
+                        const postRef = core_1.db.collection("posts").doc(docId);
+                        await core_1.db.runTransaction(async (tx) => {
+                            var _a;
+                            const fresh = await tx.get(postRef);
+                            if (!fresh.exists)
+                                return;
+                            const freshData = fresh.data();
+                            const updatedResults = [...((_a = freshData.results) !== null && _a !== void 0 ? _a : [])];
+                            const idx = updatedResults.findIndex((r) => r.accountId === accountId);
+                            if (idx >= 0) {
+                                updatedResults[idx] = Object.assign(Object.assign({}, updatedResults[idx]), { creationId: cid });
+                            }
+                            else {
+                                updatedResults.push({
+                                    platform: account.platform,
+                                    accountId,
+                                    status: "pending",
+                                    creationId: cid,
+                                });
+                            }
+                            tx.update(postRef, {
+                                results: updatedResults,
+                                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                            });
+                        });
+                    }
+                    catch (e) {
+                        console.error("Failed to persist creationId in Firestore:", e);
+                    }
+                };
+                const res = await publishInstagram(Object.assign(Object.assign({}, token), { accessToken }), perCaption, media, { creationId: existingCreationId, onCreationId });
+                permalink = res.permalink;
+                creationId = res.creationId;
             }
             else if (account.provider === "youtube") {
                 permalink = await publishYouTube(accessToken, perCaption, firstMedia(post, "video"));
@@ -468,15 +682,11 @@ async function publishPost(post) {
             else {
                 throw new Error("Unsupported publishing provider");
             }
-            results.push({ accountId, platform: account.platform, status: "posted", permalink });
+            results.push(Object.assign({ accountId, platform: account.platform, status: "posted", permalink }, (creationId ? { creationId } : {})));
         }
         catch (e) {
-            results.push({
-                accountId,
-                platform: account.platform,
-                status: "failed",
-                error: e instanceof Error ? e.message : String(e),
-            });
+            const existingResult = (_p = post.results) === null || _p === void 0 ? void 0 : _p.find((r) => r.accountId === accountId || r.platform === account.platform);
+            results.push(Object.assign({ accountId, platform: account.platform, status: "failed", error: e instanceof Error ? e.message : String(e) }, ((existingResult === null || existingResult === void 0 ? void 0 : existingResult.creationId) ? { creationId: existingResult.creationId } : {})));
         }
     }
     return results;

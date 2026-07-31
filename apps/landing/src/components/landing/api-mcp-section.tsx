@@ -88,7 +88,7 @@ export function ApiMcpSection() {
                 <span className="absolute -left-3 top-6 rounded-full bg-brand text-brand-foreground text-sm font-medium px-3 py-1 shadow">
                   Kate
                 </span>
-                <span className="absolute -right-3 bottom-8 rounded-full bg-blue-500 text-white text-sm font-medium px-3 py-1 shadow">
+                <span className="absolute -right-3 bottom-8 rounded-full bg-blue-600 text-white text-sm font-medium px-3 py-1 shadow">
                   Jake
                 </span>
               </div>

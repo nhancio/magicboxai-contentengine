@@ -116,7 +116,7 @@ function DraftPhone() {
           <div className="flex items-center gap-1.5"><FileText className="h-3 w-3 text-[#8d70d6]" /><span className="text-[8px] font-medium">Brand kit applied</span></div>
           <Check className="h-3 w-3 text-[#30a474]" />
         </div>
-        <button type="button" className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#8c62df] py-2.5 text-[9px] font-semibold text-white shadow-[0_8px_18px_rgba(113,75,195,0.22)]">
+        <button type="button" aria-label="Ready for review" className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#8c62df] py-2.5 text-[9px] font-semibold text-white shadow-[0_8px_18px_rgba(113,75,195,0.22)]">
           Ready for review <ChevronRight className="h-3 w-3" />
         </button>
       </div>
@@ -163,7 +163,7 @@ function HeroPhoneStage({ isVisible }: { isVisible: boolean }) {
       <div className="absolute -right-28 top-20 h-72 w-72 rounded-full bg-[#7956cb]/30 blur-3xl" />
       <div className="absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-[#4ea987]/20 blur-3xl" />
 
-      <div className="relative z-10 flex items-center justify-between text-[9px] font-medium tracking-[0.18em] text-white/55">
+      <div className="relative z-10 flex items-center justify-between text-[9px] font-medium tracking-[0.18em] text-white/80">
         <span>MAGICBOX / WEEKLY FLOW</span>
         <span className="hidden sm:block">12–16 MAY</span>
       </div>
@@ -213,7 +213,7 @@ export function HeroSection() {
                   <ArrowRight className="ml-1 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
                 </a>
               </Button>
-              <a href="#how-it-works" className="inline-flex h-12 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium text-foreground/75 transition-colors hover:text-foreground sm:justify-start">
+              <a href="#how-it-works" className="inline-flex h-12 items-center justify-center gap-2 rounded-full px-4 text-sm font-medium text-foreground/85 transition-colors hover:text-foreground sm:justify-start">
                 See the workflow <ChevronRight className="h-4 w-4" />
               </a>
             </div>
@@ -222,7 +222,7 @@ export function HeroSection() {
               <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Built for the channels you already use</p>
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                 {CHANNELS.map(({ name, Logo }) => (
-                  <span key={name} className="inline-flex items-center gap-2 text-xs font-medium text-foreground/70"><Logo className="h-3.5 w-3.5" />{name}</span>
+                  <span key={name} className="inline-flex items-center gap-2 text-xs font-medium text-foreground/85"><Logo className="h-3.5 w-3.5" />{name}</span>
                 ))}
               </div>
             </div>

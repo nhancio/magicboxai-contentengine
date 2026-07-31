@@ -32,11 +32,16 @@ export type PublishInput = {
   media: MediaItem[];
   /** Provider-specific extras (e.g. reddit subreddit, youtube title/privacy). */
   options?: Record<string, unknown>;
+  /** Optional existing container/creation ID for idempotency reuse */
+  creationId?: string;
+  /** Optional callback to persist creationId as soon as it is generated */
+  onCreationId?: (creationId: string) => Promise<void>;
 };
 
 export type PublishResult = {
   externalId: string;
   permalink?: string;
+  creationId?: string;
 };
 
 /** Everything a provider needs to talk to a platform on the user's behalf. */

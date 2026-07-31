@@ -44,6 +44,10 @@ export function FooterSection() {
                 MagicBox is AI marketing automation software for creating, approving,
                 scheduling, and publishing social posts to Instagram, LinkedIn, and YouTube.
               </p>
+              <p className="mb-6 max-w-sm text-xs leading-relaxed text-muted-foreground">
+                You connect each channel yourself. Google/YouTube access is requested only for
+                publishing actions you initiate; access tokens are stored server-side and are not sold.
+              </p>
               <div className="mb-6 flex flex-wrap gap-4 text-sm">
                 <a
                   href="/privacy.html"

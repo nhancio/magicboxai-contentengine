@@ -2,11 +2,18 @@
 
 MagicBox is an AI marketing automation platform for brand-aware content generation, approval, scheduling, and direct publishing.
 
-- Canonical architecture, setup, product, SEO, payments, video, and Convex migration context: [`Context.MD`](./Context.MD)
-- Canonical launch plan, release gates, task ownership, and redundant-file inventory: [`LAUNCH_PLAN.md`](./LAUNCH_PLAN.md)
-- Go-to-market plan for `magicboxai.in`, target segments, outreach, and customer-learning loops: [`GTM_PLAN.md`](./GTM_PLAN.md)
+## Canonical Documentation
 
-Quick verification:
+- **Launch Plan & Release Gates:** [`LAUNCH_PLAN.md`](./LAUNCH_PLAN.md) — The single source of truth for launch status, gates G0–G9, and task ownership.
+- **Architecture & System Context:** [`Context.MD`](./Context.MD) — Verified technical architecture, monorepo layout, database design, and Convex migration strategy.
+- **Go-To-Market Strategy:** [`GTM_PLAN.md`](./GTM_PLAN.md) — Product positioning, target customer segments (India, US, UK), outreach, and feedback loops.
+- **Production Deployment Runbook:** [`PRODUCTION.md`](./PRODUCTION.md) — Step-by-step deploy sequence for web, landing, admin, and Cloud Functions.
+- **Firebase & Security Setup:** [`FIREBASE_SETUP.md`](./FIREBASE_SETUP.md) — App Check configuration, Firestore rules, and secrets setup.
+- **Channel OAuth Setup:** [`CHANNELS_SETUP.md`](./CHANNELS_SETUP.md) — Meta, LinkedIn, and Google API registration and verification steps.
+- **Security Audit:** [`SECURITY_AUDIT.md`](./SECURITY_AUDIT.md) — Hardening audit, SSRF protection, token security, and vulnerability mitigations.
+- **AI System Prompts:** [`SYSTEM_PROMPTS.md`](./SYSTEM_PROMPTS.md) — Prompt reference for Gemini copy rewrite and media generation.
+
+## Quick Verification
 
 ```bash
 npm install
@@ -14,103 +21,3 @@ npm run typecheck
 npm test
 npm run build
 ```
-
-Historical project Markdown files are retained for review but are superseded by the two canonical documents above. Operational `marketing-agent/**/*.md` files and canonical `legal/*.md` policies remain standalone by design.
-
-<!-- Historical content below is retained temporarily for provenance. -->
-
-## Architecture
-
-```
-magicboxai/
-├── shared/              # Shared code across all apps
-│   ├── components/ui/   # Reusable UI components (shadcn-style)
-│   ├── lib/             # Firebase, auth, Firestore, utilities
-│   ├── hooks/           # Custom React hooks
-│   └── types/           # TypeScript type definitions
-├── apps/
-│   ├── landing/         # magicboxai.in - Marketing landing page
-│   ├── web/             # app.magicboxai.in - Main application
-│   └── admin/           # admin.magicboxai.in - Admin panel
-```
-
-## Subdomain Mapping
-
-| Subdomain | App | Port (dev) | Description |
-|-----------|-----|------------|-------------|
-| magicboxai.in | landing | 5173 | Public landing page |
-| app.magicboxai.in | web | 5174 | Main app (Google login) |
-| admin.magicboxai.in | admin | 5175 | Admin panel (Firebase admin auth) |
-
-## Quick Start
-
-### Prerequisites
-- Node.js 20+
-- Firebase project (for auth & data)
-
-### Setup
-
-1. Clone the repo and install dependencies for each app:
-
-```bash
-cd apps/landing && npm install
-cd ../web && npm install
-cd ../admin && npm install
-```
-
-2. **Connect Firebase** – Copy env files and add your Firebase config. See **[FIREBASE_SETUP.md](./FIREBASE_SETUP.md)** for step-by-step setup (project, Auth, Firestore, Storage, optional Cloud Functions).
-
-```bash
-cp .env.example apps/web/.env
-cp .env.example apps/admin/.env
-# Edit apps/web/.env and apps/admin/.env with your Firebase config from the Firebase Console.
-```
-
-3. Start each app:
-
-```bash
-# Terminal 1 - Landing page
-cd apps/landing && npm run dev
-
-# Terminal 2 - Main app
-cd apps/web && npm run dev
-
-# Terminal 3 - Admin panel
-cd apps/admin && npm run dev
-```
-
-## Tech Stack
-
-- **Frontend**: React 18, TypeScript, Vite
-- **Styling**: Tailwind CSS, shadcn/ui components
-- **Auth**: Firebase Google OAuth for app and admin; admin access is checked with custom claims / verified admin records
-- **Database**: Firebase Firestore
-- **AI generation**: Firebase Cloud Functions with Gemini, Imagen, and gated Veo support
-- **Charts**: Recharts remains installed in app packages but is listed for dependency cleanup if no import remains
-- **Animations**: Framer Motion
-
-## Authentication
-
-### User App (app.magicboxai.in)
-- Google Sign-In via Firebase Authentication
-- User data stored in Firestore `users` collection
-
-### Admin Panel (admin.magicboxai.in)
-- Google sign-in via Firebase Authentication.
-- Admin authorization is checked through server-set custom claims, the `verifyAdminStatus` callable when deployed, and the configured admin record fallback.
-- There are no hardcoded admin credentials in the current admin source.
-
-## Deployment
-
-Each app builds independently and can be deployed to any static hosting (Vercel, Netlify, Cloudflare Pages):
-
-```bash
-cd apps/landing && npm run build   # → dist/
-cd apps/web && npm run build       # → dist/
-cd apps/admin && npm run build     # → dist/
-```
-
-Configure your DNS:
-- `magicboxai.in` → landing app
-- `app.magicboxai.in` → web app
-- `admin.magicboxai.in` → admin app

@@ -51,12 +51,12 @@ const platforms = [
 
 function Cell({ value }: { value: boolean | "note" }) {
   if (value === true) {
-    return <Check className="mx-auto h-4 w-4 text-emerald-600" aria-label="Supported" />;
+    return <Check className="mx-auto h-4 w-4 text-emerald-700" role="img" aria-label="Supported" />;
   }
   if (value === "note") {
-    return <span className="font-mono text-[10px] text-amber-600">Limited</span>;
+    return <span className="font-mono text-[10px] font-medium text-amber-800">Limited</span>;
   }
-  return <Minus className="mx-auto h-4 w-4 text-foreground/20" aria-label="Not supported" />;
+  return <Minus className="mx-auto h-4 w-4 text-foreground/45" role="img" aria-label="Not supported" />;
 }
 
 export function IntegrationsSection() {

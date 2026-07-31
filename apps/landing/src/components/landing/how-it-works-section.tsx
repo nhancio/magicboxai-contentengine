@@ -88,7 +88,7 @@ function ConnectCard() {
             <span className="text-sm font-medium">{name}</span>
           </div>
           <span
-            className="flex items-center gap-1 font-mono text-[10px] text-emerald-600 animate-check-pop"
+            className="flex items-center gap-1 font-mono text-[10px] font-medium text-emerald-700 animate-check-pop"
             style={{ animationDelay: `${i * 200}ms` }}
           >
             <Check className="h-3.5 w-3.5" /> Connected

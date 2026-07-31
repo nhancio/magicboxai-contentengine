@@ -12,25 +12,26 @@ import { CtaSection } from "@/components/landing/cta-section";
 import { FooterSection } from "@/components/landing/footer-section";
 
 /**
- * Conversion-focused composition + Google OAuth verification homepage content:
- * hero (purpose + MagicBox name) → about MagicBox (Google data use) →
- * channels → workflow → features → reel formats → use cases → pricing → FAQ → CTA.
+ * Conversion-focused composition: purpose → integrations → workflow → features →
+ * reel formats → use cases → pricing → FAQ → CTA. Legal and verification details live in the footer.
  */
 export default function Landing() {
   return (
-    <main className="relative bg-background text-foreground">
+    <div className="relative bg-background text-foreground">
       <Navigation />
-      <HeroSection />
-      <AboutMagicBoxSection />
-      <IntegrationsSection />
-      <HowItWorksSection />
-      <FeaturesSection />
-      <ReelsShowcaseSection />
-      <UseCasesSection />
-      <PricingSection />
-      <FaqSection />
-      <CtaSection />
+      <main id="main-content">
+        <HeroSection />
+        <AboutMagicBoxSection />
+        <IntegrationsSection />
+        <HowItWorksSection />
+        <FeaturesSection />
+        <ReelsShowcaseSection />
+        <UseCasesSection />
+        <PricingSection />
+        <FaqSection />
+        <CtaSection />
+      </main>
       <FooterSection />
-    </main>
+    </div>
   );
 }

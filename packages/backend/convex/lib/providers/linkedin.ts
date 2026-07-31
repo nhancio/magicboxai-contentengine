@@ -115,14 +115,6 @@ class LinkedInProvider extends BaseProvider implements SocialProvider {
     if (video && images.length > 0) {
       throw new BadBodyError("LinkedIn posts cannot mix a video with carousel images");
     }
-    if (video) {
-      // The Firebase implementation silently dropped video and published the
-      // post as text-only — the user saw "published" and got the wrong post.
-      // Failing loudly is correct until the Videos API is wired up.
-      throw new BadBodyError(
-        "LinkedIn video publishing is not supported yet — remove the video or post it manually",
-      );
-    }
 
     const authorUrn = await this.resolveAuthorUrn(t, input);
 
@@ -139,7 +131,10 @@ class LinkedInProvider extends BaseProvider implements SocialProvider {
       isReshareDisabledByAuthor: false,
     };
 
-    if (images.length === 1) {
+    if (video) {
+      const videoUrn = await this.uploadVideo(t.accessToken, authorUrn, video.url);
+      body.content = { media: { id: videoUrn } };
+    } else if (images.length === 1) {
       body.content = {
         media: { id: await this.uploadImage(t.accessToken, authorUrn, images[0].url) },
       };
@@ -194,6 +189,125 @@ class LinkedInProvider extends BaseProvider implements SocialProvider {
       throw new BadBodyError("could not resolve the LinkedIn author URN for this account");
     }
     return `urn:li:person:${info.sub}`;
+  }
+
+  /**
+   * Videos API: initializeUpload -> PUT binary chunks -> finalizeUpload -> poll status -> post references urn.
+   */
+  private async uploadVideo(
+    accessToken: string,
+    authorUrn: string,
+    videoUrl: string,
+  ): Promise<string> {
+    let bytes: ArrayBuffer;
+    try {
+      const assetRes = await fetch(videoUrl);
+      if (!assetRes.ok) {
+        throw new BadBodyError(`could not fetch media for LinkedIn (${assetRes.status})`);
+      }
+      bytes = await assetRes.arrayBuffer();
+    } catch (e) {
+      if (e instanceof BadBodyError) throw e;
+      throw new RetryableError(`network error fetching media for LinkedIn: ${String(e)}`);
+    }
+
+    const fileSizeBytes = bytes.byteLength;
+
+    const init = await this.http("https://api.linkedin.com/rest/videos?action=initializeUpload", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        ...REST_HEADERS,
+      },
+      body: JSON.stringify({
+        initializeUploadRequest: {
+          owner: authorUrn,
+          fileSizeBytes,
+          uploadCaptions: false,
+          uploadThumbnail: false,
+        },
+      }),
+    });
+
+    const videoUrn: string | undefined = init?.value?.video;
+    const uploadToken: string = init?.value?.uploadToken ?? "";
+    const instructions: Array<{ uploadUrl: string; firstByte: number; lastByte: number }> =
+      init?.value?.uploadInstructions ?? [];
+
+    if (!videoUrn || !instructions.length) {
+      throw new BadBodyError("LinkedIn video init returned no video URN or upload instructions");
+    }
+
+    const uploadedPartIds: string[] = [];
+    for (const part of instructions) {
+      const chunk = bytes.slice(part.firstByte, part.lastByte + 1);
+      let res: Response;
+      try {
+        res = await fetch(part.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/octet-stream",
+          },
+          body: chunk,
+        });
+      } catch (e) {
+        throw new RetryableError(`network error uploading video chunk to LinkedIn: ${String(e)}`);
+      }
+
+      if (!res.ok) {
+        const text = (await res.text()).slice(0, 400);
+        throw new BadBodyError(`LinkedIn video chunk upload failed (${res.status}): ${text}`);
+      }
+
+      const etagHeader = res.headers.get("etag") ?? res.headers.get("ETag");
+      if (!etagHeader) {
+        throw new BadBodyError("LinkedIn video chunk upload returned no ETag header");
+      }
+      const etag = etagHeader.replace(/^"|"$/g, "").trim();
+      uploadedPartIds.push(etag);
+    }
+
+    await this.http("https://api.linkedin.com/rest/videos?action=finalizeUpload", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        ...REST_HEADERS,
+      },
+      body: JSON.stringify({
+        finalizeUploadRequest: {
+          video: videoUrn,
+          uploadToken,
+          uploadedPartIds,
+        },
+      }),
+    });
+
+    for (let i = 0; i < 30; i++) {
+      const statusRes = await this.http(
+        `https://api.linkedin.com/rest/videos/${encodeURIComponent(videoUrn)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            ...REST_HEADERS,
+          },
+        },
+      );
+
+      const status = statusRes?.status;
+      if (status === "AVAILABLE") {
+        return videoUrn;
+      }
+      if (status === "PROCESSING_FAILED") {
+        const reason = statusRes?.processingFailureReason ?? "unknown reason";
+        throw new BadBodyError(`LinkedIn video processing failed: ${reason}`);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+
+    throw new RetryableError("LinkedIn video processing timed out");
   }
 
   /** Images API: initializeUpload -> PUT the raw bytes -> post references the urn. */

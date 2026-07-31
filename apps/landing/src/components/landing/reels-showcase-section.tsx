@@ -98,7 +98,7 @@ function ReelCard({ format, index, ariaHidden }: { format: ReelFormat; index: nu
         if (entry.isIntersecting) void el.play().catch(() => {});
         else el.pause();
       },
-      { threshold: 0.4 },
+      { threshold: 0.2 },
     );
     io.observe(el);
     return () => io.disconnect();
@@ -110,18 +110,20 @@ function ReelCard({ format, index, ariaHidden }: { format: ReelFormat; index: nu
       className="group relative aspect-[9/16] w-[200px] shrink-0 overflow-hidden rounded-2xl border border-foreground/10 bg-neutral-900 shadow-sm transition-transform duration-300 hover:-translate-y-1 sm:w-[230px]"
       style={{ transitionDelay: `${index * 40}ms` }}
     >
-      <div className={`absolute inset-0 bg-gradient-to-br ${format.poster}`} />
+      <div className={`absolute inset-0 pointer-events-none bg-gradient-to-br ${format.poster}`} />
       <video
         ref={videoRef}
-        className="absolute inset-0 h-full w-full object-cover"
+        className="absolute inset-0 h-full w-full object-cover pointer-events-none"
         src={format.src}
         muted
         loop
         playsInline
         preload="metadata"
+        title={format.label}
+        aria-label={`${format.label} format video`}
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/5 to-transparent" />
-      <div className="absolute inset-x-0 bottom-0 p-4 text-white">
+      <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/85 via-black/5 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 p-4 text-white pointer-events-none">
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/70">
           {format.label}
         </p>
@@ -135,7 +137,6 @@ export function ReelsShowcaseSection() {
   const [isVisible, setIsVisible] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const isPointerOverScrollerRef = useRef(false);
   const resumeAutoScrollAtRef = useRef(0);
   const loopSegmentRef = useRef(0);
 
@@ -163,13 +164,11 @@ export function ReelsShowcaseSection() {
       const first = el.children[0] as HTMLElement | undefined;
       const next = el.children[REEL_FORMATS.length] as HTMLElement | undefined;
       if (!first || !next) return 0;
-      return Math.max(1, next.getBoundingClientRect().left - first.getBoundingClientRect().left);
+      return Math.max(1, next.offsetLeft - first.offsetLeft);
     };
 
-    // Start in the middle copy. The copies on either side make the track
-    // genuinely cyclic, so wrapping never reveals an empty edge.
     loopSegmentRef.current = measureSegment();
-    if (loopSegmentRef.current > 0) {
+    if (loopSegmentRef.current > 0 && el.scrollLeft === 0) {
       el.scrollLeft = loopSegmentRef.current;
       driftPosition = el.scrollLeft;
     }
@@ -177,25 +176,35 @@ export function ReelsShowcaseSection() {
     const normalizeLoop = () => {
       const segment = loopSegmentRef.current || (loopSegmentRef.current = measureSegment());
       if (!segment) return;
-      while (el.scrollLeft < segment) el.scrollLeft += segment;
-      while (el.scrollLeft >= segment * 2) el.scrollLeft -= segment;
-      driftPosition = el.scrollLeft;
+
+      // Keep scrollLeft comfortably centered inside Copy 1 (range [0.5 * segment, 2.5 * segment]).
+      // When scrolling left below 0.5 * segment, jump forward by 1 segment into Copy 1.
+      // When scrolling right above 2.5 * segment, jump backward by 1 segment into Copy 1.
+      if (el.scrollLeft < 0.5 * segment) {
+        el.scrollLeft += segment;
+        driftPosition = el.scrollLeft;
+      } else if (el.scrollLeft >= 2.5 * segment) {
+        el.scrollLeft -= segment;
+        driftPosition = el.scrollLeft;
+      }
     };
 
     const drift = (now: number) => {
       const elapsed = Math.min(now - previousTime, 64);
       previousTime = now;
       normalizeLoop();
+
       const shouldMove =
         loopSegmentRef.current > 1 &&
         !reducedMotion.matches &&
         document.visibilityState === "visible" &&
-        !isPointerOverScrollerRef.current &&
         now >= resumeAutoScrollAtRef.current;
 
       if (shouldMove) {
-        const pixelsPerSecond = 25;
-        if (Math.abs(el.scrollLeft - driftPosition) > 2) driftPosition = el.scrollLeft;
+        const pixelsPerSecond = 45;
+        if (Math.abs(el.scrollLeft - driftPosition) > 2) {
+          driftPosition = el.scrollLeft;
+        }
         driftPosition += pixelsPerSecond * (elapsed / 1000);
         el.scrollLeft = driftPosition;
       } else {
@@ -206,17 +215,26 @@ export function ReelsShowcaseSection() {
     };
 
     frameId = window.requestAnimationFrame(drift);
-    return () => window.cancelAnimationFrame(frameId);
+
+    const handleResize = () => {
+      loopSegmentRef.current = measureSegment();
+    };
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", handleResize);
+    };
   }, [isVisible]);
 
-  const pauseAutoScroll = (milliseconds = 3200) => {
+  const pauseAutoScroll = (milliseconds = 3500) => {
     resumeAutoScrollAtRef.current = performance.now() + milliseconds;
   };
 
   const scrollByCards = (direction: 1 | -1) => {
     const el = scrollerRef.current;
     if (!el) return;
-    pauseAutoScroll();
+    pauseAutoScroll(4000);
     const first = el.children[0] as HTMLElement | undefined;
     const cardStep = first ? first.getBoundingClientRect().width + 16 : el.clientWidth * 0.8;
     el.scrollBy({ left: direction * cardStep, behavior: "smooth" });
@@ -244,12 +262,12 @@ export function ReelsShowcaseSection() {
             </p>
           </div>
 
-          <div className="hidden shrink-0 items-center gap-2 lg:flex">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={() => scrollByCards(-1)}
               aria-label="Scroll formats left"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-foreground/15 text-foreground/70 transition-colors hover:border-foreground/30 hover:text-foreground"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-foreground/15 text-foreground/70 transition-colors hover:border-foreground/30 hover:text-foreground active:scale-95"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -257,7 +275,7 @@ export function ReelsShowcaseSection() {
               type="button"
               onClick={() => scrollByCards(1)}
               aria-label="Scroll formats right"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-foreground/15 text-foreground/70 transition-colors hover:border-foreground/30 hover:text-foreground"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-foreground/15 text-foreground/70 transition-colors hover:border-foreground/30 hover:text-foreground active:scale-95"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -267,30 +285,15 @@ export function ReelsShowcaseSection() {
 
       <div
         ref={scrollerRef}
-        onPointerEnter={() => {
-          isPointerOverScrollerRef.current = true;
+        onScroll={() => {
+          pauseAutoScroll(2500);
         }}
-        onPointerLeave={() => {
-          isPointerOverScrollerRef.current = false;
-          pauseAutoScroll(900);
-        }}
-        onPointerDown={() => {
-          isPointerOverScrollerRef.current = true;
-          pauseAutoScroll();
-        }}
-        onPointerUp={(event) => {
-          isPointerOverScrollerRef.current = event.pointerType === "mouse";
-          pauseAutoScroll();
-        }}
-        onWheel={() => pauseAutoScroll()}
-        onFocusCapture={() => {
-          isPointerOverScrollerRef.current = true;
-        }}
-        onBlurCapture={() => {
-          isPointerOverScrollerRef.current = false;
-          pauseAutoScroll(900);
-        }}
-        className="no-scrollbar flex gap-4 overflow-x-auto px-6 pb-2 lg:px-12"
+        onPointerEnter={() => pauseAutoScroll(1200)}
+        onPointerLeave={() => pauseAutoScroll(1200)}
+        onPointerDown={() => pauseAutoScroll(4000)}
+        onPointerUp={() => pauseAutoScroll(3000)}
+        onWheel={() => pauseAutoScroll(3000)}
+        className="no-scrollbar flex gap-4 overflow-x-auto touch-pan-x px-6 pb-2 lg:px-12"
       >
         {[0, 1, 2].flatMap((copy) =>
           REEL_FORMATS.map((format, index) => (

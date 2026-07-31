@@ -70,7 +70,7 @@ Ordered by the sequence in your runbook. Each row links to its detailed section.
 | # | Gate | Owner | Status | Blocking? |
 | --- | --- | --- | --- | --- |
 | G0 | **CI green on latest `main`** (see §2) | 🤖 | ✅ green (run passed on commit `2121c24`) | Yes |
-| G1 | **Repo / docs are one source of truth** (§3) | 🤖 | 🟡 in progress | Yes |
+| G1 | **Repo / docs are one source of truth** (§3) | 🤖 | ✅ complete | Yes |
 | G2 | **App Check deployed + verified** (§4) | 🤝 | 🔴 | Yes |
 | G3 | **Dodo live payments end-to-end** (§5) | 👤 | 🔴 | Yes |
 | G4 | **Channel OAuth approved** for launched channels (§6) | 👤 | 🔴 (multi-week) | Yes |
@@ -118,7 +118,7 @@ The old docs drifted and pointed at a non-existent `NEXTSTEPS.md`. This section 
 | Repoint all references from missing `NEXTSTEPS.md` → `LAUNCH_PLAN.md` (`README.md`, `nxtsteps.md`, `Context.MD`, `PERFORMANCE_PLAN.md`, `packages/backend/README.md`) | 🤖 | ✅ |
 | Archive superseded plans to `docs/archive/` with banners (`launchplan.md`, `LAUNCH.md`, `PRICING.md`, `FUTURE_PLAN.md`, `socials.MD`) — see §15 map | 🤖 | ✅ |
 | Remove the stale `@RTK.md` pointer note (no such instruction exists in the repo) | 🤖 | ✅ |
-| Remove retained historical body from `README.md` | 🤖 | 🔴 |
+| Remove retained historical body from `README.md` | 🤖 | ✅ |
 
 ---
 
@@ -192,9 +192,9 @@ receipt/status → paid entitlement, per channel + a failure/retry path.
 | Run production-preview browser smoke suite | 🤖 (local) / CI | 🟡 |
 | Manual end-to-end walkthrough on live consoles with real test accounts | 👤 | 🔴 |
 | Enforce quota/entitlement on the **Convex** publish path before charging | 🤖 | 🔴 |
-| Fix Instagram double-post idempotency (persist `creationId` per destination) | 🤖 | 🔴 |
+| Fix Instagram double-post idempotency (persist `creationId` per destination) | 🤖 | ✅ complete |
 | Add `httpRaw()`/`fetchBytes()` to `base.ts`; collapse provider duplication | 🤖 | 🔴 |
-| Implement LinkedIn video via Videos API (currently text+image only) | 🤖 | 🔴 |
+| Implement LinkedIn video via Videos API (currently text+image only) | 🤖 | ✅ complete |
 | Wire Veo generation into Convex (durable polling) | 🤖 | 🔴 |
 | Add Post/Schedule button to VideoCreator UI (bridge `studio.createPost` exists) | 🤖 | 🔴 |
 | Decide + execute Firestore↔Convex publish cutover so only one system publishes | 🤝 | 🔴 |
@@ -245,7 +245,7 @@ Drafts exist at `legal/terms-of-service.md` and `legal/privacy-policy.md` (publi
 | Stop advertising unimplemented features (TikTok publishing, unlimited Max, analytics results) | 🤖 | 🔴 |
 | Tighten landing `<title>` to ≈50–60 chars (currently 72) and description to ≈150–160 (currently 221) | 🤖 | 🔴 |
 | Verify canonical, OG image 1200×630, Twitter large-image card, JSON-LD matches visible content | 🤖 | 🟡 (JSON-LD + OG present) |
-| Fix landing accessibility failures (button names, color contrast, target size — Lighthouse a11y 84) | 🤖 | 🔴 |
+| Fix landing accessibility failures (button names, color contrast, target size — Lighthouse a11y 84) | 🤖 | ✅ complete |
 | Ensure deployed landing serves the prerendered/crawlable HTML (live was stale/client-only) | 🤝 | 🔴 |
 | Register Search Console / Bing / Brave; submit sitemap | 👤 | 🔴 |
 
