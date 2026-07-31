@@ -154,7 +154,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="text-base">Recent Users</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             {loading ? (
               <div className="space-y-3">
                 {Array.from({ length: 3 }).map((_, i) => (
@@ -199,7 +199,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="text-base">Recent Avatars</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             {loading ? (
               <div className="space-y-3">
                 {Array.from({ length: 3 }).map((_, i) => (

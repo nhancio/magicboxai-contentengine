@@ -830,8 +830,8 @@ export default function Onboarding() {
  exit={{ opacity: 0, y: -10 }}
  transition={{ duration: 0.2 }}
  >
- {step === 1 && (
- <div className="glass-card space-y-5 p-6">
+      {step === 1 && (
+        <div className="glass-card space-y-5 p-4 sm:p-6">
  {preset && (
  <div className="rounded-lg border border-brand/20 bg-brand/[0.06] p-4">
  <div className="text-[11px] font-mono uppercase tracking-widest text-brand">
@@ -965,39 +965,41 @@ export default function Onboarding() {
  })}
  </div>
 
- <div className="grid gap-2 sm:grid-cols-[auto_auto_1fr]">
- <Button
- onClick={() => setStep(0)}
- variant="ghost"
- className="text-muted-foreground"
- >
- Back to website
- </Button>
- <Button
- onClick={() => void deferOnboarding("social")}
- variant="ghost"
- className="text-muted-foreground"
- >
- Skip for now
- </Button>
- <Button
- onClick={() => channelSetupOnly ? void activateMayaAfterChannel() : setStep(2)}
- disabled={!hasActiveChannel}
- className="w-full py-5"
- >
- {hasActiveChannel
- ? channelSetupOnly
- ? "Activate Maya"
- : "Review my campaign"
- : "Connect one channel to continue"}
- <ArrowRight className="ml-1.5 h-4 w-4" />
- </Button>
- </div>
+        <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[auto_auto_1fr]">
+          <Button
+            onClick={() => setStep(0)}
+            variant="ghost"
+            className="w-full sm:w-auto text-muted-foreground"
+          >
+            Back to website
+          </Button>
+          <Button
+            onClick={() => void deferOnboarding("social")}
+            variant="ghost"
+            className="w-full sm:w-auto text-muted-foreground"
+          >
+            Skip for now
+          </Button>
+          <Button
+            onClick={() => channelSetupOnly ? void activateMayaAfterChannel() : setStep(2)}
+            disabled={!hasActiveChannel}
+            className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm"
+          >
+            <span className="truncate">
+              {hasActiveChannel
+                ? channelSetupOnly
+                  ? "Activate Maya"
+                  : "Review my campaign"
+                : "Connect one channel to continue"}
+            </span>
+            <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
+          </Button>
+        </div>
  </div>
  )}
 
- {step === 0 && (
- <div className="glass-card space-y-5 p-6">
+      {step === 0 && (
+        <div className="glass-card space-y-5 p-4 sm:p-6">
  <div>
  <h2 className="font-display text-2xl">Your website</h2>
  <p className="mt-1 text-sm text-muted-foreground">
@@ -1152,23 +1154,23 @@ export default function Onboarding() {
  </div>
  )}
 
- <div className="flex gap-3 pt-1">
- <Button
- variant="ghost"
- onClick={() => void deferOnboarding("website")}
- className="flex-1 text-muted-foreground hover:text-foreground"
- >
- Skip setup for now
- </Button>
- <Button
- onClick={() => void handleSaveBrand()}
- disabled={saving || brandPhase !== "ready" || !extracted}
- className="flex-1 bg-brand hover:bg-brand"
- >
- {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
- Save brand & continue
- </Button>
- </div>
+        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:gap-3">
+          <Button
+            variant="ghost"
+            onClick={() => void deferOnboarding("website")}
+            className="w-full sm:flex-1 text-muted-foreground hover:text-foreground"
+          >
+            Skip setup for now
+          </Button>
+          <Button
+            onClick={() => void handleSaveBrand()}
+            disabled={saving || brandPhase !== "ready" || !extracted}
+            className="w-full sm:flex-1 bg-brand hover:bg-brand min-h-[2.5rem] py-2.5 px-3 text-sm h-auto"
+          >
+            {saving && <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" />}
+            <span className="truncate">Save brand & continue</span>
+          </Button>
+        </div>
  </div>
  )}
 
@@ -1380,50 +1382,51 @@ export default function Onboarding() {
  </span>
  </label>
 
- {activeAccountForPreview ? (
- <div className="grid gap-2 sm:grid-cols-2">
- <Button
- onClick={() => void handleQuickPost("now")}
- disabled={posting || !clientApproved || !activeCaption}
- className="w-full py-5"
- >
- {posting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
- Approve & post now
- </Button>
- <Button
- variant="outline"
- onClick={() => void handleQuickPost("schedule")}
- disabled={posting || !clientApproved || !activeCaption}
- className="w-full py-5"
- >
- {posting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CalendarClock className="mr-1.5 h-4 w-4" />}
- Approve for next best time
- </Button>
- </div>
- ) : (
- <Button variant="outline" onClick={() => setStep(1)} className="w-full py-5">
- Connect {PLATFORM_META[previewPlatform].label} to post after approval
- <ArrowRight className="ml-1.5 h-4 w-4" />
- </Button>
- )}
+        {activeAccountForPreview ? (
+          <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2">
+            <Button
+              onClick={() => void handleQuickPost("now")}
+              disabled={posting || !clientApproved || !activeCaption}
+              className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm"
+            >
+              {posting ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <Send className="mr-1.5 h-4 w-4 shrink-0" />}
+              <span className="truncate">Approve & post now</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void handleQuickPost("schedule")}
+              disabled={posting || !clientApproved || !activeCaption}
+              className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm"
+            >
+              {posting ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <CalendarClock className="mr-1.5 h-4 w-4 shrink-0" />}
+              <span className="truncate">Approve for next best time</span>
+            </Button>
+          </div>
+        ) : (
+          <Button variant="outline" onClick={() => setStep(1)} className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm">
+            <span className="truncate">Connect {PLATFORM_META[previewPlatform].label} to post after approval</span>
+            <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
+          </Button>
+        )}
  </div>
  </div>
 
- <div className="flex gap-3">
- <Button
- variant="ghost"
- onClick={() => finish(false)}
- className="flex-1 text-muted-foreground hover:text-foreground"
- >
- Explore the dashboard
- </Button>
- <Button
- onClick={() => finish(true)}
- className="flex-1 bg-brand py-5 hover:bg-brand"
- >
- Create my first automation <ArrowRight className="ml-1.5 h-4 w-4" />
- </Button>
- </div>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
+          <Button
+            variant="ghost"
+            onClick={() => finish(false)}
+            className="w-full sm:flex-1 text-muted-foreground hover:text-foreground"
+          >
+            Explore the dashboard
+          </Button>
+          <Button
+            onClick={() => finish(true)}
+            className="w-full sm:flex-1 bg-brand h-auto py-3.5 px-4 text-xs sm:text-sm hover:bg-brand"
+          >
+            <span className="truncate">Create my first automation</span>
+            <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
+          </Button>
+        </div>
  <p className="text-center text-xs text-muted-foreground">
  Posting timezone: {timezone}
  </p>

@@ -11,8 +11,9 @@ export const brevoApiKey = defineSecret("BREVO_API_KEY");
 
 const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
 
-const SENDER = { name: "MagicBox", email: "hello@magicboxai.in" } as const;
-const SUPPORT_EMAIL = "hello@magicboxai.in";
+const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL ?? "nithindidigam@nhancio.com";
+const SENDER = { name: "MagicBox", email: SENDER_EMAIL };
+const SUPPORT_EMAIL = SENDER_EMAIL;
 const APP_URL = "https://app.magicboxai.in";
 const ONBOARDING_URL = `${APP_URL}/onboarding`;
 const PRICING_URL = "https://app.magicboxai.in/pricing";

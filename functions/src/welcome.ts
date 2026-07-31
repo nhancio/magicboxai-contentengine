@@ -6,10 +6,11 @@ import {
   onDocumentCreated,
   onDocumentUpdated,
 } from "firebase-functions/v2/firestore";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import { brevoApiKey, sendOnboardingEmail } from "./brevo";
-import { db, PLAN_VIDEO_LIMIT, type PlanId } from "./core";
+import { callableSecurity, db, PLAN_VIDEO_LIMIT, requireAuth, type PlanId } from "./core";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -119,18 +120,24 @@ export const onUserCreatedSendWelcome = onDocumentCreated(
 
     try {
       const result = await sendOnboardingEmail({ email, name: data.displayName });
-      await snap.ref.set(
-        {
-          welcomeEmailSent: true,
-          welcomeEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      logger.info("[onUserCreatedSendWelcome] welcome email handled", {
-        uid: event.params.uid,
-        messageId: result.id,
-        dryRun: result.dryRun,
-      });
+      if (!result.dryRun) {
+        await snap.ref.set(
+          {
+            welcomeEmailSent: true,
+            welcomeEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        logger.info("[onUserCreatedSendWelcome] welcome email sent via Brevo", {
+          uid: event.params.uid,
+          messageId: result.id,
+        });
+      } else {
+        logger.warn("[onUserCreatedSendWelcome] dry-run executed: BREVO_API_KEY secret is not set in Firebase. welcomeEmailSent not marked true so email can be retried once key is set.", {
+          uid: event.params.uid,
+          email,
+        });
+      }
     } catch (error: unknown) {
       logger.error("[onUserCreatedSendWelcome] failed to send welcome email", {
         uid: event.params.uid,
@@ -153,5 +160,63 @@ export const onUserUpdatedClaimPendingEntitlement = onDocumentUpdated(
     const email = data?.email?.trim();
     if (!email) return;
     await claimPendingEntitlement(event.params.uid, email);
+  }
+);
+
+/**
+ * Callable endpoint to trigger or resend a welcome email for any user/email.
+ * Useful for admin panel or manual recovery when welcome email failed or ran in dry-run.
+ */
+export const triggerWelcomeEmail = onCall(
+  {
+    ...callableSecurity,
+    secrets: [brevoApiKey],
+  },
+  async (request) => {
+    const callerUid = requireAuth(request);
+    const emailInput = typeof request.data?.email === "string" ? request.data.email.trim() : "";
+    const nameInput = typeof request.data?.name === "string" ? request.data.name.trim() : undefined;
+    const targetUid = typeof request.data?.targetUid === "string" ? request.data.targetUid.trim() : callerUid;
+
+    let email = emailInput;
+    let displayName = nameInput;
+
+    if (!email && targetUid) {
+      const snap = await db.collection("users").doc(targetUid).get();
+      if (snap.exists) {
+        const u = snap.data() as { email?: string; displayName?: string };
+        email = u.email?.trim() ?? "";
+        displayName = displayName ?? u.displayName;
+      }
+    }
+
+    if (!email) {
+      throw new HttpsError("invalid-argument", "Valid email address is required to send welcome email.");
+    }
+
+    try {
+      const result = await sendOnboardingEmail({ email, name: displayName });
+      if (!result.dryRun && targetUid) {
+        await db.collection("users").doc(targetUid).set(
+          {
+            welcomeEmailSent: true,
+            welcomeEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+      return {
+        success: true,
+        email,
+        messageId: result.id,
+        dryRun: result.dryRun,
+      };
+    } catch (err) {
+      logger.error("[triggerWelcomeEmail] failed", {
+        email,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw new HttpsError("internal", err instanceof Error ? err.message : "Failed to send welcome email via Brevo.");
+    }
   }
 );
