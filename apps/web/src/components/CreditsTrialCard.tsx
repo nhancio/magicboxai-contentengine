@@ -28,7 +28,7 @@ export function CreditsTrialCard({ credits, compact, className, onNavigate }: Pr
   if (compact) {
     return (
       <Link
-        to="/pricing"
+        to="/pricing?plan=pro"
         onClick={onNavigate}
         className={cn(
           "inline-flex max-w-[11rem] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] tabular-nums transition-colors",
@@ -63,7 +63,7 @@ export function CreditsTrialCard({ credits, compact, className, onNavigate }: Pr
 
   return (
     <Link
-      to="/pricing"
+      to="/pricing?plan=pro"
       onClick={onNavigate}
       className={cn(
         "block rounded-xl border p-3 transition-colors",

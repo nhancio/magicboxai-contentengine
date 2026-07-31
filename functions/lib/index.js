@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateUGCVideo = exports.generateAvatarVideo = exports.analyzeAvatarVideo = exports.analyzeAvatarPhotos = exports.analyzeImage = exports.generateScript = exports.generateImage = exports.renderRemotionVideo = exports.verifyAdminStatus = exports.setAdminRole = exports.createGuestCheckout = exports.dodoWebhook = exports.createDodoPortal = exports.createDodoCheckout = exports.onUserUpdatedClaimPendingEntitlement = exports.onUserCreatedSendWelcome = exports.generateBrandedPostImage = exports.extractBrandFromWebsite = exports.postingTick = exports.generationTick = exports.automationTick = exports.socialOAuthCallback = exports.disconnectSocialAccount = exports.getSocialConnectUrl = exports.getQuota = exports.regeneratePostContent = exports.cancelPost = exports.retryPost = exports.approvePost = exports.generatePreviewContent = exports.createManualPost = exports.runAutomationNow = exports.setAutomationStatus = exports.updateAutomation = exports.createAutomation = void 0;
+exports.generateUGCVideo = exports.generateAvatarVideo = exports.analyzeAvatarVideo = exports.analyzeAvatarPhotos = exports.analyzeImage = exports.generateScript = exports.generateImage = exports.renderRemotionVideo = exports.verifyAdminStatus = exports.setAdminRole = exports.createGuestCheckout = exports.dodoWebhook = exports.createDodoPortal = exports.createDodoCheckout = exports.onUserUpdatedClaimPendingEntitlement = exports.onUserCreatedSendWelcome = exports.generateBrandedPostImage = exports.extractBrandFromWebsite = exports.postingTick = exports.generationTick = exports.automationTick = exports.socialOAuthCallback = exports.disconnectSocialAccount = exports.getSocialConnectUrl = exports.syncBillingClaims = exports.getQuota = exports.regeneratePostContent = exports.cancelPost = exports.retryPost = exports.approvePost = exports.generatePreviewContent = exports.createManualPost = exports.runAutomationNow = exports.setAutomationStatus = exports.updateAutomation = exports.createAutomation = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const genai_1 = require("@google/genai");
@@ -58,6 +58,8 @@ Object.defineProperty(exports, "retryPost", { enumerable: true, get: function ()
 Object.defineProperty(exports, "cancelPost", { enumerable: true, get: function () { return callables_1.cancelPost; } });
 Object.defineProperty(exports, "regeneratePostContent", { enumerable: true, get: function () { return callables_1.regeneratePostContent; } });
 Object.defineProperty(exports, "getQuota", { enumerable: true, get: function () { return callables_1.getQuota; } });
+var callables_2 = require("./callables");
+Object.defineProperty(exports, "syncBillingClaims", { enumerable: true, get: function () { return callables_2.syncBillingClaims; } });
 var social_1 = require("./social");
 Object.defineProperty(exports, "getSocialConnectUrl", { enumerable: true, get: function () { return social_1.getSocialConnectUrl; } });
 Object.defineProperty(exports, "disconnectSocialAccount", { enumerable: true, get: function () { return social_1.disconnectSocialAccount; } });

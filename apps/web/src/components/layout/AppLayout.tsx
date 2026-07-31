@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
+import { getUserSubscription, type SubscriptionRecord } from "@shared/lib/firestore";
+import { syncBillingClaims } from "@shared/lib/suite";
 import { captureEvent, PRODUCT_EVENTS } from "@shared/lib/analytics";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/components/ui/avatar";
 import { Button } from "@shared/components/ui/button";
@@ -10,6 +12,7 @@ import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "@/lib/convex";
 import { CreditsTrialCard } from "@/components/CreditsTrialCard";
 import { useMayaActivation } from "@/hooks/useMayaActivation";
+import { trialClock } from "@/lib/credits";
 import {
   BarChart3,
   Bot,
@@ -67,10 +70,34 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [billingSubscription, setBillingSubscription] = useState<SubscriptionRecord | null>(null);
 
   const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const claimTrial = useMutation(api.credits.claimTrial);
   const mayaActivation = useMayaActivation();
+
+  // Firestore/Dodo is the billing source of truth. Refresh the signed claim
+  // used by Convex and use the same record for the sidebar label.
+  useEffect(() => {
+    if (!user) {
+      setBillingSubscription(null);
+      return;
+    }
+    let cancelled = false;
+    void getUserSubscription(user.uid)
+      .then((subscription) => {
+        if (!cancelled) setBillingSubscription(subscription);
+      })
+      .catch(() => {
+        if (!cancelled) setBillingSubscription(null);
+      });
+    void syncBillingClaims({})
+      .then(() => user.getIdToken(true))
+      .catch((error) => console.warn("[billing] claim sync failed", error));
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!isConvexConfigured || !credits?.needsTrialClaim) return;
@@ -94,6 +121,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     : "U";
 
   const closeSidebar = () => setSidebarOpen(false);
+  const billingPaid = billingSubscription
+    ? (billingSubscription.plan === "pro" || billingSubscription.plan === "max") &&
+      (billingSubscription.status === "active" || billingSubscription.status === undefined)
+    : credits?.hasPaidPlan;
+  const mayaBillingLocked = billingPaid === false && !!trialClock(credits)?.expired;
   const trackModuleAccess = (module: string, path: string, setupRedirect = false) => {
     captureEvent(PRODUCT_EVENTS.sidebarModuleAccessed, {
       module,
@@ -142,6 +174,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   ? "/onboarding/channels"
                   : mayaLocked
                     ? "/onboarding"
+                    : item.path === "/maya" && mayaBillingLocked
+                      ? "/pricing?plan=pro"
                     : item.path;
               return (
                 <NavLink
@@ -152,10 +186,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   aria-label={
                     mayaLocked
                       ? `Maya locked. ${mayaActivation?.hasWebsite ? "Connect a social channel" : "Link your website"} to continue.`
+                      : mayaBillingLocked && item.path === "/maya"
+                        ? "Maya requires an active paid plan."
                       : undefined
                   }
                   className={({ isActive }) =>
-                    cn(navLinkClass({ isActive }), mayaLocked && "text-muted-foreground/70")
+                    cn(
+                      navLinkClass({ isActive }),
+                      (mayaLocked || (mayaBillingLocked && item.path === "/maya")) &&
+                        "text-muted-foreground/70",
+                    )
                   }
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
@@ -164,6 +204,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider">
                       <LockKeyhole className="h-3 w-3" />
                       Setup
+                    </span>
+                  )}
+                  {!mayaLocked && mayaBillingLocked && item.path === "/maya" && (
+                    <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-destructive/25 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-destructive">
+                      Paid plan
                     </span>
                   )}
                 </NavLink>
@@ -189,7 +234,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       <div className="shrink-0 space-y-3 border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {isConvexConfigured && (
-          <CreditsTrialCard credits={credits} onNavigate={closeSidebar} />
+          <CreditsTrialCard
+            credits={
+              credits && billingSubscription
+                ? {
+                    ...credits,
+                    hasPaidPlan:
+                      (billingSubscription.plan === "pro" || billingSubscription.plan === "max") &&
+                      (billingSubscription.status === "active" || billingSubscription.status === undefined),
+                  }
+                : credits
+            }
+            onNavigate={closeSidebar}
+          />
         )}
         <div className="flex items-center gap-2.5">
           <Avatar className="h-9 w-9 shrink-0 border border-border">

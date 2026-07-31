@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getQuota = exports.regeneratePostContent = exports.cancelPost = exports.retryPost = exports.approvePost = exports.generatePreviewContent = exports.createManualPost = exports.runAutomationNow = exports.setAutomationStatus = exports.updateAutomation = exports.createAutomation = void 0;
+exports.getQuota = exports.regeneratePostContent = exports.cancelPost = exports.retryPost = exports.approvePost = exports.generatePreviewContent = exports.createManualPost = exports.runAutomationNow = exports.setAutomationStatus = exports.updateAutomation = exports.createAutomation = exports.syncBillingClaims = void 0;
 exports.assertOwnedPublishingResources = assertOwnedPublishingResources;
 exports.createPostWithQuotaReservation = createPostWithQuotaReservation;
 const https_1 = require("firebase-functions/v2/https");
@@ -49,6 +49,25 @@ const Timestamp = admin.firestore.Timestamp;
 const FieldValue = admin.firestore.FieldValue;
 const SUPPORTED_PLATFORMS = ["instagram", "linkedin", "youtube"];
 const MAX_POST_ATTEMPTS = 3;
+/**
+ * Synchronize the billing entitlement used by Convex. Firestore is the
+ * authoritative Dodo/webhook store; the signed custom claims let Convex
+ * enforce the same entitlement without trusting client-supplied plan data.
+ */
+exports.syncBillingClaims = (0, https_1.onCall)(Object.assign({}, core_1.callableSecurity), async (request) => {
+    var _a;
+    const uid = (0, core_1.requireAuth)(request);
+    const snapshot = await core_1.db.collection("subscriptions").doc(uid).get();
+    const data = snapshot.data();
+    const plan = (data === null || data === void 0 ? void 0 : data.plan) === "pro" || (data === null || data === void 0 ? void 0 : data.plan) === "max" ? data.plan : "free";
+    const status = (data === null || data === void 0 ? void 0 : data.status) === "active" || (data === null || data === void 0 ? void 0 : data.status) === "past_due" || (data === null || data === void 0 ? void 0 : data.status) === "cancelled"
+        ? data.status
+        : "inactive";
+    const user = await admin.auth().getUser(uid);
+    const existing = (_a = user.customClaims) !== null && _a !== void 0 ? _a : {};
+    await admin.auth().setCustomUserClaims(uid, Object.assign(Object.assign({}, existing), { magicboxPlan: plan, magicboxSubscriptionStatus: status }));
+    return { plan, status, hasPaidPlan: (plan === "pro" || plan === "max") && status === "active" };
+});
 function isSupportedPlatform(value) {
     return typeof value === "string" && SUPPORTED_PLATFORMS.includes(value);
 }

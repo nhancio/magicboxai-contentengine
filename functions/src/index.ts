@@ -33,6 +33,7 @@ export {
   regeneratePostContent,
   getQuota,
 } from "./callables";
+export { syncBillingClaims } from "./callables";
 export {
   getSocialConnectUrl,
   disconnectSocialAccount,

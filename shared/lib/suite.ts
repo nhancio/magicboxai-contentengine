@@ -2,7 +2,7 @@
 
 import { httpsCallable, type FunctionsErrorCode } from "firebase/functions";
 import { FirebaseError } from "firebase/app";
-import { auth, functions } from "./firebase";
+import { appCheck, auth, functions } from "./firebase";
 import type { SocialPlatform, SocialProvider } from "../types";
 
 function errorCode(error: unknown): string {
@@ -20,6 +20,11 @@ function friendlyCallableError(error: unknown): Error {
       );
     }
     if (code === "unauthenticated") {
+      if (auth?.currentUser && import.meta.env.PROD && !appCheck) {
+        return new Error(
+          "MagicBox browser verification is not configured. Please try again shortly.",
+        );
+      }
       // Reached only after a forced token refresh already failed, so the
       // session really is gone rather than merely stale.
       return new Error("Your session expired. Sign in again to continue.");
@@ -206,3 +211,8 @@ export const createDodoCheckout = callable<
 export const createDodoPortal = callable<Record<string, never>, { url: string }>(
   "createDodoPortal"
 );
+
+export const syncBillingClaims = callable<
+  Record<string, never>,
+  { plan: "free" | "pro" | "max"; status: string; hasPaidPlan: boolean }
+>("syncBillingClaims");

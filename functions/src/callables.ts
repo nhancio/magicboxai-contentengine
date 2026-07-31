@@ -30,6 +30,35 @@ const FieldValue = admin.firestore.FieldValue;
 const SUPPORTED_PLATFORMS = ["instagram", "linkedin", "youtube"] as const;
 const MAX_POST_ATTEMPTS = 3;
 
+/**
+ * Synchronize the billing entitlement used by Convex. Firestore is the
+ * authoritative Dodo/webhook store; the signed custom claims let Convex
+ * enforce the same entitlement without trusting client-supplied plan data.
+ */
+export const syncBillingClaims = onCall(
+  { ...callableSecurity },
+  async (request) => {
+    const uid = requireAuth(request);
+    const snapshot = await db.collection("subscriptions").doc(uid).get();
+    const data = snapshot.data() as
+      | { plan?: unknown; status?: unknown }
+      | undefined;
+    const plan = data?.plan === "pro" || data?.plan === "max" ? data.plan : "free";
+    const status =
+      data?.status === "active" || data?.status === "past_due" || data?.status === "cancelled"
+        ? data.status
+        : "inactive";
+    const user = await admin.auth().getUser(uid);
+    const existing = user.customClaims ?? {};
+    await admin.auth().setCustomUserClaims(uid, {
+      ...existing,
+      magicboxPlan: plan,
+      magicboxSubscriptionStatus: status,
+    });
+    return { plan, status, hasPaidPlan: (plan === "pro" || plan === "max") && status === "active" };
+  },
+);
+
 function isSupportedPlatform(value: unknown): value is (typeof SUPPORTED_PLATFORMS)[number] {
   return typeof value === "string" && SUPPORTED_PLATFORMS.includes(value as never);
 }

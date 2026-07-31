@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
-import { APP_URL, appLoginUrl, appSignInUrl } from "@/lib/config";
+import { appLoginUrl, appSignInUrl } from "@/lib/config";
 import { captureEvent } from "@shared/lib/analytics";
 
 const navLinks = [
@@ -23,8 +23,9 @@ export function Navigation() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Cross-subdomain hint the app sets on login (Domain=.magicboxai.in). Lets a
-  // returning, signed-in visitor see "Go to dashboard" instead of "Start free".
+  // Cross-subdomain hint the app sets on login (Domain=.magicboxai.in). This
+  // changes only the label: dashboard traffic still passes through /login so
+  // a stale hint can never bypass Firebase's real session check.
   useEffect(() => {
     setSignedIn(/(?:^|;\s*)mb_signed_in=1(?:;|$)/.test(document.cookie));
   }, []);
@@ -81,7 +82,7 @@ export function Navigation() {
                 variant="brand"
                 className={`rounded-full transition-all duration-500 ${isScrolled ? "px-4 h-8 text-xs" : "px-6 h-9"}`}
               >
-                <a href={`${APP_URL}/`}>Go to dashboard</a>
+                <a href={appLoginUrl("/")}>Go to dashboard</a>
               </Button>
             ) : (
               <>
@@ -149,7 +150,7 @@ export function Navigation() {
           >
             {signedIn ? (
               <Button asChild variant="brand" className="flex-1 rounded-full h-14 text-base">
-                <a href={`${APP_URL}/`}>Go to dashboard</a>
+                <a href={appLoginUrl("/")}>Go to dashboard</a>
               </Button>
             ) : (
               <>

@@ -54,10 +54,23 @@ function trialExpiresAt(grantedAt: number): number {
   return grantedAt + FREE_TRIAL_MS;
 }
 
+/** Firebase signs these claims from the Firestore/Dodo entitlement record. */
+function identityHasPaidPlan(identity: unknown): boolean {
+  const claims = identity as
+    | { magicboxPlan?: unknown; magicboxSubscriptionStatus?: unknown }
+    | null
+    | undefined;
+  return (
+    (claims?.magicboxPlan === "pro" || claims?.magicboxPlan === "max") &&
+    claims?.magicboxSubscriptionStatus === "active"
+  );
+}
+
 async function hasActivePaidPlan(
   ctx: MutationCtx | { db: MutationCtx["db"] },
   userId: string,
 ): Promise<boolean> {
+  if ("auth" in ctx && identityHasPaidPlan(await ctx.auth.getUserIdentity())) return true;
   const sub = await ctx.db
     .query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -254,6 +267,7 @@ export const balance = query({
   args: {},
   handler: async (ctx) => {
     const uid = await requireUid(ctx);
+    const identityPaid = identityHasPaidPlan(await ctx.auth.getUserIdentity());
     const row = await ctx.db
       .query("creditBalances")
       .withIndex("by_userId", (q) => q.eq("userId", uid))
@@ -278,7 +292,7 @@ export const balance = query({
         trialExpiresAt: null as number | null,
         trialDurationDays: FREE_TRIAL_DAYS,
         needsTrialClaim: true,
-        hasPaidPlan: paid,
+        hasPaidPlan: paid || identityPaid,
         freeTrial: { i: FREE_TRIAL_I, v: FREE_TRIAL_V, days: FREE_TRIAL_DAYS },
       };
     }
@@ -292,7 +306,7 @@ export const balance = query({
       trialExpiresAt: grantedAt ? trialExpiresAt(grantedAt) : null,
       trialDurationDays: FREE_TRIAL_DAYS,
       needsTrialClaim: false,
-      hasPaidPlan: paid,
+      hasPaidPlan: paid || identityPaid,
       freeTrial: { i: FREE_TRIAL_I, v: FREE_TRIAL_V, days: FREE_TRIAL_DAYS },
     };
   },

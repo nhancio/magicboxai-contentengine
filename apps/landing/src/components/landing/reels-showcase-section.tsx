@@ -57,6 +57,20 @@ const REEL_FORMATS: ReelFormat[] = [
     poster: "from-neutral-700/70 via-brand/30 to-amber-400/40",
   },
   {
+    id: "beauty-closeup",
+    label: "Beauty close-up",
+    blurb: "Texture, detail, instant attention",
+    src: "/videos/beauty-closeup.mp4",
+    poster: "from-slate-950/80 via-sky-900/50 to-rose-400/40",
+  },
+  {
+    id: "product-story",
+    label: "Product story",
+    blurb: "A product moment with a little wonder",
+    src: "/videos/product-story.mp4",
+    poster: "from-orange-400/60 via-pink-400/40 to-sky-500/50",
+  },
+  {
     id: "asmr",
     label: "ASMR",
     blurb: "Close, tactile, sound-led",
@@ -72,7 +86,7 @@ const REEL_FORMATS: ReelFormat[] = [
   },
 ];
 
-function ReelCard({ format, index }: { format: ReelFormat; index: number }) {
+function ReelCard({ format, index, ariaHidden }: { format: ReelFormat; index: number; ariaHidden?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -92,6 +106,7 @@ function ReelCard({ format, index }: { format: ReelFormat; index: number }) {
 
   return (
     <div
+      aria-hidden={ariaHidden}
       className="group relative aspect-[9/16] w-[200px] shrink-0 overflow-hidden rounded-2xl border border-foreground/10 bg-neutral-900 shadow-sm transition-transform duration-300 hover:-translate-y-1 sm:w-[230px]"
       style={{ transitionDelay: `${index * 40}ms` }}
     >
@@ -122,7 +137,7 @@ export function ReelsShowcaseSection() {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const isPointerOverScrollerRef = useRef(false);
   const resumeAutoScrollAtRef = useRef(0);
-  const driftDirectionRef = useRef<1 | -1>(1);
+  const loopSegmentRef = useRef(0);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -142,37 +157,46 @@ export function ReelsShowcaseSection() {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let frameId = 0;
     let previousTime = performance.now();
-    let edgePauseUntil = 0;
     let driftPosition = el.scrollLeft;
+
+    const measureSegment = () => {
+      const first = el.children[0] as HTMLElement | undefined;
+      const next = el.children[REEL_FORMATS.length] as HTMLElement | undefined;
+      if (!first || !next) return 0;
+      return Math.max(1, next.getBoundingClientRect().left - first.getBoundingClientRect().left);
+    };
+
+    // Start in the middle copy. The copies on either side make the track
+    // genuinely cyclic, so wrapping never reveals an empty edge.
+    loopSegmentRef.current = measureSegment();
+    if (loopSegmentRef.current > 0) {
+      el.scrollLeft = loopSegmentRef.current;
+      driftPosition = el.scrollLeft;
+    }
+
+    const normalizeLoop = () => {
+      const segment = loopSegmentRef.current || (loopSegmentRef.current = measureSegment());
+      if (!segment) return;
+      while (el.scrollLeft < segment) el.scrollLeft += segment;
+      while (el.scrollLeft >= segment * 2) el.scrollLeft -= segment;
+      driftPosition = el.scrollLeft;
+    };
 
     const drift = (now: number) => {
       const elapsed = Math.min(now - previousTime, 64);
       previousTime = now;
-      const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+      normalizeLoop();
       const shouldMove =
-        maxScroll > 1 &&
+        loopSegmentRef.current > 1 &&
         !reducedMotion.matches &&
         document.visibilityState === "visible" &&
         !isPointerOverScrollerRef.current &&
-        now >= resumeAutoScrollAtRef.current &&
-        now >= edgePauseUntil;
+        now >= resumeAutoScrollAtRef.current;
 
       if (shouldMove) {
         const pixelsPerSecond = 25;
         if (Math.abs(el.scrollLeft - driftPosition) > 2) driftPosition = el.scrollLeft;
-        const next = driftPosition + driftDirectionRef.current * pixelsPerSecond * (elapsed / 1000);
-
-        if (next >= maxScroll) {
-          driftPosition = maxScroll;
-          driftDirectionRef.current = -1;
-          edgePauseUntil = now + 1400;
-        } else if (next <= 0) {
-          driftPosition = 0;
-          driftDirectionRef.current = 1;
-          edgePauseUntil = now + 1400;
-        } else {
-          driftPosition = next;
-        }
+        driftPosition += pixelsPerSecond * (elapsed / 1000);
         el.scrollLeft = driftPosition;
       } else {
         driftPosition = el.scrollLeft;
@@ -193,8 +217,9 @@ export function ReelsShowcaseSection() {
     const el = scrollerRef.current;
     if (!el) return;
     pauseAutoScroll();
-    driftDirectionRef.current = direction;
-    el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: "smooth" });
+    const first = el.children[0] as HTMLElement | undefined;
+    const cardStep = first ? first.getBoundingClientRect().width + 16 : el.clientWidth * 0.8;
+    el.scrollBy({ left: direction * cardStep, behavior: "smooth" });
   };
 
   return (
@@ -267,10 +292,16 @@ export function ReelsShowcaseSection() {
         }}
         className="no-scrollbar flex gap-4 overflow-x-auto px-6 pb-2 lg:px-12"
       >
-        {REEL_FORMATS.map((format, index) => (
-          <ReelCard key={format.id} format={format} index={index} />
-        ))}
-        <div className="shrink-0 w-2 sm:w-6" aria-hidden />
+        {[0, 1, 2].flatMap((copy) =>
+          REEL_FORMATS.map((format, index) => (
+            <ReelCard
+              key={`${copy}-${format.id}`}
+              format={format}
+              index={index}
+              ariaHidden={copy !== 1}
+            />
+          )),
+        )}
       </div>
     </section>
   );

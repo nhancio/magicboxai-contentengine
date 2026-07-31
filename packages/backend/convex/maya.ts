@@ -447,13 +447,19 @@ export const swipe = mutation({
       };
     }
 
-    const feedback = {
-      decision: args.decision,
-      reason: args.reason,
-      dwellMs: args.dwellMs,
-      decidedAt: now,
-      publishMode: args.decision === "right" ? publishMode : undefined,
-    };
+    // Convex values cannot contain undefined properties. Build the optional
+    // feedback fields only when the caller actually supplied them; otherwise
+    // both left (Skip) and right (Post) swipes fail at the final db.patch.
+    const feedback: {
+      decision: "right" | "left";
+      reason?: string;
+      dwellMs?: number;
+      decidedAt: number;
+      publishMode?: "now" | "schedule";
+    } = { decision: args.decision, decidedAt: now };
+    if (args.reason !== undefined) feedback.reason = args.reason;
+    if (args.dwellMs !== undefined) feedback.dwellMs = args.dwellMs;
+    if (args.decision === "right") feedback.publishMode = publishMode;
 
     // --- LEFT: discard + learn -------------------------------------------
     if (args.decision === "left") {

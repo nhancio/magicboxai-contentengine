@@ -9,6 +9,7 @@ import { captureEvent, PRODUCT_EVENTS } from "@shared/lib/analytics";
 import { cn } from "@shared/lib/utils";
 import type { SocialPlatform } from "@shared/types";
 import { isConvexConfigured } from "../lib/convex";
+import { trialClock } from "../lib/credits";
 import { useMayaActivation } from "../hooks/useMayaActivation";
 import PlatformPreview, { type PreviewContent } from "../components/previews/PlatformPreview";
 import {
@@ -28,12 +29,14 @@ import {
   CalendarClock,
   Link2,
   Send,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 /**
  * MAYA — the daily swipe deck.
  *
- * Approve with Post now or Next best time. Left / Skip = not for me.
+ * Approve with Post (next best time) or Now. Left / Skip = not for me.
  */
 
 const PLATFORM_ICON: Record<string, typeof Instagram> = {
@@ -132,7 +135,7 @@ function Card({
         style={{ opacity: approveOpacity }}
         className="pointer-events-none absolute right-5 top-5 rounded-md border-2 border-emerald-500 px-3 py-1 font-mono text-xs uppercase tracking-widest text-emerald-600"
       >
-        Next best time
+        Post
       </motion.div>
       <motion.div
         style={{ opacity: rejectOpacity }}
@@ -292,14 +295,33 @@ function ActivationGate({ activation }: { activation: MayaActivation }) {
   );
 }
 
+function PaidPlanGate() {
+  return (
+    <div className="mx-auto max-w-2xl py-10">
+      <div className="rounded-[1.75rem] border border-brand/25 bg-brand/[0.06] p-8 text-center sm:p-12">
+        <Sparkles className="mx-auto h-8 w-8 text-brand" />
+        <h1 className="mt-5 font-display text-3xl text-foreground">Maya is ready when you are.</h1>
+        <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
+          Your trial has ended. Choose a paid plan to review, schedule, and publish Maya's posts.
+        </p>
+        <Button asChild className="mt-7 rounded-full px-6">
+          <Link to="/pricing?plan=pro">Choose a paid plan</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function Maya() {
   const [generating, setGenerating] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const activation = useMayaActivation();
   const trackedActivationState = useRef<string | null>(null);
 
   // Convex is optional at runtime (the client is null when unconfigured), so
   // skip the queries entirely rather than crash the route.
   const deck = useQuery(api.maya.deck, isConvexConfigured ? {} : "skip");
+  const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const ensureConfig = useMutation(api.maya.ensureConfig);
   const swipe = useMutation(api.maya.swipe);
   const generateNow = useAction(api.maya.generateNow);
@@ -332,6 +354,15 @@ export default function Maya() {
   }, [activation?.ready, ensureConfig]);
 
   const pending = useMemo(() => (deck?.pending ?? []) as unknown as Suggestion[], [deck]);
+
+  // Navigation never decides a card. It only changes the review cursor and
+  // wraps in both directions so the deck behaves like a real carousel.
+  const activePendingIndex = pending.length ? ((activeIndex % pending.length) + pending.length) % pending.length : 0;
+  const activeSuggestion = pending[activePendingIndex]!;
+  const moveCursor = (direction: 1 | -1) => {
+    if (!pending.length) return;
+    setActiveIndex((current) => current + direction);
+  };
 
   async function decide(
     s: Suggestion,
@@ -368,7 +399,14 @@ export default function Maya() {
         toast.success("Queued for next best time.");
       }
     } catch (e) {
-      toast.error(`Couldn't save that swipe: ${String(e).slice(0, 90)}`);
+      const message = String(e);
+      if (/TrialExpired|free trial has ended|trial.*expired/i.test(message)) {
+        toast.error("Your free trial has ended. Upgrade to post from Maya.", {
+          action: { label: "View plans", onClick: () => (window.location.href = "/pricing?plan=pro") },
+        });
+      } else {
+        toast.error(`Couldn't save that swipe: ${message.slice(0, 90)}`);
+      }
     }
   }
 
@@ -410,6 +448,18 @@ export default function Maya() {
     return <ActivationGate activation={activation} />;
   }
 
+  if (credits === undefined) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!credits.hasPaidPlan && trialClock(credits)?.expired) {
+    return <PaidPlanGate />;
+  }
+
   return (
     <div className="mx-auto w-full max-w-3xl">
       <header className="mb-6 sm:mb-8">
@@ -418,11 +468,10 @@ export default function Maya() {
         </p>
         <h1 className="mt-2 font-display text-3xl text-foreground sm:text-4xl">Maya</h1>
         <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Post now</span> or{" "}
-          <span className="font-medium text-foreground">Next best time</span>
+          <span className="font-medium text-foreground">Post</span> for the next best time or{" "}
+          <span className="font-medium text-foreground">Now</span> to publish immediately
           <span className="hidden sm:inline">
-            {" "}
-            — swipe right for next best time / left to skip
+            {" "}— swipe right to post / left to skip
           </span>
           <span className="sm:hidden">. Use the buttons below on mobile.</span>
         </p>
@@ -474,13 +523,29 @@ export default function Maya() {
                 }}
               />
             ))}
-            <div className="relative z-10">
+            <div className="relative z-10 px-5 sm:px-7">
+              <button
+                type="button"
+                onClick={() => moveCursor(-1)}
+                aria-label="Previous post"
+                className="absolute left-0 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-md transition hover:border-foreground/30 hover:text-foreground"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => moveCursor(1)}
+                aria-label="Next post"
+                className="absolute right-0 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-md transition hover:border-foreground/30 hover:text-foreground"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
               <Card
-                key={pending[0]._id}
-                s={pending[0]}
+                key={activeSuggestion._id}
+                s={activeSuggestion}
                 depth={0}
                 isTop
-                onDecide={(d, dwell, mode) => decide(pending[0], d, dwell, mode)}
+                onDecide={(d, dwell, mode) => decide(activeSuggestion, d, dwell, mode)}
               />
             </div>
           </div>
@@ -495,7 +560,7 @@ export default function Maya() {
               variant="outline"
               size="lg"
               className="h-11 flex-1 gap-2 rounded-full border-red-500/30 hover:bg-red-500/10 sm:h-12 sm:min-w-[6.5rem] sm:flex-none"
-              onClick={() => decide(pending[0], "left", 0)}
+              onClick={() => decide(activeSuggestion, "left", 0)}
               aria-label="Skip this post"
             >
               <X className="h-4 w-4 text-red-500" />
@@ -508,23 +573,22 @@ export default function Maya() {
               variant="outline"
               size="lg"
               className="h-11 flex-1 gap-1.5 rounded-full px-3 sm:h-12 sm:min-w-[7.5rem] sm:flex-none"
-              onClick={() => decide(pending[0], "right", 0, "schedule")}
-              aria-label="Queue at next best time"
+              onClick={() => decide(activeSuggestion, "right", 0, "schedule")}
+              aria-label="Post at the next best time"
             >
               <CalendarClock className="h-4 w-4 shrink-0" />
               <span className="truncate">
-                <span className="sm:hidden">Schedule</span>
-                <span className="hidden sm:inline">Next best time</span>
+                Post
               </span>
             </Button>
             <Button
               size="lg"
               className="h-11 flex-[1.2] gap-2 rounded-full sm:h-12 sm:min-w-[7.5rem] sm:flex-none"
-              onClick={() => decide(pending[0], "right", 0, "now")}
+              onClick={() => decide(activeSuggestion, "right", 0, "now")}
               aria-label="Post now"
             >
               <Send className="h-4 w-4" />
-              Post now
+              Now
             </Button>
           </div>
         </div>

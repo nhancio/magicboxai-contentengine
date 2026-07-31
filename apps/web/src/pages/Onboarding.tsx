@@ -299,7 +299,9 @@ export default function Onboarding() {
  onboardingLastAction: "social_setup_presented",
  },
  { merge: true },
- );
+ ).catch((error) => {
+ console.warn("[onboarding] Could not record the social setup attempt", error);
+ });
  }
  }, [channelSetupOnly, step, user]);
 
@@ -482,6 +484,7 @@ export default function Onboarding() {
  };
 
  const deferOnboarding = async (section: "website" | "social") => {
+ try {
  if (user && db) {
  await setDoc(
  doc(db, "users", user.uid),
@@ -494,6 +497,11 @@ export default function Onboarding() {
  },
  { merge: true },
  );
+ }
+ } catch (error) {
+ console.error("[onboarding] Could not save the deferred setup choice", error);
+ toast.error("Could not save your choice. Please try again.");
+ return;
  }
  captureEvent(
  section === "website"

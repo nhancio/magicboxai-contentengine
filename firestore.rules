@@ -25,12 +25,20 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow create: if request.auth != null && request.auth.uid == userId
         && request.resource.data.keys().hasOnly([
-          'email', 'displayName', 'photoURL', 'lastLoginAt', 'onboardingComplete'
+          'email', 'displayName', 'photoURL', 'lastLoginAt',
+          'onboardingComplete', 'onboardingDeferred', 'onboardingLastAction',
+          'websiteSetupSkippedAt', 'websiteSetupEnabledAt',
+          'socialSetupAttempted', 'socialSetupPresentedAt',
+          'socialSetupSkippedAt', 'onboardingCompletedAt'
         ])
         && request.resource.data.email == request.auth.token.email;
       allow update: if request.auth != null && request.auth.uid == userId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'photoURL', 'lastLoginAt', 'onboardingComplete'
+          'displayName', 'photoURL', 'lastLoginAt',
+          'onboardingComplete', 'onboardingDeferred', 'onboardingLastAction',
+          'websiteSetupSkippedAt', 'websiteSetupEnabledAt',
+          'socialSetupAttempted', 'socialSetupPresentedAt',
+          'socialSetupSkippedAt', 'onboardingCompletedAt'
         ]);
     }
 
