@@ -14,6 +14,8 @@ import { Label } from "@shared/components/ui/label";
 import { Textarea } from "@shared/components/ui/textarea";
 import { cn } from "@shared/lib/utils";
 import Carousel from "./Carousel";
+import PlatformPreview, { type PreviewContent } from "../components/previews/PlatformPreview";
+import type { SocialPlatform } from "@shared/types";
 import {
   Sparkles,
   Loader2,
@@ -27,75 +29,66 @@ import {
   Youtube,
   Facebook,
   MessageCircle,
-  Link2,
+  Twitter,
   ImagePlus,
   Film,
   Type,
-  RefreshCw,
   Layers,
+  CheckCircle2,
+  X,
   User,
+  Link2,
+  RefreshCw,
 } from "lucide-react";
 
 /**
- * STUDIO — unified create surface.
+ * STUDIO — 5-Step Unified Content Creator
  *
- * Top modes: Video · Carousel · Post. Templates for the active mode appear
- * underneath. Carousel embeds the carousel creator; Video/Post use Convex presets.
+ * 1. Select Channel (Instagram, LinkedIn, YouTube, Facebook, WhatsApp, Twitter)
+ * 2. Select Post Type (Text, Image, Carousel, Video)
+ * 3. Provide Input (Prompt, uploaded Image, or uploaded Video)
+ * 4. Click Create
+ * 5. Display Preview with Post Now, Post Best Time, Save to Draft options
  */
 
-type StudioMode = "video" | "carousel" | "post";
+type PostType = "text" | "image" | "carousel" | "video";
 
-const STUDIO_MODES: {
-  id: StudioMode;
-  label: string;
-  icon: typeof Film;
-  blurb: string;
-}[] = [
-  { id: "video", label: "Video", icon: Film, blurb: "Reels, Shorts, talking-head" },
-  { id: "carousel", label: "Carousel", icon: Layers, blurb: "Multi-slide branded posts" },
-  { id: "post", label: "Post", icon: Type, blurb: "Image or text-only" },
+const CHANNELS: { id: string; label: string; icon: typeof Instagram }[] = [
+  { id: "instagram", label: "Instagram", icon: Instagram },
+  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
+  { id: "youtube", label: "YouTube", icon: Youtube },
+  { id: "facebook", label: "Facebook", icon: Facebook },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { id: "twitter", label: "Twitter / X", icon: Twitter },
 ];
 
-const TONES = ["Professional", "Casual", "Funny", "Inspirational", "Educational", "Bold"] as const;
-
-const PLATFORM_ICON: Record<string, typeof Instagram> = {
-  instagram: Instagram,
-  facebook: Facebook,
-  linkedin: Linkedin,
-  youtube: Youtube,
-  whatsapp: MessageCircle,
-};
-
-const VERTICAL = new Set(["instagram", "youtube", "facebook", "reddit", "whatsapp"]);
-const aspectFor = (p: string) => (VERTICAL.has(p) ? "9:16" : "1:1");
-
-const MEDIA_ICON = { video: Film, image: ImagePlus, none: Type } as const;
-
-type Preset = {
-  id: string;
-  name: string;
+const POST_TYPES: {
+  id: PostType;
+  label: string;
+  icon: typeof Type;
   description: string;
-  platforms: string[];
-  mediaType: "video" | "image" | "none";
-  inputs: { key: string; required: boolean; label: string }[];
-};
+}[] = [
+  { id: "text", label: "Text Post", icon: Type, description: "Pure copy & hashtags — great for LinkedIn & X" },
+  { id: "image", label: "Image Post", icon: ImagePlus, description: "Single graphic or photo with engaging caption" },
+  { id: "carousel", label: "Carousel", icon: Layers, description: "Multi-slide story or educational deck" },
+  { id: "video", label: "AI Video / Reel", icon: Film, description: "High-converting short-form video or reel" },
+];
 
-type Copy = { hook: string; caption: string; hashtags: string[]; mediaPrompt?: string };
+const TONES = ["Casual", "Professional", "Bold", "Funny", "Educational", "Inspirational"] as const;
 
-function modeFromParam(raw: string | null): StudioMode {
-  if (raw === "carousel" || raw === "post" || raw === "video") return raw;
-  return "video";
-}
+const VERTICAL_PLATFORMS = new Set(["instagram", "youtube", "facebook"]);
+const aspectFor = (p: string) => (VERTICAL_PLATFORMS.has(p) ? "9:16" : "1:1");
+
+type CopyResult = { hook: string; caption: string; hashtags: string[]; mediaPrompt?: string };
 
 export default function Studio() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const mode = modeFromParam(searchParams.get("mode"));
 
-  const presets = useQuery(api.studio.presets, isConvexConfigured ? {} : "skip") as
-    | Preset[]
-    | undefined;
+  // Queries & Mutations
   const accounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
+  const brands = useQuery(api.brands.list, isConvexConfigured ? {} : "skip");
+  const primaryBrand = brands?.[0];
 
   const generateCopy = useAction(api.studio.generateCopy);
   const generateImage = useAction(api.media.generateImage);
@@ -104,41 +97,40 @@ export default function Studio() {
   const uploadUrl = useMutation(api.studio.uploadUrl);
   const resolveUpload = useMutation(api.studio.resolveUpload);
 
-  const [preset, setPreset] = useState<Preset | null>(null);
-  const [platform, setPlatform] = useState<string>("");
+  // Form State
+  const [channel, setChannel] = useState<string>(searchParams.get("channel") || "instagram");
+  const [postType, setPostType] = useState<PostType>(
+    (searchParams.get("type") as PostType) || "image"
+  );
   const [prompt, setPrompt] = useState("");
-  const [context, setContext] = useState("");
-  const [productName, setProductName] = useState("");
   const [tone, setTone] = useState<(typeof TONES)[number]>("Casual");
   const [avatars, setAvatars] = useState<PhotoAvatarRecord[]>([]);
   const [avatarId, setAvatarId] = useState("");
-  const [productImage, setProductImage] = useState<{ url: string; source: string } | null>(null);
-  const [uploadingProduct, setUploadingProduct] = useState(false);
-  const [rewriting, setRewriting] = useState(false);
 
-  const [copy, setCopy] = useState<Copy | null>(null);
-  const [caption, setCaption] = useState("");
-  const [hashtags, setHashtags] = useState("");
+  // Uploaded or Generated Media
+  const [media, setMedia] = useState<{
+    type: "image" | "video";
+    url: string;
+    source: string;
+  } | null>(null);
+  const [videoJobId, setVideoJobId] = useState<string | null>(null);
+
+  // WhatsApp specific inputs
   const [whatsappRecipients, setWhatsappRecipients] = useState("");
   const [whatsappTemplateName, setWhatsappTemplateName] = useState("");
 
-  const [media, setMedia] = useState<{ type: "image" | "video"; url: string; source: string } | null>(
-    null,
-  );
-  const [videoJobId, setVideoJobId] = useState<string | null>(null);
+  // Generated Post State
+  const [caption, setCaption] = useState("");
+  const [hashtags, setHashtags] = useState("");
 
-  const [writing, setWriting] = useState(false);
-  const [renderingMedia, setRenderingMedia] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  // Loading States
+  const [isCreating, setIsCreating] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [isRenderingMedia, setIsRenderingMedia] = useState(false);
   const [posting, setPosting] = useState<null | "now" | "schedule" | "draft">(null);
 
-  const filteredPresets = useMemo(() => {
-    if (!presets) return undefined;
-    if (mode === "video") return presets.filter((p) => p.mediaType === "video");
-    if (mode === "post") return presets.filter((p) => p.mediaType === "image" || p.mediaType === "none");
-    return [];
-  }, [presets, mode]);
-
+  // Load avatars
   useEffect(() => {
     if (!user) return;
     getPhotoAvatars(user.uid)
@@ -146,109 +138,43 @@ export default function Studio() {
       .catch(() => setAvatars([]));
   }, [user]);
 
-  // Clear preset when switching away from a format that doesn't include it.
-  useEffect(() => {
-    if (mode === "carousel") {
-      setPreset(null);
-      return;
-    }
-    if (preset && filteredPresets && !filteredPresets.some((p) => p.id === preset.id)) {
-      setPreset(null);
-    }
-  }, [mode, filteredPresets, preset]);
-
-  function setMode(next: StudioMode) {
-    const nextParams = new URLSearchParams(searchParams);
-    if (next === "video") nextParams.delete("mode");
-    else nextParams.set("mode", next);
-    setSearchParams(nextParams, { replace: true });
-  }
-
-  // Poll the Veo job until the video is ready (reactive — no manual polling).
+  // Poll Veo Video Job reactively if active
   const job = useQuery(api.media.job, videoJobId ? { jobId: videoJobId as any } : "skip");
   useEffect(() => {
     if (!job) return;
     if (job.status === "completed" && job.url) {
       setMedia({ type: "video", url: job.url, source: "veo" });
-      setRenderingMedia(false);
+      setIsRenderingMedia(false);
       setVideoJobId(null);
+      toast.success("AI Video generated successfully!");
     } else if (job.status === "failed") {
-      setRenderingMedia(false);
+      setIsRenderingMedia(false);
       setVideoJobId(null);
-      toast.error(`Video failed: ${job.error ?? "unknown error"}`);
+      toast.error(`Video rendering failed: ${job.error ?? "Unknown error"}`);
     }
   }, [job]);
 
-  const connectedForPlatform = useMemo(
-    () => (accounts ?? []).filter((a: any) => a.status === "active" && a.platform === platform),
-    [accounts, platform],
+  // Connected accounts for selected channel
+  const connectedAccount = useMemo(
+    () => (accounts ?? []).find((a: any) => a.status === "active" && a.platform === channel),
+    [accounts, channel]
   );
 
-  function choosePreset(p: Preset) {
-    setPreset(p);
-    setPlatform(p.platforms[0] ?? "instagram");
-    setCopy(null);
-    setMedia(null);
-    setVideoJobId(null);
-    setProductImage(null);
-  }
+  // Brand Info for Preview
+  const previewBrandName =
+    connectedAccount?.displayName || connectedAccount?.username || primaryBrand?.name || "Your Brand";
+  const previewHandle = connectedAccount?.username
+    ? connectedAccount.username
+    : primaryBrand?.name
+      ? primaryBrand.name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24)
+      : "yourbrand";
+  const previewLogoUrl = connectedAccount?.avatarUrl || primaryBrand?.logoUrl;
 
   const selectedAvatar = avatars.find((a) => a.id === avatarId) ?? null;
 
-  const requiredInputs = preset?.inputs.filter((i) => i.required).map((i) => i.key) ?? [];
-  const missingRequired =
-    (requiredInputs.includes("prompt") && !prompt.trim()) ||
-    (requiredInputs.includes("productName") && !productName.trim()) ||
-    (requiredInputs.includes("avatar") && !avatarId) ||
-    (requiredInputs.includes("images") && !productImage);
-
-  async function handleGenerateCopy() {
-    if (!preset) return;
-    setWriting(true);
-    try {
-      const avatarContext = selectedAvatar
-        ? `Avatar: ${selectedAvatar.name}. Personality: ${selectedAvatar.personality}. Voice: ${selectedAvatar.voiceTone}.`
-        : "";
-      const r = (await generateCopy({
-        presetId: preset.id,
-        platform,
-        prompt: prompt || undefined,
-        context: [tone && `Tone: ${tone}`, avatarContext, context].filter(Boolean).join("\n") || undefined,
-        productName: productName || undefined,
-      })) as Copy;
-      setCopy(r);
-      setCaption(r.caption);
-      setHashtags((r.hashtags ?? []).join(" "));
-    } catch (e) {
-      toast.error(`Couldn't write copy: ${String(e).slice(0, 120)}`);
-    } finally {
-      setWriting(false);
-    }
-  }
-
-  async function handleRewriteUgc() {
-    if (!caption.trim()) {
-      toast.error("Write or generate a caption first.");
-      return;
-    }
-    setRewriting(true);
-    try {
-      const rewritten = await rewriteAsUGC({
-        text: caption,
-        avatarPersonality: selectedAvatar?.personality || "Friendly creator",
-        tone,
-      });
-      setCaption(rewritten);
-      toast.success("Rewrote in UGC voice");
-    } catch (e) {
-      toast.error(`Rewrite failed: ${String(e).slice(0, 120)}`);
-    } finally {
-      setRewriting(false);
-    }
-  }
-
-  async function handleProductImageUpload(file: File) {
-    setUploadingProduct(true);
+  // File Upload Handler
+  async function handleFileUpload(file: File) {
+    setIsUploading(true);
     try {
       const url = await uploadUrl({});
       const res = await fetch(url, {
@@ -259,89 +185,165 @@ export default function Studio() {
       if (!res.ok) throw new Error("Upload failed");
       const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
       const resolved = await resolveUpload({ storageId });
-      setProductImage({ url: resolved.url, source: "upload" });
-      // Also seed final media if none yet — product shot can be the post image.
-      if (!media) setMedia({ type: "image", url: resolved.url, source: "upload" });
-      toast.success("Product photo added");
+
+      const isVideo = file.type.startsWith("video");
+      setMedia({
+        type: isVideo ? "video" : "image",
+        url: resolved.url,
+        source: "upload",
+      });
+
+      // Auto-set post type to match uploaded media
+      if (isVideo && postType !== "video") setPostType("video");
+      if (!isVideo && postType === "text") setPostType("image");
+
+      toast.success(`${isVideo ? "Video" : "Image"} uploaded successfully.`);
     } catch (e) {
       toast.error(`Upload failed: ${String(e).slice(0, 120)}`);
     } finally {
-      setUploadingProduct(false);
+      setIsUploading(false);
     }
   }
 
-  async function handleGenerateMedia() {
-    if (!preset || preset.mediaType === "none") return;
-    const mediaPrompt = copy?.mediaPrompt || prompt;
-    if (!mediaPrompt) {
-      toast.error("Generate copy first (it produces the media prompt).");
+  // Step 4: Handle "Create"
+  async function handleCreate() {
+    if (postType === "carousel") {
+      // Handled by embedded Carousel component
       return;
     }
-    setRenderingMedia(true);
+
+    if (!prompt.trim() && !media) {
+      toast.error("Please provide a prompt or upload an image/video to create your post.");
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      // Map post type to preset ID for backend
+      let presetId = "talking-head-ugc";
+      if (postType === "text") presetId = "text-post";
+      else if (postType === "image") presetId = "problem-solution";
+      else if (postType === "video") presetId = "talking-head-ugc";
+
+      const avatarContext = selectedAvatar
+        ? `Avatar: ${selectedAvatar.name}. Voice: ${selectedAvatar.voiceTone}.`
+        : "";
+
+      // 1. Generate Copy
+      const copyRes = (await generateCopy({
+        presetId,
+        platform: channel,
+        prompt: prompt || undefined,
+        context: [tone && `Tone: ${tone}`, avatarContext].filter(Boolean).join("\n") || undefined,
+      })) as CopyResult;
+
+      setCaption(copyRes.caption);
+      setHashtags((copyRes.hashtags ?? []).join(" "));
+
+      // 2. Generate Media if needed and not already uploaded
+      if (!media) {
+        const mediaPrompt = copyRes.mediaPrompt || prompt;
+        if (postType === "image" && mediaPrompt) {
+          setIsRenderingMedia(true);
+          const imgRes = await generateImage({
+            prompt: mediaPrompt,
+            aspectRatio: aspectFor(channel),
+          });
+          setMedia({ type: "image", url: imgRes.url, source: "imagen" });
+          setIsRenderingMedia(false);
+        } else if (postType === "video" && mediaPrompt) {
+          setIsRenderingMedia(true);
+          const vidRes = await generateVideo({
+            prompt: mediaPrompt,
+            aspectRatio: aspectFor(channel),
+          });
+          setVideoJobId(vidRes.jobId as unknown as string);
+          toast.info("Generating AI Video — this may take 1-2 minutes.");
+        }
+      }
+
+      toast.success("Post created! Review and publish below.");
+    } catch (e) {
+      toast.error(`Could not create post: ${String(e).slice(0, 140)}`);
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  // Rewrite caption as UGC
+  async function handleRewriteUgc() {
+    if (!caption.trim()) {
+      toast.error("Generate or type a caption first.");
+      return;
+    }
+    setIsRewriting(true);
+    try {
+      const rewritten = await rewriteAsUGC({
+        text: caption,
+        avatarPersonality: selectedAvatar?.personality || "Friendly creator",
+        tone,
+      });
+      setCaption(rewritten);
+      toast.success("Rewritten in UGC creator style!");
+    } catch (e) {
+      toast.error(`Rewrite failed: ${String(e).slice(0, 120)}`);
+    } finally {
+      setIsRewriting(false);
+    }
+  }
+
+  // Regenerate AI Media
+  async function handleRegenerateMedia() {
+    if (!prompt.trim()) {
+      toast.error("Provide a prompt first.");
+      return;
+    }
+    setIsRenderingMedia(true);
     setMedia(null);
     try {
-      if (preset.mediaType === "image") {
-        const r = await generateImage({ prompt: mediaPrompt, aspectRatio: aspectFor(platform) });
-        setMedia({ type: "image", url: r.url, source: "imagen" });
-        setRenderingMedia(false);
-      } else {
-        const { jobId } = await generateVideo({
-          prompt: mediaPrompt,
-          aspectRatio: aspectFor(platform),
+      if (postType === "image") {
+        const imgRes = await generateImage({
+          prompt,
+          aspectRatio: aspectFor(channel),
         });
-        setVideoJobId(jobId as unknown as string);
-        toast.success("Rendering video — this takes a minute or two.");
+        setMedia({ type: "image", url: imgRes.url, source: "imagen" });
+        setIsRenderingMedia(false);
+      } else if (postType === "video") {
+        const vidRes = await generateVideo({
+          prompt,
+          aspectRatio: aspectFor(channel),
+        });
+        setVideoJobId(vidRes.jobId as unknown as string);
+        toast.info("Generating new AI Video...");
       }
     } catch (e) {
-      setRenderingMedia(false);
+      setIsRenderingMedia(false);
       toast.error(`Media generation failed: ${String(e).slice(0, 120)}`);
     }
   }
 
-  async function handleUpload(file: File) {
-    setUploading(true);
-    try {
-      const url = await uploadUrl({});
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-      const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
-      const resolved = await resolveUpload({ storageId });
-      setMedia({
-        type: file.type.startsWith("video") ? "video" : "image",
-        url: resolved.url,
-        source: "upload",
-      });
-      toast.success("Uploaded.");
-    } catch (e) {
-      toast.error(`Upload failed: ${String(e).slice(0, 120)}`);
-    } finally {
-      setUploading(false);
-    }
-  }
-
+  // Step 5: Publish / Schedule / Save Draft
   async function handlePublish(mode: "now" | "schedule" | "draft") {
-    if (!preset) return;
     if (!caption.trim()) {
-      toast.error("Write or generate a caption first.");
+      toast.error("Please add a caption before publishing.");
       return;
     }
-    if (preset.mediaType !== "none" && !media && mode !== "draft") {
-      toast.error("Generate or upload media first (or save as draft).");
+    if (postType !== "text" && postType !== "carousel" && !media && mode !== "draft") {
+      toast.error("Please add or generate media for this post type before publishing.");
       return;
     }
-    if (platform === "whatsapp" && mode !== "draft") {
+
+    if (channel === "whatsapp" && mode !== "draft") {
       const recipients = whatsappRecipients
         .split(/[\s,;]+/)
         .map((n) => n.replace(/[^\d]/g, ""))
         .filter((n) => n.length >= 8);
       if (recipients.length === 0) {
-        toast.error("Add at least one opted-in WhatsApp number (E.164 digits).");
+        toast.error("Add at least one opted-in WhatsApp recipient phone number.");
         return;
       }
     }
+
     setPosting(mode);
     try {
       const r = await createPost({
@@ -350,14 +352,14 @@ export default function Studio() {
           .split(/\s+/)
           .map((h) => h.trim())
           .filter(Boolean),
-        platforms: [platform],
+        platforms: [channel],
         mediaUrl: media?.url,
         mediaType: media?.type,
         mediaSource: media?.source,
-        brief: prompt || preset.name,
+        brief: prompt || "Studio post",
         mode,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        ...(platform === "whatsapp"
+        ...(channel === "whatsapp"
           ? {
               whatsappRecipients: whatsappRecipients
                 .split(/[\s,;]+/)
@@ -368,17 +370,18 @@ export default function Studio() {
             }
           : {}),
       });
+
       if (mode === "now") {
         if (r.status === "posted") {
-          toast.success(`Posted to ${r.published ?? 0}/${r.of ?? 1} channel(s).`);
+          toast.success(`Published to ${r.published ?? 1} channel!`);
         } else if (r.status === "failed") {
-          toast.error("Post now failed — check Posts for the error.");
+          toast.error("Publishing failed — check Library for error details.");
         } else if (r.status === "draft") {
-          toast.warning("Saved as a draft — connect a channel to publish.", {
+          toast.warning("Saved as a draft — connect a channel to publish directly.", {
             action: { label: "Channels", onClick: () => (window.location.href = "/settings") },
           });
         } else {
-          toast.success("Sending now — check Posts in a moment.");
+          toast.success("Publishing in progress...");
         }
       } else if (mode === "schedule") {
         const when = r.scheduledFor
@@ -388,21 +391,18 @@ export default function Studio() {
               minute: "2-digit",
             })
           : null;
-        toast.success(when ? `Queued for next best time · ${when}` : "Queued for next best time.");
-      } else if (r.status === "draft") {
-        toast.warning("Saved as a draft — connect a channel to publish.", {
-          action: { label: "Channels", onClick: () => (window.location.href = "/settings") },
-        });
+        toast.success(when ? `Scheduled for best time: ${when}` : "Scheduled for best time.");
       } else {
-        toast.success("Draft saved.");
+        toast.success("Saved to Drafts.");
       }
-      // Reset media/copy for the next post but keep the preset selected.
-      setMedia(null);
-      setCopy(null);
+
+      // Reset state after publishing
       setCaption("");
       setHashtags("");
+      setMedia(null);
+      setPrompt("");
     } catch (e) {
-      toast.error(`Couldn't publish: ${String(e).slice(0, 140)}`);
+      toast.error(`Publish failed: ${String(e).slice(0, 140)}`);
     } finally {
       setPosting(null);
     }
@@ -411,10 +411,30 @@ export default function Studio() {
   if (!isConvexConfigured) {
     return (
       <div className="mx-auto max-w-md p-8 text-center text-sm text-muted-foreground">
-        Studio needs <code className="font-mono">VITE_CONVEX_URL</code> configured.
+        Studio requires <code className="font-mono">VITE_CONVEX_URL</code> to be configured.
       </div>
     );
   }
+
+  const previewContent: PreviewContent = {
+    caption,
+    hashtags: hashtags
+      .split(/\s+/)
+      .map((h) => h.trim())
+      .filter(Boolean),
+    imageUrl: media?.type === "image" ? media.url : undefined,
+    videoUrl: media?.type === "video" ? media.url : undefined,
+    brandName: previewBrandName,
+    handle: previewHandle,
+    logoUrl: previewLogoUrl,
+    brandColors: primaryBrand?.colors
+      ? {
+          primary: primaryBrand.colors.primary,
+          secondary: primaryBrand.colors.secondary,
+          accent: primaryBrand.colors.accent,
+        }
+      : undefined,
+  };
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 space-y-8 animate-fade-in">
@@ -424,223 +444,127 @@ export default function Studio() {
           <Sparkles className="h-7 w-7 text-brand" /> Studio
         </h1>
         <p className="mt-2 text-muted-foreground">
-          Pick Video, Carousel, or Post — then choose a template and create.
+          Select your channel, choose a post type, provide creative direction, and create.
         </p>
       </header>
 
-      {/* Mode switcher — Video / Carousel / Post */}
-      <div className="flex flex-wrap gap-2">
-        {STUDIO_MODES.map((m) => {
-          const Icon = m.icon;
-          const active = mode === m.id;
-          return (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => setMode(m.id)}
-              className={cn(
-                "inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors",
-                active
-                  ? "border-brand bg-brand/10 text-brand ring-1 ring-brand/30"
-                  : "border-border bg-card text-muted-foreground hover:border-brand/40 hover:text-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {m.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* STEP 1: SELECT CHANNEL */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+          <span>1</span> · Select Channel
+        </h2>
+        <div className="flex flex-wrap gap-2.5">
+          {CHANNELS.map((ch) => {
+            const Icon = ch.icon;
+            const isSelected = channel === ch.id;
+            const isConnected = (accounts ?? []).some(
+              (a: any) => a.platform === ch.id && a.status === "active"
+            );
 
-      {mode === "carousel" ? (
-        <Carousel embedded />
+            return (
+              <button
+                key={ch.id}
+                type="button"
+                onClick={() => setChannel(ch.id)}
+                className={cn(
+                  "inline-flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium transition-all",
+                  isSelected
+                    ? "border-brand bg-brand/10 text-brand ring-2 ring-brand/30 shadow-sm"
+                    : "border-border bg-card text-muted-foreground hover:border-brand/40 hover:text-foreground"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{ch.label}</span>
+                {isConnected ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3 w-3" /> Connected
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground/70">(Link)</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* STEP 2: SELECT POST TYPE */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+          <span>2</span> · Select Post Type
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {POST_TYPES.map((pt) => {
+            const Icon = pt.icon;
+            const isSelected = postType === pt.id;
+            return (
+              <button
+                key={pt.id}
+                type="button"
+                onClick={() => setPostType(pt.id)}
+                className={cn(
+                  "flex flex-col items-start rounded-xl border p-4 text-left transition-all",
+                  isSelected
+                    ? "border-brand bg-brand/10 ring-2 ring-brand/30 shadow-sm"
+                    : "border-border bg-card hover:border-brand/40"
+                )}
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <div
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-lg",
+                      isSelected ? "bg-brand text-brand-foreground" : "bg-secondary text-muted-foreground"
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <span className="font-semibold text-foreground text-sm">{pt.label}</span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{pt.description}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {postType === "carousel" ? (
+        <section className="space-y-4">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            3 &amp; 4 · Carousel Builder
+          </h2>
+          <Carousel embedded />
+        </section>
       ) : (
         <>
-          {/* Templates for active mode */}
-          <section>
-            <h2 className="mb-3 text-sm font-mono uppercase tracking-widest text-muted-foreground">
-              {mode === "video" ? "Video templates" : "Post templates"}
-            </h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {(filteredPresets ?? []).map((p) => {
-                const MediaIcon = MEDIA_ICON[p.mediaType];
-                const active = preset?.id === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => choosePreset(p)}
-                    className={cn(
-                      "rounded-xl border p-4 text-left transition-all",
-                      active
-                        ? "border-brand bg-brand/5 ring-1 ring-brand"
-                        : "border-border bg-card hover:border-brand/40",
-                    )}
-                  >
-                    <div className="mb-2 flex items-center gap-2">
-                      <MediaIcon className="h-4 w-4 text-brand" />
-                      <span className="font-medium text-foreground">{p.name}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{p.description}</p>
-                  </button>
-                );
-              })}
-              {filteredPresets === undefined && (
-                <div className="col-span-full flex justify-center py-8">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              )}
-              {filteredPresets?.length === 0 && (
-                <p className="col-span-full text-sm text-muted-foreground">
-                  No templates for this format yet.
-                </p>
-              )}
-            </div>
-          </section>
-
-      {preset && (
-        <>
-          {/* Step 2 — inputs */}
-          <section className="space-y-4">
-            <h2 className="text-sm font-mono uppercase tracking-widest text-muted-foreground">
-              2 · Details
+          {/* STEP 3: INPUT PROMPT / CREATIVE / MEDIA */}
+          <section className="space-y-5 rounded-2xl border border-border bg-card p-6 shadow-xs">
+            <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+              <span>3</span> · Provide Creative Direction &amp; Assets
             </h2>
 
-            <div className="flex flex-wrap gap-2">
-              {preset.platforms.map((p) => {
-                const Icon = PLATFORM_ICON[p] ?? Link2;
-                return (
-                  <button
-                    key={p}
-                    onClick={() => setPlatform(p)}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm capitalize transition-colors",
-                      platform === p
-                        ? "border-brand bg-brand/10 text-brand"
-                        : "border-border text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {p}
-                  </button>
-                );
-              })}
-            </div>
-
-            {platform === "whatsapp" && (
-              <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
-                <div className="space-y-1.5">
-                  <Label>WhatsApp recipients (opted-in)</Label>
-                  <Input
-                    value={whatsappRecipients}
-                    onChange={(e) => setWhatsappRecipients(e.target.value)}
-                    placeholder="9198xxxxxxxx, 14155552671"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    E.164 digits, comma-separated. Not a public feed — each send is A2P to these numbers.
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Template name (optional)</Label>
-                  <Input
-                    value={whatsappTemplateName}
-                    onChange={(e) => setWhatsappTemplateName(e.target.value)}
-                    placeholder="Approved Marketing template for cold sends"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Required outside the 24h service window. Leave blank for session messages.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {preset.inputs.some((i) => i.key === "avatar") && (
-              <div className="space-y-2">
-                <Label>
-                  Avatar
-                  {requiredInputs.includes("avatar") ? "" : " (optional)"}
-                </Label>
-                {avatars.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No ready avatars.{" "}
-                    <Link to="/avatars" className="text-brand hover:underline">
-                      Create one
-                    </Link>
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {avatars.map((a) => {
-                      const active = avatarId === a.id;
-                      const thumb = a.photoUrls?.[0];
-                      return (
-                        <button
-                          key={a.id}
-                          type="button"
-                          onClick={() => setAvatarId(a.id ?? "")}
-                          className={cn(
-                            "flex w-[88px] flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors",
-                            active
-                              ? "border-brand bg-brand/10 ring-1 ring-brand"
-                              : "border-border hover:border-brand/40",
-                          )}
-                        >
-                          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-secondary">
-                            {thumb ? (
-                              <img src={thumb} alt="" className="h-full w-full object-cover" />
-                            ) : (
-                              <User className="h-5 w-5 text-muted-foreground" />
-                            )}
-                          </div>
-                          <span className="w-full truncate text-[10px] font-medium">{a.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {preset.inputs.some((i) => i.key === "images") && (
-              <div className="space-y-2">
-                <Label>
-                  Product photo
-                  {requiredInputs.includes("images") ? "" : " (optional)"}
-                </Label>
-                {productImage ? (
-                  <div className="relative w-32 overflow-hidden rounded-xl border border-border">
-                    <img src={productImage.url} alt="" className="aspect-square w-full object-cover" />
-                    <button
-                      type="button"
-                      className="absolute right-1 top-1 rounded-md bg-background/90 px-1.5 text-[10px]"
-                      onClick={() => setProductImage(null)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground hover:border-brand/40 hover:text-foreground">
-                    {uploadingProduct ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ImagePlus className="h-4 w-4" />
-                    )}
-                    Upload product photo
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={uploadingProduct}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void handleProductImageUpload(f);
-                      }}
-                    />
-                  </label>
-                )}
-              </div>
-            )}
-
+            {/* Prompt Input */}
             <div className="space-y-2">
-              <Label>Tone</Label>
+              <Label className="text-sm font-medium">
+                Prompt / Idea / Topic <span className="text-muted-foreground font-normal">(Provide text or upload media)</span>
+              </Label>
+              <Textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder={
+                  postType === "video"
+                    ? "e.g. Write a 30s UGC video script about how custom AI workflows save 10 hours a week for founders..."
+                    : postType === "image"
+                      ? "e.g. Create a visual post comparing manual social media posting vs automated AI distribution..."
+                      : "e.g. Write a thought-provoking post on why AI content creation is transforming marketing teams..."
+                }
+                rows={3}
+                className="resize-none"
+              />
+            </div>
+
+            {/* Tone Selector */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Tone of Voice</Label>
               <div className="flex flex-wrap gap-1.5">
                 {TONES.map((t) => (
                   <button
@@ -648,10 +572,10 @@ export default function Studio() {
                     type="button"
                     onClick={() => setTone(t)}
                     className={cn(
-                      "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+                      "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                       tone === t
-                        ? "border-brand bg-brand/10 text-brand"
-                        : "border-border text-muted-foreground hover:text-foreground",
+                        ? "border-brand bg-brand/10 text-brand font-semibold"
+                        : "border-border text-muted-foreground hover:text-foreground"
                     )}
                   >
                     {t}
@@ -660,208 +584,285 @@ export default function Studio() {
               </div>
             </div>
 
-            {preset.inputs.some((i) => i.key === "productName") && (
-              <div className="space-y-1.5">
-                <Label>Product</Label>
-                <Input
-                  value={productName}
-                  onChange={(e) => setProductName(e.target.value)}
-                  placeholder="What are you promoting?"
-                />
+            {/* Optional Avatar Selection for Video */}
+            {postType === "video" && avatars.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Avatar (Optional)</Label>
+                <div className="flex flex-wrap gap-2">
+                  {avatars.map((a) => {
+                    const active = avatarId === a.id;
+                    const thumb = a.photoUrls?.[0];
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => setAvatarId(avatarId === a.id ? "" : (a.id ?? ""))}
+                        className={cn(
+                          "flex w-[88px] flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors",
+                          active
+                            ? "border-brand bg-brand/10 ring-1 ring-brand"
+                            : "border-border hover:border-brand/40"
+                        )}
+                      >
+                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-secondary">
+                          {thumb ? (
+                            <img src={thumb} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <User className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <span className="w-full truncate text-[10px] font-medium">{a.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
-            {preset.inputs.some((i) => i.key === "prompt") && (
-              <div className="space-y-1.5">
-                <Label>
-                  {preset.inputs.find((i) => i.key === "prompt")?.label ?? "Prompt"}
-                </Label>
-                <Textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Describe what this post should say…"
-                  rows={3}
-                />
+            {/* WhatsApp Options */}
+            {channel === "whatsapp" && (
+              <div className="space-y-3 rounded-xl border border-border bg-secondary/30 p-4">
+                <div className="space-y-1.5">
+                  <Label>WhatsApp Recipients (Opted-in)</Label>
+                  <Input
+                    value={whatsappRecipients}
+                    onChange={(e) => setWhatsappRecipients(e.target.value)}
+                    placeholder="e.g. 919876543210, 14155552671"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    E.164 phone numbers with country code, separated by commas.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Template Name (Optional)</Label>
+                  <Input
+                    value={whatsappTemplateName}
+                    onChange={(e) => setWhatsappTemplateName(e.target.value)}
+                    placeholder="e.g. marketing_update_v1"
+                  />
+                </div>
               </div>
             )}
 
-            {preset.inputs.some((i) => i.key === "context") && (
-              <div className="space-y-1.5">
-                <Label>Extra context (optional)</Label>
-                <Textarea
-                  value={context}
-                  onChange={(e) => setContext(e.target.value)}
-                  placeholder="Brand notes, audience, offers…"
-                  rows={2}
-                />
-              </div>
-            )}
+            {/* Upload Image / Video */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                Upload Media <span className="text-muted-foreground font-normal">(Optional — upload photo or video)</span>
+              </Label>
 
-            <Button onClick={handleGenerateCopy} disabled={writing || missingRequired}>
-              {writing ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Writing…
-                </>
+              {media ? (
+                <div className="relative inline-flex items-center gap-3 rounded-xl border border-border bg-secondary/50 p-3 pr-8">
+                  {media.type === "video" ? (
+                    <video src={media.url} className="h-16 w-16 rounded-lg object-cover" muted />
+                  ) : (
+                    <img src={media.url} alt="" className="h-16 w-16 rounded-lg object-cover" />
+                  )}
+                  <div>
+                    <p className="text-xs font-semibold capitalize text-foreground">{media.type} Attached</p>
+                    <p className="text-[11px] text-muted-foreground">Source: {media.source}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMedia(null)}
+                    className="absolute top-2 right-2 rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+                    title="Remove media"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               ) : (
-                <>
-                  <Wand2 className="mr-2 h-4 w-4" /> {copy ? "Rewrite copy" : "Generate copy"}
-                </>
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground transition-colors hover:border-brand/50 hover:text-foreground">
+                  {isUploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-brand" />
+                  ) : (
+                    <Upload className="h-4 w-4 text-brand" />
+                  )}
+                  <span>{isUploading ? "Uploading file..." : "Click to upload Image or Video file"}</span>
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    className="hidden"
+                    disabled={isUploading}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void handleFileUpload(f);
+                    }}
+                  />
+                </label>
               )}
-            </Button>
+            </div>
+
+            {/* STEP 4: CREATE BUTTON */}
+            <div className="border-t border-border pt-4">
+              <Button
+                size="lg"
+                onClick={handleCreate}
+                disabled={isCreating || isRenderingMedia || (!prompt.trim() && !media)}
+                className="w-full sm:w-auto px-8"
+              >
+                {isCreating || isRenderingMedia ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating post &amp; creative...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Create Post
+                  </>
+                )}
+              </Button>
+            </div>
           </section>
 
-          {/* Step 3 — review copy + media */}
-          {copy && (
-            <section className="space-y-4">
-              <h2 className="text-sm font-mono uppercase tracking-widest text-muted-foreground">
-                3 · Review &amp; media
+          {/* STEP 5: PREVIEW & PUBLISH */}
+          {(caption || media || isRenderingMedia) && (
+            <section className="space-y-6 rounded-2xl border border-border bg-card p-6 shadow-sm">
+              <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                <span>5</span> · Live Preview &amp; Actions
               </h2>
 
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-4">
-                  {copy.hook && (
-                    <p className="font-serif text-xl text-foreground">{copy.hook}</p>
-                  )}
-                  <div className="space-y-1.5">
-                    <Label>Caption</Label>
-                    <Textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={6} />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-2"
-                      disabled={rewriting || !caption.trim()}
-                      onClick={() => void handleRewriteUgc()}
-                    >
-                      {rewriting ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                      )}
-                      Rewrite as UGC
-                    </Button>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Hashtags</Label>
-                    <Input value={hashtags} onChange={(e) => setHashtags(e.target.value)} />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <Label>Media</Label>
-                  <div className="flex aspect-[9/16] max-h-96 w-full items-center justify-center overflow-hidden rounded-xl border border-border bg-secondary/40">
-                    {media?.type === "video" ? (
-                      <video src={media.url} className="h-full w-full object-cover" controls loop muted />
-                    ) : media?.type === "image" ? (
-                      <img src={media.url} alt="" className="h-full w-full object-cover" />
-                    ) : renderingMedia ? (
-                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                        <span className="text-xs">Rendering {preset.mediaType}…</span>
+              <div className="grid gap-8 lg:grid-cols-12 items-start">
+                {/* Platform Preview Column */}
+                <div className="lg:col-span-6 flex justify-center bg-secondary/20 p-4 rounded-xl border border-border/50">
+                  <div className="w-full max-w-sm">
+                    {isRenderingMedia && !media ? (
+                      <div className="flex aspect-[9/16] w-full flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-brand mb-3" />
+                        <p className="text-sm font-medium text-foreground">Rendering AI Creative...</p>
+                        <p className="text-xs text-muted-foreground mt-1">Generating high-quality media for {channel}</p>
                       </div>
                     ) : (
-                      <span className="px-6 text-center text-xs text-muted-foreground">
-                        {preset.mediaType === "none"
-                          ? "This format is text-only."
-                          : "Generate or upload media."}
-                      </span>
+                      <PlatformPreview
+                        platform={channel as SocialPlatform}
+                        content={previewContent}
+                      />
                     )}
                   </div>
+                </div>
 
-                  {preset.mediaType !== "none" && (
-                    <div className="flex flex-wrap gap-2">
+                {/* Edit & Action Column */}
+                <div className="lg:col-span-6 space-y-5">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">Caption</Label>
                       <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={isRewriting || !caption.trim()}
+                        onClick={() => void handleRewriteUgc()}
+                        className="h-7 px-2 text-xs text-brand"
+                      >
+                        {isRewriting ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Wand2 className="mr-1 h-3 w-3" />
+                        )}
+                        Rewrite as UGC
+                      </Button>
+                    </div>
+                    <Textarea
+                      value={caption}
+                      onChange={(e) => setCaption(e.target.value)}
+                      rows={5}
+                      className="text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Hashtags</Label>
+                    <Input
+                      value={hashtags}
+                      onChange={(e) => setHashtags(e.target.value)}
+                      placeholder="#marketing #ai #growth"
+                      className="text-sm"
+                    />
+                  </div>
+
+                  {postType !== "text" && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        type="button"
                         variant="outline"
                         size="sm"
-                        onClick={handleGenerateMedia}
-                        disabled={renderingMedia}
+                        onClick={handleRegenerateMedia}
+                        disabled={isRenderingMedia || !prompt.trim()}
                       >
-                        {renderingMedia ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : media ? (
-                          <RefreshCw className="mr-2 h-4 w-4" />
+                        {isRenderingMedia ? (
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <Wand2 className="mr-2 h-4 w-4" />
+                          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                         )}
-                        {media ? "Regenerate" : `Generate ${preset.mediaType}`}
+                        Regenerate AI Media
                       </Button>
-
-                      <label>
-                        <input
-                          type="file"
-                          accept="image/*,video/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) handleUpload(f);
-                          }}
-                        />
-                        <Button variant="outline" size="sm" asChild disabled={uploading}>
-                          <span>
-                            {uploading ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <Upload className="mr-2 h-4 w-4" />
-                            )}
-                            Upload
-                          </span>
-                        </Button>
-                      </label>
                     </div>
                   )}
-                </div>
-              </div>
 
-              {/* Step 4 — publish */}
-              <div className="border-t border-border pt-4">
-                {connectedForPlatform.length === 0 && (
-                  <p className="mb-3 flex items-center gap-2 text-xs text-amber-600">
-                    <Link2 className="h-3.5 w-3.5" />
-                    No {platform} channel connected —{" "}
-                    <Link to="/settings" className="underline underline-offset-2">
-                      connect one
-                    </Link>{" "}
-                    or save as a draft.
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    onClick={() => handlePublish("now")}
-                    disabled={posting !== null || connectedForPlatform.length === 0}
-                  >
-                    {posting === "now" ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="mr-2 h-4 w-4" />
-                    )}
-                    Post now
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handlePublish("schedule")}
-                    disabled={posting !== null || connectedForPlatform.length === 0}
-                  >
-                    {posting === "schedule" ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <CalendarClock className="mr-2 h-4 w-4" />
-                    )}
-                    Next best time
-                  </Button>
-                  <Button variant="ghost" onClick={() => handlePublish("draft")} disabled={posting !== null}>
-                    {posting === "draft" ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="mr-2 h-4 w-4" />
-                    )}
-                    Save draft
-                  </Button>
+                  {!connectedAccount && (
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                      <Link2 className="h-4 w-4 shrink-0" />
+                      <span>
+                        No active {channel} account connected. You can publish as draft or{" "}
+                        <Link to="/settings" className="underline font-semibold">
+                          connect channel in Settings
+                        </Link>.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* ACTION BUTTONS ON PREVIEW */}
+                  <div className="border-t border-border pt-4 space-y-3">
+                    <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                      Publish Options
+                    </p>
+                    <div className="flex flex-wrap gap-2.5">
+                      <Button
+                        onClick={() => void handlePublish("now")}
+                        disabled={posting !== null}
+                        className="flex-1 min-w-[120px]"
+                      >
+                        {posting === "now" ? (
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="mr-1.5 h-4 w-4" />
+                        )}
+                        Post Now
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        onClick={() => void handlePublish("schedule")}
+                        disabled={posting !== null}
+                        className="flex-1 min-w-[120px]"
+                      >
+                        {posting === "schedule" ? (
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : (
+                          <CalendarClock className="mr-1.5 h-4 w-4" />
+                        )}
+                        Post Best Time
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        onClick={() => void handlePublish("draft")}
+                        disabled={posting !== null}
+                        className="flex-1 min-w-[120px]"
+                      >
+                        {posting === "draft" ? (
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="mr-1.5 h-4 w-4" />
+                        )}
+                        Save to Draft
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
           )}
-        </>
-      )}
         </>
       )}
     </div>

@@ -10,6 +10,7 @@ import { Button } from "@shared/components/ui/button";
 import { cn } from "@shared/lib/utils";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
+import { getSocialPostUrl } from "../lib/socialUrl";
 import {
   ArrowRight,
   Bot,
@@ -350,9 +351,12 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-2">
               {upcoming.map((post) => (
-                <Link
+                <a
                   key={post.id}
-                  to="/posts"
+                  href={getSocialPostUrl(post)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open in social platform"
                   className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent"
                 >
                   <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
@@ -372,7 +376,7 @@ export default function Dashboard() {
                       minute: "2-digit",
                     })}
                   </span>
-                </Link>
+                </a>
               ))}
             </div>
           )}
@@ -399,9 +403,12 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-2">
               {recent.map((post) => (
-                <Link
+                <a
                   key={post.id}
-                  to="/posts"
+                  href={getSocialPostUrl(post)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open in social platform"
                   className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent"
                 >
                   <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
@@ -411,7 +418,7 @@ export default function Dashboard() {
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {post.status === "posted" ? "Published" : "Failed"}
                   </span>
-                </Link>
+                </a>
               ))}
             </div>
           )}

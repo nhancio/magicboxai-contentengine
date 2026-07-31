@@ -38,6 +38,7 @@ import {
 import { toast } from "sonner";
 import { rewriteAsUGC } from "@shared/lib/gemini";
 import { cn } from "@shared/lib/utils";
+import { captureEvent } from "@shared/lib/analytics";
 
 const PLATFORMS = [
   { id: "instagram", label: "Instagram", icon: Instagram },
@@ -105,6 +106,7 @@ export default function ContentStudio() {
       });
       setCaption(result);
       setGenerateState("done");
+      captureEvent("ugc_copy_generated", { platform, tone });
       toast.success("UGC copy generated");
     } catch {
       setGenerateState("done");

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
+import { getSocialPostUrl } from "../lib/socialUrl";
 import { Button } from "@shared/components/ui/button";
 import { Badge } from "@shared/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@shared/components/ui/card";
@@ -194,9 +195,12 @@ export default function Analytics() {
                   <p className="text-sm text-muted-foreground">Nothing queued right now.</p>
                 ) : (
                   stats.upcoming.map((p: any) => (
-                    <Link
+                    <a
                       key={p._id}
-                      to="/posts"
+                      href={getSocialPostUrl(p)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open in social platform"
                       className="flex items-start justify-between gap-3 rounded-lg border border-border bg-secondary/40 px-3 py-2.5 hover:bg-secondary"
                     >
                       <div className="min-w-0">
@@ -215,7 +219,7 @@ export default function Analytics() {
                           minute: "2-digit",
                         })}
                       </span>
-                    </Link>
+                    </a>
                   ))
                 )}
               </CardContent>
@@ -235,9 +239,12 @@ export default function Analytics() {
                   </p>
                 ) : (
                   stats.recentPosted.map((p: any) => (
-                    <Link
+                    <a
                       key={p._id}
-                      to="/posts"
+                      href={getSocialPostUrl(p)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open in social platform"
                       className="flex items-start justify-between gap-3 rounded-lg border border-border bg-secondary/40 px-3 py-2.5 hover:bg-secondary"
                     >
                       <div className="min-w-0">
@@ -256,7 +263,7 @@ export default function Analytics() {
                           minute: "2-digit",
                         })}
                       </span>
-                    </Link>
+                    </a>
                   ))
                 )}
               </CardContent>

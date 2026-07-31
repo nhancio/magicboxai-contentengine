@@ -3,6 +3,7 @@ import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut, type U
 import { doc, getDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { auth, db, functions, googleProvider } from "@shared/lib/firebase";
+import { identifyUser, resetAnalytics } from "@shared/lib/analytics";
 
 interface AdminAuthContextValue {
   isAuthenticated: boolean;
@@ -30,6 +31,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       setUser(firebaseUser);
 
       if (firebaseUser) {
+        identifyUser(firebaseUser.uid, { app: "admin" });
         try {
           // Method 1: Check Firebase custom claims (secure, server-set)
           const tokenResult = await firebaseUser.getIdTokenResult(true);
@@ -72,6 +74,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         }
       } else {
         setIsAdmin(false);
+        resetAnalytics();
       }
 
       setLoading(false);

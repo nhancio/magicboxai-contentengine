@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@shared/components/ui/button";
 import { AlertTriangle, Home, RefreshCw } from "lucide-react";
+import { captureException } from "@shared/lib/analytics";
 
 type Props = { children: ReactNode; label?: string };
 type State = { error: Error | null };
@@ -31,6 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error(`[ErrorBoundary${this.props.label ? `:${this.props.label}` : ""}]`, error, info);
+    captureException(error);
     if (isChunkLoadError(error) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
       sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
       window.location.reload();

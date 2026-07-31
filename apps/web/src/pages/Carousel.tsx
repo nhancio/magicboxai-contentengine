@@ -11,6 +11,7 @@ import { Button } from "@shared/components/ui/button";
 import { Label } from "@shared/components/ui/label";
 import { Textarea } from "@shared/components/ui/textarea";
 import { cn } from "@shared/lib/utils";
+import { captureEvent } from "@shared/lib/analytics";
 import BrandedSlide from "../components/carousel/BrandedSlide";
 import { downloadAllSlides, exportSlidePngs } from "../components/carousel/exportSlides";
 import PreviewModule from "../components/previews/PreviewModule";
@@ -166,6 +167,11 @@ export default function Carousel({ embedded = false }: { embedded?: boolean }) {
         slides: result.slides as CarouselPack["slides"],
       });
       setActiveSlide(0);
+      captureEvent("carousel_generated", {
+        platform,
+        template_id: activeTemplate ?? "custom",
+        used_fallback: "usedFallback" in result && Boolean(result.usedFallback),
+      });
       if ("usedFallback" in result && result.usedFallback) {
         toast.message("Used offline template — Gemini hiccuped, slides still ready");
       } else {
@@ -232,6 +238,10 @@ export default function Carousel({ embedded = false }: { embedded?: boolean }) {
         brandProfileId: brandId || undefined,
         mode: "draft",
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      captureEvent("carousel_saved_to_library", {
+        platform,
+        slide_count: pack.slides.length,
       });
       toast.success("Saved to Library as draft");
     } catch (e) {

@@ -52,6 +52,7 @@ import {
  Sparkles,
  Twitter,
  Youtube,
+ Flame,
 } from"lucide-react";
 
 const SCAN_STEPS = [
@@ -319,9 +320,13 @@ export default function Onboarding() {
  if (user && !isConvexConfigured) {
  getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
  }
- } else if (social === "error") {
- toast.error(params.get("reason") || "Could not connect channel");
- }
+      } else if (social === "error") {
+        const rawReason = params.get("reason");
+        const cleanReason = rawReason?.includes("no_facebook_pages")
+          ? "Facebook connection failed: You must own or manage at least one Facebook Page under your account."
+          : rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
+        toast.error(cleanReason);
+      }
  // keep ?preset= but drop the social params
  params.delete("social");
  params.delete("provider");
@@ -963,6 +968,14 @@ export default function Onboarding() {
  </Button>
  );
  })}
+ <Button
+ onClick={() => toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.")}
+ variant="outline"
+ className="justify-start py-5 border-dashed border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+ >
+ <Flame className="mr-2 h-4 w-4 text-amber-500" />
+ Buy Warmed Up Accounts — Soon
+ </Button>
  </div>
 
         <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[auto_auto_1fr]">
@@ -981,15 +994,13 @@ export default function Onboarding() {
             Skip for now
           </Button>
           <Button
-            onClick={() => channelSetupOnly ? void activateMayaAfterChannel() : setStep(2)}
+            onClick={() => setStep(2)}
             disabled={!hasActiveChannel}
             className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm"
           >
             <span className="truncate">
               {hasActiveChannel
-                ? channelSetupOnly
-                  ? "Activate Maya"
-                  : "Review my campaign"
+                ? "Review my campaign"
                 : "Connect one channel to continue"}
             </span>
             <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />

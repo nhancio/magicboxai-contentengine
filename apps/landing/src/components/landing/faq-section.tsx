@@ -1,5 +1,23 @@
 const faqs = [
   {
+    question: "What is a UGC factory and how does MagicBox automate UGC content creation?",
+    answer:
+      "A UGC (User-Generated Content) factory is an automated system for producing authentic, relatable video and social content at scale. MagicBox acts as an AI UGC factory by taking your brand context and generating high-converting AI avatar videos, social posts, and graphics tailored for Instagram, LinkedIn, and YouTube without needing expensive video shoots.",
+    related: { label: "See how it works", href: "#how-it-works" },
+  },
+  {
+    question: "How do I create AI videos with MagicBox?",
+    answer:
+      "To create AI videos with MagicBox: 1) Input your website URL or brand brief to establish your brand profile. 2) Select your desired video format (Reels, Shorts, or LinkedIn video). 3) Let MagicBox generate the script, voiceover, and AI avatar visual. 4) Review the generated draft and click schedule to automate your marketing distribution.",
+    related: { label: "Explore video features", href: "#features" },
+  },
+  {
+    question: "How does MagicBox streamline AI content creation and marketing distribution?",
+    answer:
+      "MagicBox combines AI content creation (copy, images, AI videos) with an end-to-end marketing distribution engine. Instead of juggling separate tools for script writing, video generation, approval management, and post scheduling, MagicBox orchestrates the entire pipeline in one unified platform.",
+    related: { label: "Compare plans", href: "#pricing" },
+  },
+  {
     question: "What does MagicBox do?",
     answer:
       "MagicBox turns a brand brief into channel-ready social drafts, then keeps review, scheduling, and publishing in one workflow. It is designed for teams that want a consistent publishing system without losing final control.",

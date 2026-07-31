@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@shared/components/ui/
 import { Badge } from "@shared/components/ui/badge";
 import { toast } from "sonner";
 import { cn } from "@shared/lib/utils";
+import { captureEvent } from "@shared/lib/analytics";
 import {
   Camera,
   Upload,
@@ -653,6 +654,11 @@ export default function AvatarCreator({ embedded = false }: { embedded?: boolean
         description: analysis.description,
         videoUrl: videoUrl ?? undefined,
       });
+      captureEvent("avatar_created", {
+        source_type: MODE_SOURCE_TYPE[mode],
+        preview_status: previewStatus,
+        has_preview_video: Boolean(videoUrl),
+      });
       toast.success(
         videoUrl
           ? `Avatar ready — sampled every ${interval.toFixed(1)}s, Veo preview generated`
@@ -824,6 +830,12 @@ export default function AvatarCreator({ embedded = false }: { embedded?: boolean
         voiceTone: analysis.voiceTone,
         description: analysis.description,
         videoUrl,
+      });
+      captureEvent("avatar_created", {
+        source_type: "photos",
+        preview_status: previewStatus,
+        has_preview_video: Boolean(videoUrl),
+        photo_count: photos.length,
       });
       toast.success(
         videoUrl

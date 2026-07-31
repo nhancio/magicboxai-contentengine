@@ -58,8 +58,8 @@ function AnalyticsTracker() {
     if (user) {
       // Firebase uid is the pseudonymous analytics identifier. Do not copy
       // email or display name into product analytics.
-      identifyUser(user.uid, { app: "web" });
       if (trackedUser.current !== user.uid) {
+        identifyUser(user.uid, { app: "web" });
         captureEvent(PRODUCT_EVENTS.loginCompleted, {
           method: "google",
           app: "web",

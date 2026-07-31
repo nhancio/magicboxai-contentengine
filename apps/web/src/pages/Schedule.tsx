@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { getSocialPostUrl } from "../lib/socialUrl";
 import { useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
 import type { Post, PostStatus, SocialPlatform } from "@shared/types";
@@ -161,9 +161,9 @@ export default function Schedule() {
           </p>
         </div>
         <Button asChild>
-          <Link to="/automations/new">
+          <a href="/automations/new">
             <Plus className="mr-1.5 h-4 w-4" /> New automation
-          </Link>
+          </a>
         </Button>
       </div>
 
@@ -287,9 +287,12 @@ export default function Schedule() {
               {selectedPosts
                 .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime())
                 .map((post) => (
-                  <Link
+                  <a
                     key={post.id}
-                    to="/posts"
+                    href={getSocialPostUrl(post)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open in social platform"
                     className="block rounded-lg border border-border bg-secondary p-3 transition-colors hover:bg-accent"
                   >
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -311,7 +314,7 @@ export default function Schedule() {
                         return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;
                       })}
                     </div>
-                  </Link>
+                  </a>
                 ))}
             </div>
           )}

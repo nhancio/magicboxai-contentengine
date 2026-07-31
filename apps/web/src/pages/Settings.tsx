@@ -27,6 +27,7 @@ import {
 import { cn } from "@shared/lib/utils";
 import { Link } from "react-router-dom";
 import { trialClock } from "../lib/credits";
+import { captureEvent } from "@shared/lib/analytics";
 import {
   Settings as SettingsIcon,
   User,
@@ -54,6 +55,7 @@ import {
   Plus,
   Image as ImageIcon,
   Clapperboard,
+  Flame,
 } from "lucide-react";
 
 const PLATFORM_ICON: Record<string, typeof Instagram> = {
@@ -313,6 +315,7 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
         setBusy(null);
         return;
       }
+      captureEvent("social_channel_connect_started", { provider });
       window.location.href = url;
     } catch (e) {
       toast.error(convexErrorMessage(e));
@@ -431,6 +434,31 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
             <span className="w-full truncate text-[11px] font-medium">Add</span>
           </button>
         )}
+
+        {/* Buy Warmed-Up Accounts Tile */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.")}
+          onKeyDown={(ev) => {
+            if (ev.key === "Enter" || ev.key === " ") {
+              ev.preventDefault();
+              toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.");
+            }
+          }}
+          className="group relative flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-1.5 text-center transition-all hover:border-amber-500 hover:bg-amber-500/10 cursor-pointer"
+          title="Buy pre-warmed aged social accounts with clean reputation (Coming Soon)"
+        >
+          <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            <Flame className="h-5 w-5" />
+          </div>
+          <span className="w-full truncate text-[10px] font-semibold text-foreground">
+            Buy Accounts
+          </span>
+          <span className="inline-flex items-center rounded-full bg-amber-500/20 px-1.5 py-0.2 font-mono text-[8px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+            Soon
+          </span>
+        </div>
       </div>
 
       {(showConnectPicker || connected.length === 0) && connectable.length > 0 && (
@@ -463,6 +491,15 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
               </Button>
             );
           })}
+          <Button
+            variant="outline"
+            size="sm"
+            className="justify-start border-dashed border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+            onClick={() => toast.info("Buy warmed up accounts feature coming soon!")}
+          >
+            <Flame className="mr-2 h-4 w-4 text-amber-500" />
+            Buy Warmed Up Accounts — Soon
+          </Button>
         </div>
       )}
 
@@ -502,7 +539,11 @@ export default function Settings() {
     if (social === "connected") {
       toast.success(`${params.get("provider") ?? "Channel"} connected`);
     } else if (social === "error") {
-      toast.error(params.get("reason") || "Could not connect channel");
+      const rawReason = params.get("reason");
+      const cleanReason = rawReason?.includes("no_facebook_pages")
+        ? "Facebook connection failed: You must own or manage at least one Facebook Page under your account."
+        : rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
+      toast.error(cleanReason);
     }
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
@@ -666,28 +707,28 @@ export default function Settings() {
         </Card>
       )}
 
-      {/* Profile + preferences */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* Profile + preferences & notifications */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 items-start">
         <Card className="glass-card overflow-hidden">
           <CardContent className="p-0">
-            <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-              <div className="flex items-center gap-4">
+            <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+              <div className="flex items-center gap-3.5">
                 <div className="relative">
-                  <Avatar className="h-16 w-16 border-2 border-background shadow-md ring-1 ring-border sm:h-20 sm:w-20">
+                  <Avatar className="h-14 w-14 border-2 border-background shadow-md ring-1 ring-border sm:h-16 sm:w-16">
                     <AvatarImage src={user?.photoURL ?? undefined} />
-                    <AvatarFallback className="bg-brand/10 text-xl text-brand">
+                    <AvatarFallback className="bg-brand/10 text-lg text-brand">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-background ring-2 ring-card">
-                    <User className="h-3 w-3" />
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-foreground text-background ring-2 ring-card">
+                    <User className="h-2.5 w-2.5" />
                   </span>
                 </div>
-                <div className="min-w-0 space-y-1">
-                  <h3 className="truncate font-display text-2xl text-foreground">
+                <div className="min-w-0 space-y-0.5">
+                  <h3 className="truncate font-display text-xl text-foreground">
                     {user?.displayName ?? "User"}
                   </h3>
-                  <p className="truncate text-sm text-muted-foreground">
+                  <p className="truncate text-xs text-muted-foreground">
                     {user?.email ?? "No email"}
                   </p>
                 </div>
@@ -695,22 +736,22 @@ export default function Settings() {
               <Button
                 size="sm"
                 variant="outline"
-                className="shrink-0"
+                className="shrink-0 h-8 text-xs"
                 onClick={() =>
                   toast.info("Profile editing coming soon! Your profile is synced with Google.")
                 }
               >
-                <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                <Pencil className="mr-1.5 h-3 w-3" />
                 Edit Profile
               </Button>
             </div>
 
-            <div className="border-t border-border px-5 py-5 sm:px-6">
-              <div className="mb-3 flex items-center gap-2">
+            <div className="border-t border-border px-4 py-4 sm:px-5">
+              <div className="mb-2 flex items-center gap-2">
                 <Link2 className="h-4 w-4 text-brand" />
                 <p className="text-sm font-medium text-foreground">Connectors</p>
               </div>
-              <p className="mb-4 text-xs text-muted-foreground">
+              <p className="mb-3 text-xs text-muted-foreground">
                 Sign-in and publishing channels in one place.
               </p>
               {isConvexConfigured ? (
@@ -727,11 +768,11 @@ export default function Settings() {
               )}
             </div>
 
-            <div className="flex flex-col gap-2 border-t border-border px-5 py-4 sm:flex-row sm:px-6">
+            <div className="flex flex-col gap-2 border-t border-border px-4 py-3 sm:flex-row sm:px-5">
               <Button
                 size="sm"
                 variant="outline"
-                className="justify-start"
+                className="justify-start h-8 text-xs"
                 onClick={() => {
                   const data = {
                     email: user?.email,
@@ -750,7 +791,7 @@ export default function Settings() {
                   toast.success("Account summary downloaded");
                 }}
               >
-                <Download className="mr-2 h-3.5 w-3.5" />
+                <Download className="mr-1.5 h-3.5 w-3.5" />
                 Download summary
               </Button>
 
@@ -759,9 +800,9 @@ export default function Settings() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="justify-start border border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    className="justify-start h-8 text-xs border border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive"
                   >
-                    <Trash2 className="mr-2 h-3.5 w-3.5" />
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                     Request deletion
                   </Button>
                 </DialogTrigger>
@@ -804,22 +845,23 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        <Card className="glass-card h-full">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <Palette className="h-5 w-5 text-brand" />
+        {/* Preferences & Notifications column */}
+        <Card className="glass-card">
+          <CardHeader className="pb-3 pt-4 px-5">
+            <CardTitle className="flex items-center gap-2 text-foreground text-base">
+              <Palette className="h-4.5 w-4.5 text-brand" />
               Preferences
             </CardTitle>
-            <CardDescription className="text-muted-foreground">
+            <CardDescription className="text-xs text-muted-foreground">
               Defaults for platforms, style, and appearance.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
-                <Label className="text-foreground/80">Default Platform</Label>
+          <CardContent className="space-y-4 px-5 pb-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-xs text-foreground/80">Default Platform</Label>
                 <Select value={defaultPlatform} onValueChange={setDefaultPlatform}>
-                  <SelectTrigger className="border-border bg-secondary">
+                  <SelectTrigger className="h-9 text-xs border-border bg-secondary">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -830,10 +872,10 @@ export default function Settings() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-foreground/80">Default Style</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-foreground/80">Default Style</Label>
                 <Select value={defaultStyle} onValueChange={setDefaultStyle}>
-                  <SelectTrigger className="border-border bg-secondary">
+                  <SelectTrigger className="h-9 text-xs border-border bg-secondary">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -846,13 +888,13 @@ export default function Settings() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-foreground/80">
-                  <Globe className="h-4 w-4" />
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5 text-xs text-foreground/80">
+                  <Globe className="h-3.5 w-3.5" />
                   Language
                 </Label>
                 <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger className="border-border bg-secondary">
+                  <SelectTrigger className="h-9 text-xs border-border bg-secondary">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -866,93 +908,94 @@ export default function Settings() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border border-border bg-secondary p-4">
-              <div className="flex items-center gap-3">
-                <Moon className="h-5 w-5 text-brand" />
+            <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/60 p-3">
+              <div className="flex items-center gap-2.5">
+                <Moon className="h-4.5 w-4.5 text-brand shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-foreground">Theme</p>
-                  <p className="text-xs text-muted-foreground">
-                    Light mode is currently the only option
+                  <p className="text-xs font-medium text-foreground">Theme</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Light mode is currently active
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 rounded-full border border-brand/20 bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand">
-                <Palette className="h-3.5 w-3.5" />
+              <div className="flex items-center gap-1.5 rounded-full border border-brand/20 bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand">
+                <Palette className="h-3 w-3" />
                 Light
+              </div>
+            </div>
+
+            {/* Notifications section inside the same card */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <div>
+                <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Bell className="h-4 w-4 text-brand" />
+                  Notifications
+                </h4>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Choose what notifications you want to receive.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                {[
+                  {
+                    id: "email",
+                    label: "Email Notifications",
+                    description: "Receive updates about your content via email",
+                    icon: Mail,
+                    checked: emailNotifs,
+                    onChange: setEmailNotifs,
+                  },
+                  {
+                    id: "push",
+                    label: "Push Notifications",
+                    description: "Get push notifications in your browser",
+                    icon: Smartphone,
+                    checked: pushNotifs,
+                    onChange: setPushNotifs,
+                  },
+                  {
+                    id: "weekly",
+                    label: "Weekly Report",
+                    description: "Receive a weekly summary of your analytics",
+                    icon: FileBarChart,
+                    checked: weeklyReport,
+                    onChange: setWeeklyReport,
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between rounded-lg border border-border bg-secondary/60 p-2.5"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                      <item.icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">{item.label}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{item.description}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={item.checked}
+                      onClick={() => item.onChange(!item.checked)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+                        item.checked ? "bg-brand" : "bg-accent"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-background shadow-sm ring-0 transition duration-200 ${
+                          item.checked ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
-
-      {/* Notifications */}
-      <Card className="glass-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-foreground">
-            <Bell className="h-5 w-5 text-brand" />
-            Notifications
-          </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Choose what notifications you want to receive.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {[
-            {
-              id: "email",
-              label: "Email Notifications",
-              description: "Receive updates about your content via email",
-              icon: Mail,
-              checked: emailNotifs,
-              onChange: setEmailNotifs,
-            },
-            {
-              id: "push",
-              label: "Push Notifications",
-              description: "Get push notifications in your browser",
-              icon: Smartphone,
-              checked: pushNotifs,
-              onChange: setPushNotifs,
-            },
-            {
-              id: "weekly",
-              label: "Weekly Report",
-              description: "Receive a weekly summary of your analytics",
-              icon: FileBarChart,
-              checked: weeklyReport,
-              onChange: setWeeklyReport,
-            },
-          ].map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center justify-between rounded-lg border border-border bg-secondary p-4"
-            >
-              <div className="flex items-center gap-3">
-                <item.icon className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium text-foreground">{item.label}</p>
-                  <p className="text-xs text-muted-foreground">{item.description}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={item.checked}
-                onClick={() => item.onChange(!item.checked)}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
-                  item.checked ? "bg-brand" : "bg-accent"
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-sm ring-0 transition duration-200 ${
-                    item.checked ? "translate-x-5" : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
     </div>
   );
 }

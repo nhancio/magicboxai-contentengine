@@ -35,20 +35,20 @@ const NAV_SECTIONS = [
   {
     heading: null,
     items: [
-      { label: "Dashboard", path: "/", icon: LayoutDashboard },
       { label: "Maya", path: "/maya", icon: Sparkles },
-      { label: "Automations", path: "/automations", icon: Bot },
+      { label: "Dashboard", path: "/", icon: LayoutDashboard },
       { label: "Calendar", path: "/calendar", icon: CalendarDays },
+      { label: "Studio", path: "/studio", icon: Film },
       { label: "Library", path: "/posts", icon: FolderOpen },
-      { label: "Brand Kit", path: "/brand", icon: Palette },
       { label: "Analytics", path: "/analytics", icon: BarChart3 },
+      { label: "Automations", path: "/automations", icon: Bot },
+      { label: "Brand Kit", path: "/brand", icon: Palette },
     ],
   },
   {
     heading: "AI Video",
     items: [
       { label: "Avatar", path: "/avatars", icon: User },
-      { label: "Studio", path: "/studio", icon: Film },
     ],
   },
 ] as const;

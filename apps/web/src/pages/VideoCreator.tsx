@@ -31,6 +31,7 @@ import {
  analyzeProductPhoto,
 } from"@shared/lib/gemini";
 import { cn } from"@shared/lib/utils";
+import { captureEvent } from"@shared/lib/analytics";
 import {
  ArrowLeft,
  ArrowRight,
@@ -267,6 +268,12 @@ export default function VideoCreator() {
  }
 
  setVideoSaved(true);
+ captureEvent("video_generated", {
+ template_id: selectedTemplate.id,
+ platform: selectedPlatform.toLowerCase().replace(/\s+/g, "_"),
+ tone: selectedTone.toLowerCase().replace(/\s+/g, "_"),
+ has_product_image: Boolean(productImage),
+ });
  toast.success("Video generated successfully!");
  } catch (err) {
  const message = err instanceof Error ? err.message :"Failed to generate video";
@@ -290,6 +297,9 @@ export default function VideoCreator() {
  tone: selectedTone,
  });
  setGeneratedHooks(result);
+ captureEvent("video_hooks_generated", {
+ tone: selectedTone.toLowerCase().replace(/\s+/g, "_"),
+ });
  toast.success("Hooks generated!");
  } catch {
  toast.error("Failed to generate hooks.");

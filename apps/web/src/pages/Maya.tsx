@@ -31,6 +31,7 @@ import {
   Send,
   ChevronLeft,
   ChevronRight,
+  Video,
 } from "lucide-react";
 
 /**
@@ -82,11 +83,15 @@ type Suggestion = {
 
 function Card({
   s,
+  accounts,
+  brand,
   onDecide,
   isTop,
   depth,
 }: {
   s: Suggestion;
+  accounts?: any[];
+  brand?: any;
   onDecide: (d: "right" | "left", dwellMs: number, publishMode?: "now" | "schedule") => void;
   isTop: boolean;
   depth: number;
@@ -100,6 +105,19 @@ function Card({
   const platform = s.platforms[0] ?? "instagram";
   const Icon = PLATFORM_ICON[platform] ?? Sparkles;
 
+  const connectedAccount = (accounts ?? []).find(
+    (a) => a.platform === platform && a.status === "active",
+  );
+
+  const brandName =
+    connectedAccount?.displayName || connectedAccount?.username || brand?.name || "Your Brand";
+  const handle = connectedAccount?.username
+    ? connectedAccount.username
+    : brand?.name
+      ? brand.name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24)
+      : undefined;
+  const logoUrl = connectedAccount?.avatarUrl || brand?.logoUrl;
+
   const asset = s.media?.[0];
   const isRendering = !asset && !!s.mediaPlan && s.mediaPlan.type !== "none";
   const previewContent: PreviewContent = {
@@ -107,6 +125,16 @@ function Card({
     hashtags: s.hashtags,
     imageUrl: asset?.type === "image" ? asset.url : undefined,
     videoUrl: asset?.type === "video" ? asset.url : undefined,
+    brandName,
+    handle,
+    logoUrl,
+    brandColors: brand?.colors
+      ? {
+          primary: brand.colors.primary,
+          secondary: brand.colors.secondary,
+          accent: brand.colors.accent,
+        }
+      : undefined,
   };
 
   function handleDragEnd(_: unknown, info: PanInfo) {
@@ -149,6 +177,12 @@ function Card({
         <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
           {platform}
         </span>
+        {s.mediaPlan?.type === "video" && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand/15 border border-brand/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-brand font-semibold">
+            <Video className="h-3 w-3" />
+            AI Video
+          </span>
+        )}
         {s.trendRefs && s.trendRefs.length > 0 && (
           <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
             <TrendingUp className="h-3 w-3" />
@@ -321,6 +355,9 @@ export default function Maya() {
   // Convex is optional at runtime (the client is null when unconfigured), so
   // skip the queries entirely rather than crash the route.
   const deck = useQuery(api.maya.deck, isConvexConfigured ? {} : "skip");
+  const accounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
+  const brands = useQuery(api.brands.list, isConvexConfigured ? {} : "skip");
+  const primaryBrand = brands?.[0];
   const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const ensureConfig = useMutation(api.maya.ensureConfig);
   const swipe = useMutation(api.maya.swipe);
@@ -543,6 +580,8 @@ export default function Maya() {
               <Card
                 key={activeSuggestion._id}
                 s={activeSuggestion}
+                accounts={accounts}
+                brand={primaryBrand}
                 depth={0}
                 isTop
                 onDecide={(d, dwell, mode) => decide(activeSuggestion, d, dwell, mode)}

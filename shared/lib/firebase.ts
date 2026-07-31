@@ -42,7 +42,16 @@ const firebaseConfig = {
 export function isAuthDomainFirstParty(): boolean {
   if (typeof window === "undefined") return false;
   const domain = firebaseConfig.authDomain as string | undefined;
-  return !!domain && domain.toLowerCase() === window.location.hostname.toLowerCase();
+  if (!domain) return false;
+  const host = window.location.hostname.toLowerCase();
+  const domainLower = domain.toLowerCase();
+  return (
+    domainLower === host ||
+    host === "app.magicboxai.in" ||
+    host === "magicboxai.in" ||
+    host === "localhost" ||
+    host === "127.0.0.1"
+  );
 }
 
 /**

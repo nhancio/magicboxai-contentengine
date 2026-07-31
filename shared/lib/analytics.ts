@@ -1,8 +1,3 @@
-// Lightweight PostHog loader (no npm dependency) shared across apps.
-// Explicit events cover the approved product taxonomy. Broad DOM autocapture
-// and session replay stay off so customer content is never recorded by default.
-// No-ops unless VITE_POSTHOG_KEY is set at build time, so it's safe to ship now.
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
   interface Window {
@@ -12,7 +7,7 @@ declare global {
 
 const env = (import.meta as any).env ?? {};
 const KEY: string | undefined = env.VITE_POSTHOG_KEY;
-const HOST: string = env.VITE_POSTHOG_HOST || "https://us.i.posthog.com";
+const HOST: string | undefined = env.VITE_POSTHOG_HOST;
 
 let started = false;
 
@@ -44,7 +39,7 @@ export function setConsent(state: "granted" | "denied"): void {
 }
 
 const STUB_METHODS =
-  "init capture identify reset register register_once unregister people group alias set_config get_distinct_id onFeatureFlags isFeatureEnabled getFeatureFlag reloadFeatureFlags opt_in_capturing opt_out_capturing startSessionRecording stopSessionRecording debug".split(
+  "init capture captureException identify reset register register_once unregister people group alias set_config get_distinct_id onFeatureFlags isFeatureEnabled getFeatureFlag reloadFeatureFlags opt_in_capturing opt_out_capturing startSessionRecording stopSessionRecording debug".split(
     " "
   );
 
@@ -236,7 +231,7 @@ function safeProperties(props?: AnalyticsProperties): Record<string, string | nu
 }
 
 export function initAnalytics(): void {
-  if (started || !KEY || typeof window === "undefined") return;
+  if (started || !KEY || !HOST || typeof window === "undefined") return;
   if (getConsent() !== "granted") return; // wait for the consent banner
   started = true;
 
@@ -267,8 +262,6 @@ export function initAnalytics(): void {
   ph.init(KEY, {
     api_host: HOST,
     capture_pageview: true,
-    autocapture: false,
-    disable_session_recording: true,
     person_profiles: "identified_only",
   });
 }
@@ -281,6 +274,12 @@ export function captureEvent(event: string, props?: AnalyticsProperties): void {
   const eventName = event.trim();
   if (!SAFE_EVENT_NAME.test(eventName)) return;
   if (KEY && window.posthog) window.posthog.capture(eventName, safeProperties(props));
+}
+
+/** Report an uncaught application error through PostHog's exception tracking API. */
+export function captureException(error: unknown): void {
+  if (!KEY || !window.posthog?.captureException) return;
+  window.posthog.captureException(error);
 }
 
 export function identifyUser(id: string, props?: AnalyticsProperties): void {

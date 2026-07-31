@@ -17,6 +17,7 @@ import {
 import { Button } from "@shared/components/ui/button";
 import { Input } from "@shared/components/ui/input";
 import { cn } from "@shared/lib/utils";
+import { captureEvent } from "@shared/lib/analytics";
 import { isConvexConfigured } from "../lib/convex";
 import {
   ArrowRight,
@@ -116,6 +117,11 @@ export default function BrandKit() {
       setExtracted(result);
       setExtractedUrl(normalized);
       setPhase("ready");
+      captureEvent("brand_kit_scanned", {
+        has_logo: Boolean(result.logoUrl),
+        has_palette: Boolean(result.colors?.primary),
+        has_detected_industry: Boolean(result.industry),
+      });
       toast.success("Brand kit fetched — review and save.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Couldn't read that site.");
@@ -180,6 +186,11 @@ export default function BrandKit() {
       setUrl("");
       setPhase("idle");
       await refresh();
+      captureEvent("brand_kit_saved", {
+        has_logo: Boolean(extracted.logoUrl),
+        has_palette: Boolean(extracted.colors.primary),
+        has_sample_captions: Boolean(extracted.sampleCaptions?.length),
+      });
       toast.success("Brand kit saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save brand kit");
