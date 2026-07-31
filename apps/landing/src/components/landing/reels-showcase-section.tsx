@@ -9,10 +9,6 @@ type ReelFormat = {
   poster: string;
 };
 
-/**
- * Illustrative formats + stock clips (not customer content) — same convention
- * as the sample media used in features-section.tsx.
- */
 const REEL_FORMATS: ReelFormat[] = [
   {
     id: "ugc",
@@ -25,7 +21,7 @@ const REEL_FORMATS: ReelFormat[] = [
     id: "testimonial",
     label: "Testimonial",
     blurb: "A real voice, telling it straight",
-    src: "/videos/Caring_partner_giving_massage.mp4",
+    src: "/videos/Cute_animated_children_talking.mp4",
     poster: "from-emerald-500/60 via-teal-500/40 to-brand/50",
   },
   {
@@ -86,19 +82,32 @@ const REEL_FORMATS: ReelFormat[] = [
   },
 ];
 
-function ReelCard({ format, index, ariaHidden }: { format: ReelFormat; index: number; ariaHidden?: boolean }) {
+function ReelCard({
+  format,
+  index,
+  ariaHidden,
+}: {
+  format: ReelFormat;
+  index: number;
+  ariaHidden?: boolean;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
 
+    el.muted = true;
+    el.setAttribute("muted", "");
+    el.setAttribute("playsinline", "");
+    el.setAttribute("webkit-playsinline", "");
+
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) void el.play().catch(() => {});
         else el.pause();
       },
-      { threshold: 0.2 },
+      { threshold: 0.25 }
     );
     io.observe(el);
     return () => io.disconnect();
@@ -107,8 +116,8 @@ function ReelCard({ format, index, ariaHidden }: { format: ReelFormat; index: nu
   return (
     <div
       aria-hidden={ariaHidden}
-      className="group relative aspect-[9/16] w-[200px] shrink-0 overflow-hidden rounded-2xl border border-foreground/10 bg-neutral-900 shadow-sm transition-transform duration-300 hover:-translate-y-1 sm:w-[230px]"
-      style={{ transitionDelay: `${index * 40}ms` }}
+      className="group relative aspect-[9/16] w-[200px] shrink-0 select-none overflow-hidden rounded-2xl border border-foreground/10 bg-neutral-900 shadow-sm transition-transform duration-300 hover:-translate-y-1 sm:w-[230px]"
+      style={{ transitionDelay: `${index * 30}ms` }}
     >
       <div className={`absolute inset-0 pointer-events-none bg-gradient-to-br ${format.poster}`} />
       <video
@@ -137,20 +146,26 @@ export function ReelsShowcaseSection() {
   const [isVisible, setIsVisible] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll control refs
   const resumeAutoScrollAtRef = useRef(0);
-  const loopSegmentRef = useRef(0);
+  const isInteractingRef = useRef(false);
+  const isMouseDownRef = useRef(false);
+  const startXRef = useRef(0);
+  const scrollLeftRef = useRef(0);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) setIsVisible(true);
       },
-      { threshold: 0.1 },
+      { threshold: 0.1 }
     );
     if (sectionRef.current) observer.observe(sectionRef.current);
     return () => observer.disconnect();
   }, []);
 
+  // Smooth drift auto-scroll that pauses immediately when user touches or drags
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el || !isVisible) return;
@@ -158,86 +173,75 @@ export function ReelsShowcaseSection() {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let frameId = 0;
     let previousTime = performance.now();
-    let driftPosition = el.scrollLeft;
-
-    const measureSegment = () => {
-      const first = el.children[0] as HTMLElement | undefined;
-      const next = el.children[REEL_FORMATS.length] as HTMLElement | undefined;
-      if (!first || !next) return 0;
-      return Math.max(1, next.offsetLeft - first.offsetLeft);
-    };
-
-    loopSegmentRef.current = measureSegment();
-    if (loopSegmentRef.current > 0 && el.scrollLeft === 0) {
-      el.scrollLeft = loopSegmentRef.current;
-      driftPosition = el.scrollLeft;
-    }
-
-    const normalizeLoop = () => {
-      const segment = loopSegmentRef.current || (loopSegmentRef.current = measureSegment());
-      if (!segment) return;
-
-      // Keep scrollLeft comfortably centered inside Copy 1 (range [0.5 * segment, 2.5 * segment]).
-      // When scrolling left below 0.5 * segment, jump forward by 1 segment into Copy 1.
-      // When scrolling right above 2.5 * segment, jump backward by 1 segment into Copy 1.
-      if (el.scrollLeft < 0.5 * segment) {
-        el.scrollLeft += segment;
-        driftPosition = el.scrollLeft;
-      } else if (el.scrollLeft >= 2.5 * segment) {
-        el.scrollLeft -= segment;
-        driftPosition = el.scrollLeft;
-      }
-    };
 
     const drift = (now: number) => {
       const elapsed = Math.min(now - previousTime, 64);
       previousTime = now;
-      normalizeLoop();
 
       const shouldMove =
-        loopSegmentRef.current > 1 &&
         !reducedMotion.matches &&
+        !isInteractingRef.current &&
+        !isMouseDownRef.current &&
         document.visibilityState === "visible" &&
         now >= resumeAutoScrollAtRef.current;
 
       if (shouldMove) {
-        const pixelsPerSecond = 45;
-        if (Math.abs(el.scrollLeft - driftPosition) > 2) {
-          driftPosition = el.scrollLeft;
+        const pixelsPerSecond = 35;
+        el.scrollLeft += pixelsPerSecond * (elapsed / 1000);
+
+        // Infinite wrap check
+        const maxScroll = el.scrollWidth - el.clientWidth;
+        if (el.scrollLeft >= maxScroll - 10) {
+          el.scrollLeft = 0;
         }
-        driftPosition += pixelsPerSecond * (elapsed / 1000);
-        el.scrollLeft = driftPosition;
-      } else {
-        driftPosition = el.scrollLeft;
       }
 
       frameId = window.requestAnimationFrame(drift);
     };
 
     frameId = window.requestAnimationFrame(drift);
-
-    const handleResize = () => {
-      loopSegmentRef.current = measureSegment();
-    };
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      window.removeEventListener("resize", handleResize);
-    };
+    return () => window.cancelAnimationFrame(frameId);
   }, [isVisible]);
 
-  const pauseAutoScroll = (milliseconds = 3500) => {
+  const pauseAutoScroll = (milliseconds = 4000) => {
     resumeAutoScrollAtRef.current = performance.now() + milliseconds;
   };
 
   const scrollByCards = (direction: 1 | -1) => {
     const el = scrollerRef.current;
     if (!el) return;
-    pauseAutoScroll(4000);
+    pauseAutoScroll(6000);
     const first = el.children[0] as HTMLElement | undefined;
-    const cardStep = first ? first.getBoundingClientRect().width + 16 : el.clientWidth * 0.8;
+    const cardStep = first ? first.getBoundingClientRect().width + 16 : 240;
     el.scrollBy({ left: direction * cardStep, behavior: "smooth" });
+  };
+
+  // Mouse Drag-to-Scroll Handlers for Desktop
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    isMouseDownRef.current = true;
+    isInteractingRef.current = true;
+    startXRef.current = e.pageX - el.offsetLeft;
+    scrollLeftRef.current = el.scrollLeft;
+    pauseAutoScroll(10000);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isMouseDownRef.current) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    e.preventDefault();
+    const x = e.pageX - el.offsetLeft;
+    const walk = (x - startXRef.current) * 1.5; // Scroll speed factor
+    el.scrollLeft = scrollLeftRef.current - walk;
+    pauseAutoScroll(10000);
+  };
+
+  const handleMouseUpOrLeave = () => {
+    isMouseDownRef.current = false;
+    isInteractingRef.current = false;
+    pauseAutoScroll(4000);
   };
 
   return (
@@ -262,48 +266,56 @@ export function ReelsShowcaseSection() {
             </p>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-3">
             <button
               type="button"
               onClick={() => scrollByCards(-1)}
               aria-label="Scroll formats left"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-foreground/15 text-foreground/70 transition-colors hover:border-foreground/30 hover:text-foreground active:scale-95"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-foreground/20 bg-background text-foreground shadow-xs transition-all hover:border-brand hover:bg-brand hover:text-brand-foreground active:scale-95"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-5 w-5" />
             </button>
             <button
               type="button"
               onClick={() => scrollByCards(1)}
               aria-label="Scroll formats right"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-foreground/15 text-foreground/70 transition-colors hover:border-foreground/30 hover:text-foreground active:scale-95"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-foreground/20 bg-background text-foreground shadow-xs transition-all hover:border-brand hover:bg-brand hover:text-brand-foreground active:scale-95"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-5 w-5" />
             </button>
           </div>
         </div>
       </div>
 
+      {/* Interactive Drag & Scroll Container */}
       <div
         ref={scrollerRef}
-        onScroll={() => {
-          pauseAutoScroll(2500);
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUpOrLeave}
+        onMouseLeave={handleMouseUpOrLeave}
+        onTouchStart={() => {
+          isInteractingRef.current = true;
+          pauseAutoScroll(8000);
         }}
-        onPointerEnter={() => pauseAutoScroll(1200)}
-        onPointerLeave={() => pauseAutoScroll(1200)}
-        onPointerDown={() => pauseAutoScroll(4000)}
-        onPointerUp={() => pauseAutoScroll(3000)}
-        onWheel={() => pauseAutoScroll(3000)}
-        className="no-scrollbar flex gap-4 overflow-x-auto touch-pan-x px-6 pb-2 lg:px-12"
+        onTouchEnd={() => {
+          isInteractingRef.current = false;
+          pauseAutoScroll(5000);
+        }}
+        onScroll={() => {
+          pauseAutoScroll(4000);
+        }}
+        className="no-scrollbar flex gap-4 overflow-x-auto touch-pan-x cursor-grab active:cursor-grabbing px-6 pb-4 lg:px-12 select-none"
       >
-        {[0, 1, 2].flatMap((copy) =>
+        {[0, 1].flatMap((copy) =>
           REEL_FORMATS.map((format, index) => (
             <ReelCard
               key={`${copy}-${format.id}`}
               format={format}
               index={index}
-              ariaHidden={copy !== 1}
+              ariaHidden={copy !== 0}
             />
-          )),
+          ))
         )}
       </div>
     </section>

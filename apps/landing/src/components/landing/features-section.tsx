@@ -19,7 +19,7 @@ const features: {
     media: {
       caption: "A product update, ready for review",
       handle: "@yourbrand",
-      src: "/videos/sample2.mp4",
+      src: "/videos/beauty-closeup.mp4",
     },
   },
   {
@@ -59,7 +59,7 @@ const features: {
     media: {
       caption: "Scheduled with your approval settings",
       handle: "@yourbrand",
-      src: "/videos/Caring_partner_giving_massage.mp4",
+      src: "/videos/product-story.mp4",
     },
   },
 ];

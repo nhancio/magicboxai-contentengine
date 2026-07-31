@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, FileText, Sparkles } from "lucide-react";
+import { ArrowDown, Check, FileText, Sparkles, ChevronDown } from "lucide-react";
 import { FeaturePhone } from "./phone-system";
 import { InstagramLogo, LinkedInLogo, YouTubeLogo } from "./channel-logos";
 
@@ -31,7 +31,7 @@ const previewMedia = {
     caption: "One brief, turned into a scroll-stopping Reel.",
   },
   linkedin: {
-    src: "/videos/sample1.mp4",
+    image: "/images/linkedin-card.svg",
     handle: "Your Brand",
     title: "Founder",
     caption: "A channel-ready update, shaped to your brand voice.",
@@ -108,7 +108,7 @@ export function HowItWorksSection() {
       ([entry]) => {
         if (entry.isIntersecting) setIsVisible(true);
       },
-      { threshold: 0.1 },
+      { threshold: 0.1 }
     );
     if (sectionRef.current) observer.observe(sectionRef.current);
     return () => observer.disconnect();
@@ -138,12 +138,13 @@ export function HowItWorksSection() {
           </h2>
         </div>
 
-        {/* Visual journey: brief → phone → destinations */}
+        {/* Visual journey: Top to Bottom Flow */}
         <div
-          className={`relative mb-20 flex flex-col items-center justify-center gap-8 lg:mb-28 lg:flex-row lg:items-center lg:gap-6 ${
+          className={`relative mb-20 flex flex-col items-center justify-center gap-6 lg:mb-28 ${
             isVisible ? "opacity-100" : "opacity-0"
           } transition-opacity duration-700 delay-150`}
         >
+          {/* Step 1: Connect Card */}
           <div className="flex flex-col items-center gap-3">
             <ConnectCard />
             <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -151,8 +152,15 @@ export function HowItWorksSection() {
             </span>
           </div>
 
-          <ArrowRight className="hidden h-5 w-5 text-brand/60 lg:block animate-connector-pulse" />
+          {/* Animated Downward Connector Path & Arrow 1 */}
+          <div className="flex flex-col items-center gap-1 my-2">
+            <div className="h-10 w-0.5 border-l-2 border-dashed border-brand/50 animate-pulse" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-brand animate-bounce">
+              <ChevronDown className="h-4 w-4" />
+            </div>
+          </div>
 
+          {/* Step 2: Brief Card */}
           <div className="flex flex-col items-center gap-3">
             <BriefCard />
             <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -160,46 +168,64 @@ export function HowItWorksSection() {
             </span>
           </div>
 
-          <ArrowRight className="hidden h-5 w-5 text-brand/60 lg:block animate-connector-pulse" />
+          {/* Animated Downward Connector Path & Arrow 2 */}
+          <div className="flex flex-col items-center gap-1 my-2">
+            <div className="h-10 w-0.5 border-l-2 border-dashed border-brand/50 animate-pulse" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-brand animate-bounce">
+              <ChevronDown className="h-4 w-4" />
+            </div>
+          </div>
 
-          <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-end sm:gap-4">
-            <FeaturePhone
-              platform="instagram"
-              status="review"
-              size="sm"
-              media={previewMedia.instagram}
-            />
-            <div className="hidden sm:block">
+          {/* Step 3: Feature Phone Previews */}
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-end sm:gap-4">
               <FeaturePhone
-                platform="linkedin"
-                status="scheduled"
+                platform="instagram"
+                status="review"
                 size="sm"
-                media={previewMedia.linkedin}
+                media={previewMedia.instagram}
               />
+              <div className="hidden sm:block">
+                <FeaturePhone
+                  platform="linkedin"
+                  status="scheduled"
+                  size="sm"
+                  media={previewMedia.linkedin}
+                />
+              </div>
+              <div className="hidden md:block">
+                <FeaturePhone
+                  platform="youtube"
+                  status="draft"
+                  size="sm"
+                  media={previewMedia.youtube}
+                />
+              </div>
             </div>
-            <div className="hidden md:block">
-              <FeaturePhone
-                platform="youtube"
-                status="draft"
-                size="sm"
-                media={previewMedia.youtube}
-              />
-            </div>
+            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mt-2">
+              3 · Publish &amp; Review
+            </span>
           </div>
         </div>
 
-        {/* Step cards */}
-        <div className="grid gap-px bg-foreground/10 sm:grid-cols-3">
+        {/* Top-to-Bottom Flow Step Cards with Connector Line */}
+        <div className="relative grid gap-6 sm:grid-cols-3">
+          {/* Connector Line across top on desktop */}
+          <div className="hidden sm:block absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 border-t-2 border-dashed border-brand/20 -z-0" />
+
           {steps.map((step, i) => (
             <div
               key={step.number}
-              className={`bg-background p-8 transition-all duration-700 ${
+              className={`relative z-10 rounded-2xl border border-foreground/10 bg-background p-8 shadow-sm transition-all duration-700 hover:border-brand/40 ${
                 isVisible ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0"
               }`}
               style={{ transitionDelay: `${200 + i * 100}ms` }}
             >
-              <span className="mb-4 block font-mono text-sm text-brand">{step.number}</span>
-              <h3 className="mb-3 font-display text-2xl">{step.title}</h3>
+              <div className="mb-4 flex items-center justify-between">
+                <span className="font-mono text-sm font-bold text-brand">{step.number}</span>
+                <ArrowDown className="h-4 w-4 text-brand/50" />
+              </div>
+              <h3 className="mb-3 font-display text-2xl text-foreground">{step.title}</h3>
               <p className="leading-relaxed text-muted-foreground">{step.description}</p>
             </div>
           ))}

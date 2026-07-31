@@ -19,8 +19,10 @@ export type PlatformKey = "instagram" | "linkedin" | "youtube";
 export type PublishStatus = "live" | "scheduled" | "review" | "draft" | "uploading";
 
 export type PhoneMedia = {
-  /** Vertical video URL — optional; posters/gradients render when absent. */
+  /** Vertical video URL — optional; image/gradient renders when absent. */
   src?: string;
+  /** Image URL for image/carousel posts */
+  image?: string;
   posterClassName?: string;
   caption: string;
   handle: string;
@@ -39,6 +41,7 @@ const DEFAULT_MEDIA: Record<PlatformKey, PhoneMedia> = {
     handle: "Your Brand",
     title: "Founder",
     posterClassName: "from-sky-500/30 via-brand/20 to-indigo-500/40",
+    image: "/images/linkedin-card.svg",
   },
   youtube: {
     caption: "How we booked demos with one weekly brief",
@@ -185,6 +188,19 @@ function MediaBackdrop({
     );
   }
 
+  if (media?.image) {
+    return (
+      <>
+        <div className={`absolute inset-0 bg-gradient-to-br ${posterClassName}`} />
+        <img
+          src={media.image}
+          alt={media.caption ?? "Post media"}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <div className={`absolute inset-0 bg-gradient-to-br ${posterClassName}`} />
@@ -195,11 +211,6 @@ function MediaBackdrop({
             "radial-gradient(circle at 30% 20%, rgba(255,255,255,.55), transparent 42%), radial-gradient(circle at 80% 70%, rgba(0,0,0,.25), transparent 40%)",
         }}
       />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/15 backdrop-blur-sm animate-pulse-slow">
-          <Play className="ml-0.5 h-5 w-5 fill-white text-white" />
-        </div>
-      </div>
     </>
   );
 }
