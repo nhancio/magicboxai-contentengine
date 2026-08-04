@@ -22,9 +22,15 @@ crons.daily(
   internal.trends.refresh,
 );
 
+crons.daily(
+  "maya 9am 7-day social deck",
+  { hourUTC: 3, minuteUTC: 30 }, // 09:00 AM IST (03:30 UTC) - daily 9am deck generation
+  internal.maya.generateDaily,
+);
+
 crons.hourly(
-  "maya daily decks",
-  { minuteUTC: 10 }, // offset from the top of the hour to dodge cron pile-up
+  "maya daily decks hourly timezone check",
+  { minuteUTC: 10 }, // offset from the top of the hour to dodge cron pile-up across all timezones
   internal.maya.generateDaily,
 );
 

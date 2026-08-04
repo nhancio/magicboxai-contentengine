@@ -1,7 +1,8 @@
 # Maya Content Engine
 
-Research snapshot: 2026-07-31  
-Engine version: `2026-07-31.1`
+Research snapshot: 2026-08-01
+
+Engine version: `2026-08-01.1`
 
 ## Decision
 
@@ -245,6 +246,8 @@ Suggested cadence:
 Implemented and locally checked:
 
 - versioned hook and format library;
+- trend-ranked creator-template catalogue shared by Studio and Maya;
+- one-click starter briefs and production directions for current video formats;
 - nine reusable prompt recipes;
 - evidence-oriented trend-discovery prompt;
 - structured creative plan persisted with each Maya suggestion;
@@ -258,4 +261,3 @@ Still required for the complete product:
 - publishing connectors and platform analytics ingestion;
 - an experiment dashboard that compares like-for-like posts;
 - periodic human review of claims, rights, and prompt-library changes.
-

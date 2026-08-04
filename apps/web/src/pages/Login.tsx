@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@shared/components/ui/button";
-import { useAuth } from "@shared/lib/auth";
+import { useAuth, isPopupCancelledError } from "@shared/lib/auth";
 import { captureEvent, PRODUCT_EVENTS } from "@shared/lib/analytics";
 import { Loader2 } from "lucide-react";
 import "./login.css";
@@ -77,6 +77,12 @@ export default function Login() {
       .catch((err) => {
         // The handoff never started — drop back to the card rather than leaving
         // the visitor on a spinner that will never resolve.
+        if (isPopupCancelledError(err)) {
+          captureEvent(PRODUCT_EVENTS.loginCancelled, { method: "google", mode: "auto" });
+          writeAttempted(false);
+          setAutoPending(false);
+          return;
+        }
         captureEvent(PRODUCT_EVENTS.loginFailed, { method: "google", mode: "auto" });
         writeAttempted(false);
         setAutoPending(false);
@@ -110,6 +116,10 @@ export default function Login() {
         captureEvent(PRODUCT_EVENTS.loginCancelled, { method: "google", mode: "manual" });
       }
     } catch (err) {
+      if (isPopupCancelledError(err)) {
+        captureEvent(PRODUCT_EVENTS.loginCancelled, { method: "google", mode: "manual" });
+        return;
+      }
       captureEvent(PRODUCT_EVENTS.loginFailed, { method: "google", mode: "manual" });
       toast.error(err instanceof Error ? err.message : "Failed to sign in with Google");
     } finally {

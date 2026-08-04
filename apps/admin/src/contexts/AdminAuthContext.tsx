@@ -3,6 +3,7 @@ import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut, type U
 import { doc, getDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { auth, db, functions, googleProvider } from "@shared/lib/firebase";
+import { isPopupCancelledError } from "@shared/lib/auth";
 import { identifyUser, resetAnalytics } from "@shared/lib/analytics";
 
 interface AdminAuthContextValue {
@@ -85,7 +86,14 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   const login = async () => {
     if (!auth || !googleProvider) throw new Error("Firebase not initialized");
-    await signInWithPopup(auth, googleProvider);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (e) {
+      if (isPopupCancelledError(e)) {
+        return;
+      }
+      throw e;
+    }
   };
 
   const logout = () => {

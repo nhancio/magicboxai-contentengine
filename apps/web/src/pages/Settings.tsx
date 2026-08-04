@@ -540,10 +540,15 @@ export default function Settings() {
       toast.success(`${params.get("provider") ?? "Channel"} connected`);
     } else if (social === "error") {
       const rawReason = params.get("reason");
-      const cleanReason = rawReason?.includes("no_facebook_pages")
-        ? "Facebook connection failed: You must own or manage at least one Facebook Page under your account."
-        : rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
-      toast.error(cleanReason);
+      let cleanReason = rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
+      if (rawReason?.includes("no_facebook_pages")) {
+        cleanReason = "Facebook connection failed: You must own or manage at least one Facebook Page under your account.";
+      } else if (rawReason?.includes("feature_unavailable") || rawReason?.includes("unavailable") || rawReason?.includes("Facebook Login")) {
+        cleanReason = "Facebook Login unavailable: Your Meta App is in Development mode or updating details in Meta Developer Console. Add test users under Roles in Meta Dashboard or complete App Review.";
+      } else if (rawReason?.includes("access_denied")) {
+        cleanReason = "Connection cancelled or access denied by user.";
+      }
+      toast.error(cleanReason, { duration: 6000 });
     }
     window.history.replaceState({}, "", window.location.pathname);
   }, []);

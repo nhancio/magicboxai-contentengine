@@ -21,6 +21,14 @@ export type PlatformId =
   | "reddit"
   | "whatsapp";
 
+export type PostFormat =
+  | "image"
+  | "carousel"
+  | "reel"
+  | "video"
+  | "post"
+  | "text_post";
+
 export type MediaItem = {
   type: "image" | "video";
   url: string;
@@ -168,6 +176,8 @@ export interface SocialProvider {
     requiresMedia: boolean;
     /** Platform cannot post media at all. */
     textOnly?: boolean;
+    /** Supported post formats for this channel. */
+    supportedFormats: PostFormat[];
   };
 
   /** True if this provider is registered but deliberately disabled. */

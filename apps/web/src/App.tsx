@@ -28,8 +28,10 @@ const Library = lazy(() => import("./pages/Library"));
 const Schedule = lazy(() => import("./pages/Schedule"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const Avatars = lazy(() => import("./pages/Avatars"));
+const MyVideo = lazy(() => import("./pages/MyVideo"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Pricing = lazy(() => import("./pages/Pricing"));
+const WarmedUpAccounts = lazy(() => import("./pages/WarmedUpAccounts"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -113,6 +115,7 @@ export default function App() {
                 <Route path="/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
                 <Route path="/avatars" element={<ProtectedRoute><Avatars /></ProtectedRoute>} />
+                <Route path="/my-video" element={<ProtectedRoute><MyVideo /></ProtectedRoute>} />
                 <Route path="/studio" element={<ProtectedRoute><Studio /></ProtectedRoute>} />
                 <Route path="/carousel" element={<Navigate to="/studio?mode=carousel" replace />} />
                 <Route path="/content-studio" element={<Navigate to="/studio?mode=post" replace />} />
@@ -123,6 +126,7 @@ export default function App() {
                 <Route path="/avatar-creator" element={<Navigate to="/avatars?tab=create" replace />} />
                 <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
                 <Route path="/pricing" element={<ProtectedRoute><Pricing /></ProtectedRoute>} />
+                <Route path="/warmed-up-accounts" element={<ProtectedRoute><WarmedUpAccounts /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

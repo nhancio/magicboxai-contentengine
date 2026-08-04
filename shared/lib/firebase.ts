@@ -18,9 +18,52 @@ import {
   type AppCheck,
 } from "firebase/app-check";
 
+/**
+ * Resolves the effective Firebase authDomain.
+ *
+ * On production (`app.magicboxai.in`), Vercel proxies `/__/auth/*` to Firebase
+ * Hosting so `authDomain` is set to `app.magicboxai.in` (first-party auth domain).
+ *
+ * On `localhost` (e.g. port 8174 / 8175), there is no local `/__/auth/*` proxy,
+ * so attempting to use `app.magicboxai.in` as `authDomain` causes Firebase Auth
+ * SDK to embed `https://app.magicboxai.in/__/auth/iframe` in an iframe, which
+ * fails with `X-Frame-Options: SAMEORIGIN`.
+ *
+ * On `localhost` or dev environments, we automatically fall back to
+ * `<projectId>.firebaseapp.com` (e.g. `magicboxai-50927.firebaseapp.com`) which
+ * serves `/__/auth/iframe` with headers that permit cross-origin popup auth.
+ */
+function getAuthDomain(): string | undefined {
+  const envDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined;
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined;
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname.toLowerCase();
+    const isLocalhost =
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".localhost");
+
+    if (isLocalhost) {
+      if (
+        !envDomain ||
+        envDomain === "app.magicboxai.in" ||
+        envDomain === "magicboxai.in" ||
+        !envDomain.endsWith(".firebaseapp.com")
+      ) {
+        return projectId
+          ? `${projectId}.firebaseapp.com`
+          : "magicboxai-50927.firebaseapp.com";
+      }
+    }
+  }
+
+  return envDomain || (projectId ? `${projectId}.firebaseapp.com` : "magicboxai-50927.firebaseapp.com");
+}
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  authDomain: getAuthDomain(),
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
@@ -45,12 +88,16 @@ export function isAuthDomainFirstParty(): boolean {
   if (!domain) return false;
   const host = window.location.hostname.toLowerCase();
   const domainLower = domain.toLowerCase();
+
+  // On localhost, proxying /__/auth/* does not exist locally.
+  if (host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost")) {
+    return false;
+  }
+
   return (
     domainLower === host ||
-    host === "app.magicboxai.in" ||
-    host === "magicboxai.in" ||
-    host === "localhost" ||
-    host === "127.0.0.1"
+    (host === "app.magicboxai.in" && domainLower === "app.magicboxai.in") ||
+    (host === "magicboxai.in" && domainLower === "magicboxai.in")
   );
 }
 

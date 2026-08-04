@@ -5,6 +5,7 @@ import {
   type AuthUrlInput,
   type ConnectedProfile,
   type ExchangeInput,
+  type PostFormat,
   type ProviderToken,
   type PublishInput,
   type PublishResult,
@@ -44,6 +45,7 @@ class FacebookProvider extends BaseProvider implements SocialProvider {
     maxVideos: 1,
     // Unlike Instagram, a Page post can be pure text.
     requiresMedia: false,
+    supportedFormats: ["image", "carousel", "reel", "video", "post"] as PostFormat[],
   };
 
   buildAuthUrl(input: AuthUrlInput): string {

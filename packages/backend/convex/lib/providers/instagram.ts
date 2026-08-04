@@ -5,6 +5,7 @@ import {
   type AuthUrlInput,
   type ConnectedProfile,
   type ExchangeInput,
+  type PostFormat,
   type ProviderToken,
   type PublishInput,
   type PublishResult,
@@ -51,6 +52,7 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
     maxImages: 10,
     maxVideos: 1,
     requiresMedia: true,
+    supportedFormats: ["image", "carousel", "reel", "post"] as PostFormat[],
   };
 
   buildAuthUrl(i: AuthUrlInput): string {
@@ -88,13 +90,13 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
     if (!shortToken) throw new BadBodyError("instagram token exchange returned no access_token");
 
     // 2) short-lived (~1h) -> long-lived (~60d)
-    const long = await this.http(
-      `https://graph.instagram.com/access_token?` +
-        new URLSearchParams({
-          grant_type: "ig_exchange_token",
-          client_secret: i.clientSecret,
-          access_token: shortToken,
-        }).toString(),
+    const long = await this.getOrPostToken(
+      "https://graph.instagram.com/access_token",
+      {
+        grant_type: "ig_exchange_token",
+        client_secret: i.clientSecret,
+        access_token: shortToken,
+      },
     );
     const accessToken: string = long.access_token ?? shortToken;
 
@@ -133,12 +135,12 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
 
   async refresh(t: ProviderToken, _clientId: string, _clientSecret: string): Promise<ProviderToken> {
     // Long-lived IG tokens can be refreshed while still valid (and >24h old).
-    const refreshed = await this.http(
-      `https://graph.instagram.com/refresh_access_token?` +
-        new URLSearchParams({
-          grant_type: "ig_refresh_token",
-          access_token: t.accessToken,
-        }).toString(),
+    const refreshed = await this.getOrPostToken(
+      "https://graph.instagram.com/refresh_access_token",
+      {
+        grant_type: "ig_refresh_token",
+        access_token: t.accessToken,
+      },
     );
     if (!refreshed.access_token) {
       throw new NotEnoughScopesError(
@@ -152,6 +154,30 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
         ? Date.now() + refreshed.expires_in * 1000
         : t.expiresAt,
     };
+  }
+
+  private async getOrPostToken(
+    endpoint: string,
+    params: Record<string, string>,
+  ): Promise<any> {
+    const searchParams = new URLSearchParams(params);
+    // Try POST first for token endpoints as required by Meta's newer Graph API
+    try {
+      return await this.http(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: searchParams,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/method type: post|unsupported request/i.test(msg)) {
+        // Fall back to GET if POST is rejected
+        return await this.http(`${endpoint}?${searchParams.toString()}`, {
+          method: "GET",
+        });
+      }
+      throw e;
+    }
   }
 
   async publish(t: ProviderToken, input: PublishInput): Promise<PublishResult> {

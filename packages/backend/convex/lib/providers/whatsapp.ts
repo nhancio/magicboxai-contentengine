@@ -5,6 +5,7 @@ import {
   type AuthUrlInput,
   type ConnectedProfile,
   type ExchangeInput,
+  type PostFormat,
   type ProviderToken,
   type PublishInput,
   type PublishResult,
@@ -46,6 +47,7 @@ class WhatsAppProvider extends BaseProvider implements SocialProvider {
     maxImages: 1,
     maxVideos: 1,
     requiresMedia: false,
+    supportedFormats: ["image", "video", "post"] as PostFormat[],
   };
 
   buildAuthUrl(input: AuthUrlInput): string {

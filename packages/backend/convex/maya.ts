@@ -17,6 +17,7 @@ import {
   DEFAULT_SLOTS,
   localBatchDate,
   nextOpenSlot,
+  zonedWallClockToUtc,
   type Platform,
   type Slot,
 } from "./lib/bestTime";
@@ -34,6 +35,7 @@ import {
   type ContentFormatId,
   type HookFamilyId,
 } from "./lib/contentEngine";
+import { rankPresetsForTrends, type RankedPreset } from "./lib/presets";
 
 /**
  * MAYA — the autonomous daily content agent.
@@ -55,11 +57,13 @@ const DEDUP_THRESHOLD = 0.85; // cosine; above this two suggestions are "the sam
 const CANDIDATE_BUFFER = 3; // over-generate so dedup rejections don't shrink the deck
 
 const DEFAULT_PILLARS = [
-  { name: "Educational", description: "Teach one useful thing the audience can act on today." },
-  { name: "Product", description: "Show the product solving a real, specific problem." },
-  { name: "Social Proof", description: "Results, testimonials, case studies, before/after." },
-  { name: "Behind the Scenes", description: "How the work actually gets done; the human side." },
-  { name: "Trend Reaction", description: "Take on something happening in the niche right now." },
+  { name: "Educational", description: "Teach one useful, actionable skill or lesson the audience can apply today." },
+  { name: "Case Study", description: "Deep dive or breakdown of a real result, client transformation, or before/after." },
+  { name: "Industry News", description: "Take or breakdown of current trends, industry news, or market shifts happening right now." },
+  { name: "Product Highlight", description: "Showcase a key feature or benefit of the product/service solving a real problem." },
+  { name: "Customer Story", description: "Social proof, client story, testimonial, or authentic review demonstrating value." },
+  { name: "Engagement Poll", description: "Interactive question, poll, debate, or discussion starter for high audience engagement." },
+  { name: "Weekly Recap", description: "Summary of top takeaways from the week, behind-the-scenes insights, or looking ahead." },
 ];
 
 type DbContext = Pick<QueryCtx | MutationCtx, "db">;
@@ -106,6 +110,7 @@ const SUGGESTION_SCHEMA = {
           },
           hook: { type: "string" },
           angle: { type: "string" },
+          templateId: { type: "string" },
           caption: { type: "string" },
           hashtags: { type: "array", items: { type: "string" } },
           mediaType: { type: "string", enum: ["none", "image", "video"] },
@@ -164,6 +169,7 @@ const SUGGESTION_SCHEMA = {
           "platform",
           "hook",
           "angle",
+          "templateId",
           "caption",
           "hashtags",
           "mediaType",
@@ -188,6 +194,7 @@ type Candidate = {
   platform: Platform;
   hook: string;
   angle: string;
+  templateId: string;
   caption: string;
   hashtags: string[];
   mediaType: "none" | "image" | "video";
@@ -239,7 +246,7 @@ async function bootstrapUserInner(
       const id = await ctx.db.insert("mayaConfig", {
         userId: uid,
         enabled: true,
-        dailyCount: 5,
+        dailyCount: 7,
         timezone,
         reviewHourLocal: 9,
         platforms,
@@ -505,13 +512,15 @@ export const swipe = mutation({
       .filter((p) => p.scheduledFor > now && p.status !== "cancelled" && p.status !== "failed")
       .map((p) => p.scheduledFor);
 
+    const targetFrom = s.scheduledAt && s.scheduledAt > now ? s.scheduledAt : now;
+
     const scheduledFor =
       publishMode === "now"
         ? now
         : nextOpenSlot({
             slots,
             timeZone: tpl?.timezone ?? timezone,
-            from: now,
+            from: targetFrom,
             taken,
           });
 
@@ -544,11 +553,14 @@ export const swipe = mutation({
       // video: charged inside media.renderVideo
     }
 
+    const derivedFormat = s.postFormat ?? (wantsVideo ? "reel" : s.mediaPlan?.type === "image" ? "image" : "post");
+
     const postId = await ctx.db.insert("posts", {
       userId: uid,
       suggestionId: s._id,
       brandProfileId: s.brandProfileId,
       source: "manual",
+      postFormat: derivedFormat,
       scheduledFor,
       timezone: tpl?.timezone ?? timezone,
       status,
@@ -676,6 +688,17 @@ export const insertSuggestion = internalMutation({
     pillarId: v.optional(v.string()),
     batchDate: v.string(),
     slot: v.number(),
+    postFormat: v.optional(
+      v.union(
+        v.literal("image"),
+        v.literal("carousel"),
+        v.literal("reel"),
+        v.literal("video"),
+        v.literal("post"),
+        v.literal("text_post"),
+      ),
+    ),
+    scheduledAt: v.optional(v.number()),
     platforms: v.array(v.string()),
     hook: v.optional(v.string()),
     angle: v.optional(v.string()),
@@ -704,6 +727,8 @@ export const insertSuggestion = internalMutation({
       batchDate: args.batchDate,
       idempotencyKey,
       slot: args.slot,
+      postFormat: args.postFormat,
+      scheduledAt: args.scheduledAt,
       platforms: args.platforms as any,
       status: "pending",
       hook: args.hook,
@@ -774,7 +799,7 @@ export const generateForUser = internalAction({
     }
 
     const platforms = (cfg.platforms as Platform[]) ?? ["instagram"];
-    const want = cfg.dailyCount ?? 5;
+    const want = cfg.dailyCount ?? 7;
 
     const trendBrief: Record<string, any[]> = await ctx.runQuery(internal.trends.brief, {
       platforms,
@@ -805,6 +830,40 @@ export const generateForUser = internalAction({
       .filter(Boolean)
       .join("\n");
 
+    const allRankedTemplates = rankPresetsForTrends({
+      trends: Object.entries(trendBrief).flatMap(([platform, rows]) =>
+        rows.map((row) => ({
+          platform,
+          kind: row.kind,
+          value: row.value,
+          title: row.title,
+          score: row.score,
+        })),
+      ),
+      platforms,
+    });
+    const rankedTemplates = [
+      ...allRankedTemplates.slice(0, 10),
+      ...(["video", "image", "none"] as const).map((mediaType) =>
+        allRankedTemplates.find((template) => template.mediaType === mediaType),
+      ),
+    ].filter(
+      (template, index, list): template is RankedPreset =>
+        !!template && list.findIndex((candidate) => candidate?.id === template.id) === index,
+    );
+    const templateBlock = rankedTemplates
+      .map(
+        (template) =>
+          `- ${template.id} (${template.mediaType}; ${template.platforms.join(", ")})${
+            template.isTrending && template.matchedTrend
+              ? ` — CURRENT MATCH: ${template.matchedTrend}`
+              : ""
+          }\n  Use when: ${template.description}\n  Structure: ${template.structure}\n  Direction: ${template.direction || "native text post"}${
+            template.rightsNote ? `\n  Rights: ${template.rightsNote}` : ""
+          }`,
+      )
+      .join("\n");
+
     const contentEngineRules = buildMayaContentEngineRules(platforms);
     const result = await geminiJson<{ suggestions: Candidate[] }>({
       model: MODELS.text,
@@ -815,16 +874,28 @@ export const generateForUser = internalAction({
         "hook/payoff continuity, useful or emotional sharing value, and truthful proof. Virality is " +
         "probabilistic: never guarantee it and never invent statistics, testimonials, urgency, or results.",
       prompt:
-        `Create exactly ${want + CANDIDATE_BUFFER} distinct post suggestions for today (${batchDate}).\n\n` +
+        `Create exactly ${want + CANDIDATE_BUFFER} distinct post suggestions for a 7-day social deck starting today (${batchDate}).\n\n` +
+        `The deck must cover 7 consecutive days (Day 1 through Day 7 of the upcoming week).\n` +
+        `Each suggestion represents 1 post for that day of the week, with varied content angles across the week:\n` +
+        `1. Educational (Day 1): Actionable skill or lesson\n` +
+        `2. Case Study (Day 2): Result, breakdown, or before/after\n` +
+        `3. Industry News (Day 3): Market shift, trend take, or niche update\n` +
+        `4. Product Highlight (Day 4): Solution showcase or feature spotlight\n` +
+        `5. Customer Story (Day 5): Testimonial, social proof, or client win\n` +
+        `6. Engagement Poll (Day 6): Interactive question, debate, or poll\n` +
+        `7. Weekly Recap (Day 7): Takeaways, behind the scenes, or weekly summary\n\n` +
         `## Brand\n${brandBlock}\n\n` +
-        `## Content pillars to cover (one per suggestion, in order; extras may reuse)\n` +
-        chosen.map((p, i) => `${i + 1}. ${p.name} — ${p.description ?? ""}`).join("\n") +
+        `## Content pillars / angles to cover (one per suggestion in order for the 7 days)\n` +
+        chosen.map((p, i) => `Day ${i + 1} (${p.name}): ${p.description ?? ""}`).join("\n") +
         `\n\n## Live trends (real, from web search today)\n${trendBlock || "(none available)"}\n\n` +
         `## Target platforms\n${platforms.join(", ")}\n\n` +
+        `## Ranked creator templates\n${templateBlock}\n\n` +
         `${contentEngineRules}\n\n` +
         `## Rules\n` +
-        `- Each suggestion targets ONE platform from the list, and the copy must be native to it ` +
-        `(LinkedIn = professional insight; Instagram = punchy + visual; X = short and sharp).\n` +
+        `- Each suggestion targets ONE platform from the list, and the copy and format must be native to it:\n` +
+        `  * Instagram: ["image", "carousel", "reel", "post"]\n` +
+        `  * LinkedIn: ["image", "carousel", "reel", "post"]\n` +
+        `  * YouTube: ["reel", "video"] (YouTube ONLY accepts Reel/Short 9:16 vertical video or long-form Video. NEVER image/text).\n` +
         `- Ground each in a specific trend above where it genuinely fits. Set trendUsed to the trend value. ` +
         `Do NOT force an irrelevant trend — if none fits the pillar, write an evergreen post and leave trendUsed empty.\n` +
         `- hook: the scroll-stopping first line (<12 words).\n` +
@@ -832,14 +903,37 @@ export const generateForUser = internalAction({
         `- hashtags: 3-8, relevant, no generic spam walls.\n` +
         `- mediaType: "video" for short-form-first platforms, "image" where a visual helps, "none" for text-first.\n` +
         `- mediaPrompt: if mediaType isn't "none", a concrete visual description for an image/video generator.\n` +
-        `- All ${want + CANDIDATE_BUFFER} must be genuinely DIFFERENT ideas — not rewordings of each other.\n` +
+        `- templateId: choose exactly one compatible template id from the ranked creator templates. ` +
+        `Use its structure and production direction as the shot grammar; adapt the idea and hook to the brand.\n` +
+        `- All ${want + CANDIDATE_BUFFER} must be genuinely DIFFERENT ideas across the 7 days — not rewordings of each other.\n` +
         `- Before returning, silently test at least two hook mechanisms for each idea and return only the ` +
         `stronger truthful version. Never mention this internal comparison in the output.`,
       schema: SUGGESTION_SCHEMA as unknown as Record<string, unknown>,
     });
 
+    const compatibleTemplate = (candidate: Candidate): RankedPreset | undefined => {
+      const exact = rankedTemplates.find(
+        (template) =>
+          template.id === candidate.templateId &&
+          template.platforms.includes(candidate.platform as any) &&
+          template.mediaType === candidate.mediaType,
+      );
+      if (exact) return exact;
+      return rankedTemplates.find(
+        (template) =>
+          template.platforms.includes(candidate.platform as any) &&
+          (candidate.mediaType === "none"
+            ? template.mediaType === "none"
+            : template.mediaType === candidate.mediaType),
+      );
+    };
+
     const candidates = (result.suggestions ?? [])
       .filter((c) => c.caption?.trim() && platforms.includes(c.platform))
+      .flatMap((candidate) => {
+        const template = compatibleTemplate(candidate);
+        return template ? [{ ...candidate, templateId: template.id }] : [];
+      })
       .map((candidate) => ({ candidate, audit: auditEngineCandidate(candidate) }))
       .filter(({ audit }) => !audit.blocked)
       .sort((a, b) => b.audit.score - a.audit.score);
@@ -875,12 +969,26 @@ export const generateForUser = internalAction({
         .filter((t) => c.trendUsed && t.value === c.trendUsed)
         .map((t) => t._id as Id<"trends">);
 
+      const [yStr, mStr, dStr] = batchDate.split("-");
+      const targetScheduledAt = zonedWallClockToUtc(
+        Number(yStr),
+        Number(mStr),
+        Number(dStr) + created,
+        cfg.reviewHourLocal ?? 9,
+        0,
+        cfg.timezone,
+      );
+
+      const format = c.mediaType === "video" ? "reel" : c.mediaType === "image" ? "image" : "post";
+
       const suggestionId = await ctx.runMutation(internal.maya.insertSuggestion, {
         userId,
         brandProfileId: brand?._id,
         pillarId: pillar?._id,
         batchDate,
         slot: created,
+        postFormat: format as any,
+        scheduledAt: targetScheduledAt,
         platforms: [c.platform],
         hook: c.hook,
         angle: c.angle,
@@ -892,6 +1000,7 @@ export const generateForUser = internalAction({
             : { type: "none" },
         creativePlan: {
           engineVersion: CONTENT_ENGINE_VERSION,
+          templateId: c.templateId,
           formatId: c.formatId,
           hookFamily: c.hookFamily,
           openingVisual: c.openingVisual,

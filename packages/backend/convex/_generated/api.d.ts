@@ -32,6 +32,7 @@ import type * as lib_providers_whatsapp from "../lib/providers/whatsapp.js";
 import type * as lib_providers_youtube from "../lib/providers/youtube.js";
 import type * as maya from "../maya.js";
 import type * as media from "../media.js";
+import type * as myVideo from "../myVideo.js";
 import type * as posts from "../posts.js";
 import type * as publish from "../publish.js";
 import type * as scheduler from "../scheduler.js";
@@ -40,6 +41,7 @@ import type * as studio from "../studio.js";
 import type * as trends from "../trends.js";
 import type * as users from "../users.js";
 import type * as video from "../video.js";
+import type * as warmedAccountListings from "../warmedAccountListings.js";
 
 import type {
   ApiFromModules,
@@ -72,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   "lib/providers/youtube": typeof lib_providers_youtube;
   maya: typeof maya;
   media: typeof media;
+  myVideo: typeof myVideo;
   posts: typeof posts;
   publish: typeof publish;
   scheduler: typeof scheduler;
@@ -80,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   trends: typeof trends;
   users: typeof users;
   video: typeof video;
+  warmedAccountListings: typeof warmedAccountListings;
 }>;
 
 /**

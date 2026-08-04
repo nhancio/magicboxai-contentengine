@@ -5,7 +5,7 @@ import type { Id } from "./_generated/dataModel";
 import { requireUid } from "./lib/auth";
 import { geminiJson } from "./lib/gemini";
 import { MODELS } from "./lib/models";
-import { PRESETS, getPreset } from "./lib/presets";
+import { getPreset, rankPresetsForTrends } from "./lib/presets";
 import { DEFAULT_SLOTS, nextOpenSlot, type Platform, type Slot } from "./lib/bestTime";
 import { getProvider } from "./lib/providers/registry";
 import { DEFAULT_VEO_SECONDS } from "./credits";
@@ -83,8 +83,53 @@ function assertTextLength(value: string | undefined, label: string, maxLength: n
 
 /** The preset catalogue for the Studio picker. */
 export const presets = query({
-  args: {},
-  handler: async () => PRESETS,
+  args: {
+    platform: v.optional(v.string()),
+    mediaType: v.optional(
+      v.union(v.literal("video"), v.literal("image"), v.literal("none")),
+    ),
+  },
+  handler: async (ctx, args) => {
+    await requireUid(ctx);
+    const platforms = args.platform ? [args.platform] : [];
+    let trendRows: Array<{
+      platform?: string;
+      kind: string;
+      value: string;
+      title?: string;
+      score: number;
+    }> = [];
+
+    if (args.platform && args.platform !== "whatsapp") {
+      const batchDate = new Date().toISOString().slice(0, 10);
+      trendRows = await ctx.db
+        .query("trends")
+        .withIndex("by_platform_batchDate", (q) =>
+          q.eq("platform", args.platform as any).eq("batchDate", batchDate),
+        )
+        .collect();
+
+      if (trendRows.length === 0) {
+        const recent = await ctx.db
+          .query("trends")
+          .withIndex("by_expiresAt", (q) => q.gt("expiresAt", Date.now()))
+          .collect();
+        trendRows = recent.filter((row) => row.platform === (args.platform as any));
+      }
+    }
+
+    return rankPresetsForTrends({
+      trends: trendRows.map((row) => ({
+        platform: row.platform ?? args.platform,
+        kind: row.kind,
+        value: row.value,
+        title: row.title,
+        score: row.score,
+      })),
+      platforms,
+      mediaType: args.mediaType,
+    });
+  },
 });
 
 /**
@@ -119,6 +164,7 @@ export const generateCopy = action({
   args: {
     presetId: v.string(),
     platform: v.string(),
+    postFormat: v.optional(v.string()),
     prompt: v.optional(v.string()),
     context: v.optional(v.string()),
     productName: v.optional(v.string()),
@@ -140,6 +186,19 @@ export const generateCopy = action({
     await requireUid(ctx);
     const preset = getPreset(args.presetId);
     const provider = getProvider(args.platform);
+    if (args.postFormat) {
+      const normalized = args.postFormat === "text_post" ? "post" : args.postFormat;
+      if (
+        provider.limits.supportedFormats &&
+        !provider.limits.supportedFormats.includes(normalized as any) &&
+        !provider.limits.supportedFormats.includes(args.postFormat as any)
+      ) {
+        throw new Error(
+          `${provider.displayName} does not support '${args.postFormat}' format. Supported formats: ${provider.limits.supportedFormats.join(", ")}`,
+        );
+      }
+    }
+    const brief = args.prompt?.trim() || preset.starterPrompt?.trim();
     let trendRows: Array<{
       kind: string;
       value: string;
@@ -184,8 +243,10 @@ export const generateCopy = action({
       prompt:
         `Write a ${preset.name} post for ${provider.displayName}.\n\n` +
         `## Structure to follow\n${preset.structure}\n\n` +
+        `## Production direction\n${preset.direction || "Use the smallest native format that delivers the idea."}\n\n` +
+        (preset.rightsNote ? `## Rights constraint\n${preset.rightsNote}\n\n` : "") +
         (args.productName ? `## Product\n${args.productName}\n\n` : "") +
-        (args.prompt ? `## The brief\n${args.prompt}\n\n` : "") +
+        (brief ? `## The brief\n${brief}\n\n` : "") +
         (args.context ? `## Website and brand evidence\n${args.context}\n\n` : "") +
         `## Current trend evidence\n${trendBlock}\n\n` +
         `${staticRules}\n\n` +
@@ -218,6 +279,16 @@ export const insertPost = internalMutation({
     userId: v.string(),
     caption: v.string(),
     hashtags: v.array(v.string()),
+    postFormat: v.optional(
+      v.union(
+        v.literal("image"),
+        v.literal("carousel"),
+        v.literal("reel"),
+        v.literal("video"),
+        v.literal("post"),
+        v.literal("text_post"),
+      ),
+    ),
     platforms: v.array(v.string()),
     socialAccountIds: v.array(v.string()),
     media: v.optional(v.array(v.any())),
@@ -284,6 +355,7 @@ export const insertPost = internalMutation({
       userId: args.userId,
       brandProfileId: args.brandProfileId,
       source: "manual",
+      postFormat: args.postFormat,
       scheduledFor,
       timezone: args.timezone,
       status: status as any,
@@ -316,6 +388,16 @@ export const createPost = action({
   args: {
     caption: v.string(),
     hashtags: v.optional(v.array(v.string())),
+    postFormat: v.optional(
+      v.union(
+        v.literal("image"),
+        v.literal("carousel"),
+        v.literal("reel"),
+        v.literal("video"),
+        v.literal("post"),
+        v.literal("text_post"),
+      ),
+    ),
     platforms: v.array(v.string()),
     socialAccountIds: v.optional(v.array(v.string())),
     mediaUrl: v.optional(v.string()),
@@ -440,6 +522,18 @@ export const createPost = action({
       if (provider.deferred) {
         throw new Error(`${provider.displayName} is not enabled: ${provider.deferred.reason}`);
       }
+      if (args.postFormat) {
+        const normalized = args.postFormat === "text_post" ? "post" : args.postFormat;
+        if (
+          provider.limits.supportedFormats &&
+          !provider.limits.supportedFormats.includes(normalized as any) &&
+          !provider.limits.supportedFormats.includes(args.postFormat as any)
+        ) {
+          throw new Error(
+            `${provider.displayName} does not support '${args.postFormat}' format. Supported formats: ${provider.limits.supportedFormats.join(", ")}`,
+          );
+        }
+      }
       if (provider.limits.requiresMedia && !media) {
         throw new Error(`${provider.displayName} requires an image or video.`);
       }
@@ -502,6 +596,7 @@ export const createPost = action({
       userId: uid,
       caption: args.caption,
       hashtags: args.hashtags ?? [],
+      postFormat: args.postFormat,
       platforms: args.platforms,
       socialAccountIds: accountIds,
       media,

@@ -80,6 +80,75 @@ const POPUP_CANCELLED_CODES = new Set([
   "auth/user-cancelled",
 ]);
 
+/**
+ * Helper to determine if an auth error is caused by the user closing/cancelling
+ * the popup, or by browser Cross-Origin-Opener-Policy (COOP) restrictions when
+ * evaluating popup window references upon closure.
+ */
+export function isPopupCancelledError(e: unknown): boolean {
+  if (!e) return false;
+
+  const code =
+    e instanceof FirebaseError
+      ? e.code
+      : typeof e === "object" && e !== null && "code" in e
+      ? String((e as { code?: unknown }).code)
+      : "";
+
+  if (POPUP_CANCELLED_CODES.has(code)) return true;
+
+  const message =
+    e instanceof Error
+      ? e.message
+      : typeof e === "object" && e !== null && "message" in e
+      ? String((e as { message?: unknown }).message)
+      : String(e);
+
+  const lowerMessage = message.toLowerCase();
+
+  return (
+    lowerMessage.includes("popup-closed-by-user") ||
+    lowerMessage.includes("cancelled-popup-request") ||
+    lowerMessage.includes("user-cancelled") ||
+    lowerMessage.includes("popup closed") ||
+    lowerMessage.includes("closed by user") ||
+    lowerMessage.includes("cross-origin-opener-policy") ||
+    lowerMessage.includes("window.closed")
+  );
+}
+
+/**
+ * Helper to determine if an auth error is a popup environment failure that
+ * can be retried via full-page redirect.
+ */
+export function isPopupFallbackError(e: unknown): boolean {
+  if (!e) return false;
+
+  const code =
+    e instanceof FirebaseError
+      ? e.code
+      : typeof e === "object" && e !== null && "code" in e
+      ? String((e as { code?: unknown }).code)
+      : "";
+
+  if (POPUP_FALLBACK_CODES.has(code)) return true;
+
+  const message =
+    e instanceof Error
+      ? e.message
+      : typeof e === "object" && e !== null && "message" in e
+      ? String((e as { message?: unknown }).message)
+      : String(e);
+
+  const lowerMessage = message.toLowerCase();
+
+  return (
+    lowerMessage.includes("popup-blocked") ||
+    lowerMessage.includes("operation-not-supported") ||
+    lowerMessage.includes("web-storage-unsupported")
+  );
+}
+
 const AuthContext = createContext<AuthContextType | null>(null);
 
 /**
@@ -163,20 +232,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await signInWithPopup(auth, googleProvider);
       return "signed_in";
     } catch (e) {
-      const code = e instanceof FirebaseError ? e.code : "";
-      if (POPUP_CANCELLED_CODES.has(code)) return "cancelled";
-      if (!POPUP_FALLBACK_CODES.has(code)) throw e;
-      // Popup was refused by the browser. Redirect is the only remaining path,
-      // and we still hold the user's gesture, so take it even where the auth
-      // handler is cross-origin — a chance at signing in beats a dead button.
-      setRedirecting(true);
-      try {
-        await signInWithRedirect(auth, googleProvider);
-        return "redirecting";
-      } catch (redirectError) {
-        setRedirecting(false);
-        throw redirectError;
+      if (isPopupCancelledError(e)) {
+        return "cancelled";
       }
+      if (isPopupFallbackError(e)) {
+        // Popup was refused by the browser. Redirect is the only remaining path,
+        // and we still hold the user's gesture, so take it even where the auth
+        // handler is cross-origin — a chance at signing in beats a dead button.
+        setRedirecting(true);
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return "redirecting";
+        } catch (redirectError) {
+          setRedirecting(false);
+          if (isPopupCancelledError(redirectError)) {
+            return "cancelled";
+          }
+          throw redirectError;
+        }
+      }
+      throw e;
     }
   };
 

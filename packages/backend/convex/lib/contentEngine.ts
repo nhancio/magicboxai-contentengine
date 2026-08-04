@@ -7,8 +7,8 @@
  * injected separately by `trends.ts`.
  */
 
-export const CONTENT_ENGINE_VERSION = "2026-07-31.1";
-export const CONTENT_ENGINE_RESEARCHED_AT = "2026-07-31";
+export const CONTENT_ENGINE_VERSION = "2026-08-01.1";
+export const CONTENT_ENGINE_RESEARCHED_AT = "2026-08-01";
 
 export const HOOK_FAMILIES = [
   {
@@ -235,6 +235,17 @@ The goal is not to promise "virality". Increase the probability of a qualified p
 to watch/read, receiving the promised value, and deciding the post is worth saving, sharing, or
 acting on. Treat the hook, first visual, first spoken line, and next beat as one continuous promise.
 
+### 7-Day Social Deck Structure
+Maya generates a 7-day social deck containing 1 post for each day of the upcoming week (Day 1 through Day 7).
+Each day in the deck targets a distinct, high-performing content angle across the 7 days:
+1. Educational (Day 1): Teach one useful, actionable skill or lesson the audience can apply today.
+2. Case Study (Day 2): Deep dive or breakdown of a real result, client transformation, or before/after.
+3. Industry News (Day 3): Take or breakdown of current trends, industry news, or market shifts happening right now.
+4. Product Highlight (Day 4): Showcase a key feature or benefit of the product/service solving a real problem.
+5. Customer Story (Day 5): Social proof, client story, testimonial, or authentic review demonstrating value.
+6. Engagement Poll (Day 6): Interactive question, poll, debate, or discussion starter for high audience engagement.
+7. Weekly Recap (Day 7): Summary of top takeaways from the week, behind-the-scenes insights, or looking ahead.
+
 ### Hook mechanisms
 Choose exactly one primary hook mechanism per suggestion. Adapt the language to the brand and live
 trend evidence; never copy these formulas word-for-word unless they naturally fit.
@@ -244,16 +255,14 @@ ${hookLibrary}
 Choose the smallest format that can fully deliver one idea.
 ${formatLibrary}
 
-### Platform jobs
-- instagram: optimize for watch time and private sharing with original, 9:16-native creative. Make
-  the first frame understandable without audio, while making the audio worth hearing.
-- youtube: make the opening immediately deliver the title/promise; optimize for chose-to-view,
-  retention, rewatchable moments, and a satisfying payoff.
-- linkedin: earn dwell and professional sharing with a precise insight, lived example, or useful
-  framework. Avoid manufactured controversy.
-- twitter: compress to one sharp claim or useful sequence. No generic hashtag filler.
-- facebook: favor recognizable community value, human stories, and native video.
-- reddit: lead with substance and context; do not disguise promotion as community advice.
+### Platform jobs & exact supported post formats
+- instagram: supported formats = ["image", "carousel", "reel", "post"]. Single image, multi-slide carousel, vertical Reel, or standard post. Optimize for watch time and private sharing.
+- linkedin: supported formats = ["image", "carousel", "reel", "post"]. Single image, carousel (PDF/multi-image document), Reel/Video, or standard text post. Earn dwell and professional sharing.
+- youtube: supported formats = ["reel", "video"]. Reel/Short (vertical 9:16 video) or long-form Video. YouTube ONLY accepts video formats (reel or video). NEVER create text-only or static image posts for YouTube.
+- facebook: supported formats = ["image", "carousel", "reel", "video", "post"].
+- twitter: supported formats = ["image", "video", "post"].
+- reddit: supported formats = ["image", "video", "post"].
+- whatsapp: supported formats = ["image", "video", "post"].
 
 Target platforms for this batch: ${platforms.join(", ")}.
 

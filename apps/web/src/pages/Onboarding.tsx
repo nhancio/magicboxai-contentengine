@@ -322,10 +322,15 @@ export default function Onboarding() {
  }
       } else if (social === "error") {
         const rawReason = params.get("reason");
-        const cleanReason = rawReason?.includes("no_facebook_pages")
-          ? "Facebook connection failed: You must own or manage at least one Facebook Page under your account."
-          : rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
-        toast.error(cleanReason);
+        let cleanReason = rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
+        if (rawReason?.includes("no_facebook_pages")) {
+          cleanReason = "Facebook connection failed: You must own or manage at least one Facebook Page under your account.";
+        } else if (rawReason?.includes("feature_unavailable") || rawReason?.includes("unavailable") || rawReason?.includes("Facebook Login")) {
+          cleanReason = "Facebook Login unavailable: Your Meta App is in Development mode or updating details in Meta Developer Console. Add test users under Roles in Meta Dashboard or complete App Review.";
+        } else if (rawReason?.includes("access_denied")) {
+          cleanReason = "Connection cancelled or access denied by user.";
+        }
+        toast.error(cleanReason, { duration: 6000 });
       }
  // keep ?preset= but drop the social params
  params.delete("social");
@@ -376,15 +381,20 @@ export default function Onboarding() {
  return () => window.clearInterval(id);
  }, [brandPhase]);
 
- const handleScanBrand = async () => {
- const url = normalizeInputUrl(websiteUrl);
- if (!url) {
- toast.error("Enter your website URL first.");
- return;
- }
- captureEvent(PRODUCT_EVENTS.onboardingWebsiteFetchStarted, {
- source: "onboarding",
- });
+  const handleScanBrand = async () => {
+    const url = normalizeInputUrl(websiteUrl);
+    if (!url) {
+      toast.error("Enter your website URL first.");
+      return;
+    }
+    // If brand details are already scraped and websiteUrl matches, immediately save & advance
+    if (brandPhase === "ready" && extracted && (url === extractedUrl || !extractedUrl)) {
+      await handleSaveBrand();
+      return;
+    }
+    captureEvent(PRODUCT_EVENTS.onboardingWebsiteFetchStarted, {
+      source: "onboarding",
+    });
  setBrandPhase("scanning");
  setExtracted(null);
  contentHydratedRef.current = false;
@@ -933,12 +943,13 @@ export default function Onboarding() {
  </div>
  )}
 
- {accounts.length === 0 && (
- <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3 text-xs text-muted-foreground">
- YouTube connects via Google. Instagram and LinkedIn may need app review for other
- users. Choose at least one channel to continue.
- </div>
- )}
+<div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
+  <p className="font-semibold text-foreground">Channel Setup Notes:</p>
+  <ul className="list-disc list-inside space-y-0.5">
+    <li><strong className="text-foreground">YouTube:</strong> If Google displays <em>&quot;Google hasn&apos;t verified this app&quot;</em>, click <strong>Advanced → Go to MagicBox (unsafe)</strong> to proceed.</li>
+    <li><strong className="text-foreground">Facebook, Instagram &amp; WhatsApp:</strong> If Meta displays <em>&quot;Feature unavailable&quot;</em>, ensure your Meta App is set to Live or your Meta account is added as a Tester/Admin in Meta Developer Dashboard.</li>
+  </ul>
+</div>
 
  <div className="grid gap-2 sm:grid-cols-2">
  {CONNECTABLE.filter((provider) => {
@@ -1047,23 +1058,29 @@ export default function Onboarding() {
  className="h-12 bg-card border-border pl-10"
  />
  </div>
- <Button
- type="button"
- onClick={() => void handleScanBrand()}
- disabled={
- brandPhase === "scanning" ||
- brandPhase === "saving" ||
- !websiteUrl.trim()
- }
- className="h-12 shrink-0 px-6"
- >
- {brandPhase === "scanning" ? (
- <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
- ) : (
- <Sparkles className="mr-1.5 h-4 w-4" />
- )}
- {brandPhase === "scanning" ? "Building…" : "Build my campaign"}
- </Button>
+<Button
+  type="button"
+  onClick={() => void handleScanBrand()}
+  disabled={
+    brandPhase === "scanning" ||
+    brandPhase === "saving" ||
+    !websiteUrl.trim()
+  }
+  className="h-12 shrink-0 px-6"
+>
+  {brandPhase === "scanning" ? (
+    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+  ) : brandPhase === "ready" && extracted ? (
+    <Check className="mr-1.5 h-4 w-4" />
+  ) : (
+    <Sparkles className="mr-1.5 h-4 w-4" />
+  )}
+  {brandPhase === "scanning"
+    ? "Building…"
+    : brandPhase === "ready" && extracted
+    ? "Save brand & continue"
+    : "Build my campaign"}
+</Button>
  </div>
  </div>
 

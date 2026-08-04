@@ -19,6 +19,7 @@ import {
   CalendarDays,
   CreditCard,
   Film,
+  Flame,
   FolderOpen,
   LayoutDashboard,
   LockKeyhole,
@@ -28,6 +29,7 @@ import {
   Settings,
   Sparkles,
   User,
+  Video,
   X,
 } from "lucide-react";
 
@@ -43,12 +45,14 @@ const NAV_SECTIONS = [
       { label: "Analytics", path: "/analytics", icon: BarChart3 },
       { label: "Automations", path: "/automations", icon: Bot },
       { label: "Brand Kit", path: "/brand", icon: Palette },
+      { label: "Warmed-Up Accounts", path: "/warmed-up-accounts", icon: Flame, badge: "NEW" },
     ],
   },
   {
     heading: "AI Video",
     items: [
       { label: "Avatar", path: "/avatars", icon: User },
+      { label: "My Video", path: "/my-video", icon: Video },
     ],
   },
 ] as const;
@@ -177,6 +181,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     : item.path === "/maya" && mayaBillingLocked
                       ? "/pricing?plan=pro"
                     : item.path;
+              const itemBadge = "badge" in item ? (item as { badge?: string }).badge : undefined;
               return (
                 <NavLink
                   key={item.path}
@@ -199,15 +204,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   }
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
-                  {item.label}
+                  <span className="truncate">{item.label}</span>
+                  {itemBadge && !mayaLocked && (
+                    <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider font-semibold shrink-0">
+                      {itemBadge}
+                    </span>
+                  )}
                   {mayaLocked && (
-                    <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider">
+                    <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider shrink-0">
                       <LockKeyhole className="h-3 w-3" />
                       Setup
                     </span>
                   )}
                   {!mayaLocked && mayaBillingLocked && item.path === "/maya" && (
-                    <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-destructive/25 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-destructive">
+                    <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-destructive/25 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-destructive shrink-0">
                       Paid plan
                     </span>
                   )}

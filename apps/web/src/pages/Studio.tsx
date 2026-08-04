@@ -39,6 +39,8 @@ import {
   User,
   Link2,
   RefreshCw,
+  TrendingUp,
+  ShieldCheck,
 } from "lucide-react";
 
 /**
@@ -51,7 +53,7 @@ import {
  * 5. Display Preview with Post Now, Post Best Time, Save to Draft options
  */
 
-type PostType = "text" | "image" | "carousel" | "video";
+type PostType = "text" | "image" | "carousel" | "reel" | "video" | "post";
 
 const CHANNELS: { id: string; label: string; icon: typeof Instagram }[] = [
   { id: "instagram", label: "Instagram", icon: Instagram },
@@ -62,17 +64,44 @@ const CHANNELS: { id: string; label: string; icon: typeof Instagram }[] = [
   { id: "twitter", label: "Twitter / X", icon: Twitter },
 ];
 
-const POST_TYPES: {
-  id: PostType;
-  label: string;
-  icon: typeof Type;
-  description: string;
-}[] = [
-  { id: "text", label: "Text Post", icon: Type, description: "Pure copy & hashtags — great for LinkedIn & X" },
-  { id: "image", label: "Image Post", icon: ImagePlus, description: "Single graphic or photo with engaging caption" },
-  { id: "carousel", label: "Carousel", icon: Layers, description: "Multi-slide story or educational deck" },
-  { id: "video", label: "AI Video / Reel", icon: Film, description: "High-converting short-form video or reel" },
-];
+const CHANNEL_POST_TYPES: Record<
+  string,
+  { id: PostType; label: string; icon: typeof Type; description: string }[]
+> = {
+  instagram: [
+    { id: "image", label: "Image Post", icon: ImagePlus, description: "Single graphic or photo with engaging caption" },
+    { id: "carousel", label: "Carousel", icon: Layers, description: "Multi-slide story or educational deck" },
+    { id: "reel", label: "Reel", icon: Film, description: "Vertical short-form video Reel" },
+    { id: "post", label: "Standard Post", icon: Type, description: "Standard post copy & caption" },
+  ],
+  linkedin: [
+    { id: "image", label: "Image Post", icon: ImagePlus, description: "Single graphic or photo with caption" },
+    { id: "carousel", label: "Carousel (Document)", icon: Layers, description: "PDF / multi-image document carousel" },
+    { id: "reel", label: "Reel / Video", icon: Film, description: "Short vertical video or video clip" },
+    { id: "post", label: "Standard Post", icon: Type, description: "Text post & professional insight" },
+  ],
+  youtube: [
+    { id: "reel", label: "Reel / Short", icon: Film, description: "Vertical short-form YouTube Short (9:16)" },
+    { id: "video", label: "Long-form Video", icon: Film, description: "Standard long-form YouTube video" },
+  ],
+  facebook: [
+    { id: "image", label: "Image Post", icon: ImagePlus, description: "Single photo with caption" },
+    { id: "carousel", label: "Carousel", icon: Layers, description: "Multi-image post" },
+    { id: "reel", label: "Reel", icon: Film, description: "Short-form video Reel" },
+    { id: "video", label: "Video", icon: Film, description: "Longer video post" },
+    { id: "post", label: "Standard Post", icon: Type, description: "Text update or link post" },
+  ],
+  twitter: [
+    { id: "post", label: "Standard Post", icon: Type, description: "Short post copy & tweet" },
+    { id: "image", label: "Image Post", icon: ImagePlus, description: "Photo tweet with copy" },
+    { id: "video", label: "Video Post", icon: Film, description: "Video clip with copy" },
+  ],
+  whatsapp: [
+    { id: "post", label: "Standard Message", icon: Type, description: "Direct text message" },
+    { id: "image", label: "Image Message", icon: ImagePlus, description: "Image with caption" },
+    { id: "video", label: "Video Message", icon: Film, description: "Video clip with caption" },
+  ],
+};
 
 const TONES = ["Casual", "Professional", "Bold", "Funny", "Educational", "Inspirational"] as const;
 
@@ -80,6 +109,32 @@ const VERTICAL_PLATFORMS = new Set(["instagram", "youtube", "facebook"]);
 const aspectFor = (p: string) => (VERTICAL_PLATFORMS.has(p) ? "9:16" : "1:1");
 
 type CopyResult = { hook: string; caption: string; hashtags: string[]; mediaPrompt?: string };
+
+type StudioPreset = {
+  id: string;
+  name: string;
+  description: string;
+  category?: string;
+  starterPrompt?: string;
+  rightsNote?: string;
+  isTrending: boolean;
+  matchedTrend?: string;
+};
+
+function initialPostType(searchParams: URLSearchParams): PostType {
+  const requested = searchParams.get("type") ?? searchParams.get("mode");
+  if (
+    requested === "text" ||
+    requested === "image" ||
+    requested === "carousel" ||
+    requested === "reel" ||
+    requested === "video" ||
+    requested === "post"
+  ) {
+    return requested as PostType;
+  }
+  return "image";
+}
 
 export default function Studio() {
   const { user } = useAuth();
@@ -99,9 +154,8 @@ export default function Studio() {
 
   // Form State
   const [channel, setChannel] = useState<string>(searchParams.get("channel") || "instagram");
-  const [postType, setPostType] = useState<PostType>(
-    (searchParams.get("type") as PostType) || "image"
-  );
+  const [postType, setPostType] = useState<PostType>(() => initialPostType(searchParams));
+  const [selectedPresetId, setSelectedPresetId] = useState("");
   const [prompt, setPrompt] = useState("");
   const [tone, setTone] = useState<(typeof TONES)[number]>("Casual");
   const [avatars, setAvatars] = useState<PhotoAvatarRecord[]>([]);
@@ -129,6 +183,41 @@ export default function Studio() {
   const [isRewriting, setIsRewriting] = useState(false);
   const [isRenderingMedia, setIsRenderingMedia] = useState(false);
   const [posting, setPosting] = useState<null | "now" | "schedule" | "draft">(null);
+
+  // Available post types for selected channel
+  const availablePostTypes = useMemo(
+    () => CHANNEL_POST_TYPES[channel] || CHANNEL_POST_TYPES.instagram,
+    [channel],
+  );
+
+  // Auto-switch postType if current postType is not supported on newly selected channel
+  useEffect(() => {
+    if (!availablePostTypes.some((pt) => pt.id === postType)) {
+      setPostType(availablePostTypes[0].id);
+    }
+  }, [channel, availablePostTypes, postType]);
+
+  const targetMediaType =
+    postType === "video" || postType === "reel"
+      ? "video"
+      : postType === "image" || postType === "carousel"
+        ? "image"
+        : "none";
+
+  const creatorPresets = useQuery(
+    api.studio.presets,
+    isConvexConfigured && targetMediaType !== "none"
+      ? { platform: channel, mediaType: targetMediaType }
+      : "skip",
+  ) as StudioPreset[] | undefined;
+  const selectedPreset = creatorPresets?.find((preset) => preset.id === selectedPresetId);
+
+  useEffect(() => {
+    if ((postType !== "video" && postType !== "image") || !creatorPresets?.length) return;
+    if (!creatorPresets.some((preset) => preset.id === selectedPresetId)) {
+      setSelectedPresetId(creatorPresets[0].id);
+    }
+  }, [creatorPresets, postType, selectedPresetId]);
 
   // Load avatars
   useEffect(() => {
@@ -212,8 +301,11 @@ export default function Studio() {
       return;
     }
 
-    if (!prompt.trim() && !media) {
-      toast.error("Please provide a prompt or upload an image/video to create your post.");
+    const templateBrief =
+      postType === "video" || postType === "image" ? selectedPreset?.starterPrompt : undefined;
+    const effectiveBrief = prompt.trim() || templateBrief;
+    if (!effectiveBrief && !media) {
+      toast.error("Choose a template, provide a topic, or upload media to create your post.");
       return;
     }
 
@@ -221,20 +313,41 @@ export default function Studio() {
     try {
       // Map post type to preset ID for backend
       let presetId = "talking-head-ugc";
-      if (postType === "text") presetId = "text-post";
-      else if (postType === "image") presetId = "problem-solution";
-      else if (postType === "video") presetId = "talking-head-ugc";
+      if (postType === "text" || postType === "post") presetId = "text-post";
+      else if (postType === "image") presetId = selectedPreset?.id || "branded-story-image";
+      else if (postType === "video" || postType === "reel") presetId = selectedPreset?.id || "talking-head-ugc";
+
+      const effectiveFormat = postType === "text" ? "post" : postType;
 
       const avatarContext = selectedAvatar
         ? `Avatar: ${selectedAvatar.name}. Voice: ${selectedAvatar.voiceTone}.`
+        : "";
+      const brandContext = primaryBrand
+        ? [
+            `Brand: ${primaryBrand.name}`,
+            primaryBrand.industry && `Industry: ${primaryBrand.industry}`,
+            primaryBrand.audience && `Audience: ${primaryBrand.audience}`,
+            primaryBrand.toneOfVoice && `Brand voice: ${primaryBrand.toneOfVoice}`,
+            primaryBrand.websiteUrl && `Website source: ${primaryBrand.websiteUrl}`,
+            primaryBrand.sampleCaptions?.length &&
+              `Voice examples:\n${primaryBrand.sampleCaptions.slice(0, 3).map((sample: string) => `- ${sample}`).join("\n")}`,
+          ]
+            .filter(Boolean)
+            .join("\n")
         : "";
 
       // 1. Generate Copy
       const copyRes = (await generateCopy({
         presetId,
         platform: channel,
-        prompt: prompt || undefined,
-        context: [tone && `Tone: ${tone}`, avatarContext].filter(Boolean).join("\n") || undefined,
+        postFormat: effectiveFormat,
+        prompt: effectiveBrief,
+        productName: primaryBrand?.name,
+        brandProfileId: primaryBrand?._id,
+        context:
+          [brandContext, tone && `Requested tone: ${tone}`, avatarContext]
+            .filter(Boolean)
+            .join("\n") || undefined,
       })) as CopyResult;
 
       setCaption(copyRes.caption);
@@ -242,7 +355,7 @@ export default function Studio() {
 
       // 2. Generate Media if needed and not already uploaded
       if (!media) {
-        const mediaPrompt = copyRes.mediaPrompt || prompt;
+        const mediaPrompt = copyRes.mediaPrompt || effectiveBrief;
         if (postType === "image" && mediaPrompt) {
           setIsRenderingMedia(true);
           const imgRes = await generateImage({
@@ -251,7 +364,7 @@ export default function Studio() {
           });
           setMedia({ type: "image", url: imgRes.url, source: "imagen" });
           setIsRenderingMedia(false);
-        } else if (postType === "video" && mediaPrompt) {
+        } else if ((postType === "video" || postType === "reel") && mediaPrompt) {
           setIsRenderingMedia(true);
           const vidRes = await generateVideo({
             prompt: mediaPrompt,
@@ -294,8 +407,9 @@ export default function Studio() {
 
   // Regenerate AI Media
   async function handleRegenerateMedia() {
-    if (!prompt.trim()) {
-      toast.error("Provide a prompt first.");
+    const effectivePrompt = prompt.trim() || selectedPreset?.starterPrompt;
+    if (!effectivePrompt) {
+      toast.error("Choose a template or provide creative direction first.");
       return;
     }
     setIsRenderingMedia(true);
@@ -303,14 +417,14 @@ export default function Studio() {
     try {
       if (postType === "image") {
         const imgRes = await generateImage({
-          prompt,
+          prompt: effectivePrompt,
           aspectRatio: aspectFor(channel),
         });
         setMedia({ type: "image", url: imgRes.url, source: "imagen" });
         setIsRenderingMedia(false);
-      } else if (postType === "video") {
+      } else if (postType === "video" || postType === "reel") {
         const vidRes = await generateVideo({
-          prompt,
+          prompt: effectivePrompt,
           aspectRatio: aspectFor(channel),
         });
         setVideoJobId(vidRes.jobId as unknown as string);
@@ -346,6 +460,7 @@ export default function Studio() {
 
     setPosting(mode);
     try {
+      const effectiveFormat = postType === "text" ? "post" : postType;
       const r = await createPost({
         caption,
         hashtags: hashtags
@@ -353,6 +468,7 @@ export default function Studio() {
           .map((h) => h.trim())
           .filter(Boolean),
         platforms: [channel],
+        postFormat: effectiveFormat as any,
         mediaUrl: media?.url,
         mediaType: media?.type,
         mediaSource: media?.source,
@@ -491,10 +607,10 @@ export default function Studio() {
       {/* STEP 2: SELECT POST TYPE */}
       <section className="space-y-3">
         <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-          <span>2</span> · Select Post Type
+          <span>2</span> · Select Post Type for {CHANNELS.find((c) => c.id === channel)?.label}
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {POST_TYPES.map((pt) => {
+          {availablePostTypes.map((pt) => {
             const Icon = pt.icon;
             const isSelected = postType === pt.id;
             return (
@@ -527,6 +643,77 @@ export default function Studio() {
         </div>
       </section>
 
+      {(postType === "video" || postType === "reel" || postType === "image") && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                <TrendingUp className="h-3.5 w-3.5 text-brand" />
+                Trend-picked creator templates
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose a format and create immediately. MagicBox supplies the prompt, hook structure, and shot direction.
+              </p>
+            </div>
+            <span className="rounded-full border border-border bg-card px-2.5 py-1 text-[10px] text-muted-foreground">
+              Refreshed from the live trend brief
+            </span>
+          </div>
+
+          {creatorPresets === undefined ? (
+            <div className="flex h-28 items-center justify-center rounded-2xl border border-border bg-card">
+              <Loader2 className="h-4 w-4 animate-spin text-brand" />
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {creatorPresets.slice(0, 8).map((preset) => {
+                const active = preset.id === selectedPresetId;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setSelectedPresetId(preset.id)}
+                    className={cn(
+                      "group relative min-h-40 overflow-hidden rounded-2xl border p-4 text-left transition-all",
+                      active
+                        ? "border-brand bg-brand/10 ring-2 ring-brand/25 shadow-sm"
+                        : "border-border bg-card hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-sm",
+                    )}
+                  >
+                    <div className="mb-4 flex items-center justify-between gap-2">
+                      <span className="rounded-full bg-secondary px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+                        {preset.category ?? "Creator"}
+                      </span>
+                      {preset.isTrending ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-semibold text-emerald-700 dark:text-emerald-300">
+                          <TrendingUp className="h-2.5 w-2.5" /> Trending now
+                        </span>
+                      ) : null}
+                    </div>
+                    <h3 className="text-sm font-semibold text-foreground">{preset.name}</h3>
+                    <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+                      {preset.description}
+                    </p>
+                    {preset.matchedTrend ? (
+                      <p className="mt-3 line-clamp-1 text-[10px] font-medium text-brand">
+                        Signal: {preset.matchedTrend}
+                      </p>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {selectedPreset?.rightsNote ? (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs leading-relaxed text-amber-900 dark:text-amber-200">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{selectedPreset.rightsNote}</span>
+            </div>
+          ) : null}
+        </section>
+      )}
+
       {postType === "carousel" ? (
         <section className="space-y-4">
           <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
@@ -545,17 +732,22 @@ export default function Studio() {
             {/* Prompt Input */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">
-                Prompt / Idea / Topic <span className="text-muted-foreground font-normal">(Provide text or upload media)</span>
+                {postType === "video" || postType === "image"
+                  ? "Optional creative direction"
+                  : "Prompt / Idea / Topic"}{" "}
+                <span className="text-muted-foreground font-normal">
+                  {postType === "video" || postType === "image"
+                    ? "(the selected template already includes a complete prompt)"
+                    : "(provide text or upload media)"}
+                </span>
               </Label>
               <Textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder={
-                  postType === "video"
-                    ? "e.g. Write a 30s UGC video script about how custom AI workflows save 10 hours a week for founders..."
-                    : postType === "image"
-                      ? "e.g. Create a visual post comparing manual social media posting vs automated AI distribution..."
-                      : "e.g. Write a thought-provoking post on why AI content creation is transforming marketing teams..."
+                  postType === "video" || postType === "image"
+                    ? selectedPreset?.starterPrompt || "Add a product, offer, or campaign detail—or leave blank to use the template."
+                    : "e.g. Write a thought-provoking post on why AI content creation is transforming marketing teams..."
                 }
                 rows={3}
                 className="resize-none"
@@ -697,7 +889,13 @@ export default function Studio() {
               <Button
                 size="lg"
                 onClick={handleCreate}
-                disabled={isCreating || isRenderingMedia || (!prompt.trim() && !media)}
+                disabled={
+                  isCreating ||
+                  isRenderingMedia ||
+                  (!prompt.trim() &&
+                    !media &&
+                    !((postType === "video" || postType === "image") && selectedPreset?.starterPrompt))
+                }
                 className="w-full sm:w-auto px-8"
               >
                 {isCreating || isRenderingMedia ? (
@@ -708,7 +906,9 @@ export default function Studio() {
                 ) : (
                   <>
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Create Post
+                    {(postType === "video" || postType === "image") && selectedPreset
+                      ? `Create with ${selectedPreset.name}`
+                      : "Create Post"}
                   </>
                 )}
               </Button>

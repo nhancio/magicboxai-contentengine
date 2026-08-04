@@ -114,6 +114,20 @@ export abstract class BaseProvider {
         `${videos.length} videos; ${self.displayName} allows ${limits.maxVideos}`,
       );
     }
+
+    if (input.options?.postFormat || input.options?.format) {
+      const format = String(input.options.postFormat || input.options.format);
+      const normalized = format === "text_post" ? "post" : format;
+      if (
+        limits.supportedFormats &&
+        !limits.supportedFormats.includes(normalized as any) &&
+        !limits.supportedFormats.includes(format as any)
+      ) {
+        throw new BadBodyError(
+          `${self.displayName} does not support '${format}' format. Supported formats: ${limits.supportedFormats.join(", ")}`,
+        );
+      }
+    }
   }
 
   /** Caption + hashtags as one string, the way every text-based platform wants it. */

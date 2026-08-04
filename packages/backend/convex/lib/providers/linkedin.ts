@@ -7,6 +7,7 @@ import {
   type AuthUrlInput,
   type ConnectedProfile,
   type ExchangeInput,
+  type PostFormat,
   type ProviderToken,
   type PublishInput,
   type PublishResult,
@@ -43,6 +44,7 @@ class LinkedInProvider extends BaseProvider implements SocialProvider {
     maxImages: 20,
     maxVideos: 1,
     requiresMedia: false,
+    supportedFormats: ["image", "carousel", "reel", "post"] as PostFormat[],
   };
 
   buildAuthUrl(i: AuthUrlInput): string {

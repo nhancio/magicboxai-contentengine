@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "convex dev",
     "deploy": "convex deploy",
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -4,6 +4,7 @@ import {
   type AuthUrlInput,
   type ConnectedProfile,
   type ExchangeInput,
+  type PostFormat,
   type ProviderToken,
   type PublishInput,
   type PublishResult,
@@ -108,6 +109,7 @@ class TwitterProvider extends BaseProvider implements SocialProvider {
     maxImages: 4,
     maxVideos: 1,
     requiresMedia: false,
+    supportedFormats: ["image", "video", "post"] as PostFormat[],
   };
 
   /** X mandates PKCE — the OAuth engine reads this to generate a verifier/challenge. */

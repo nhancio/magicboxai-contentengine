@@ -6,6 +6,7 @@ import {
   type AuthUrlInput,
   type ConnectedProfile,
   type ExchangeInput,
+  type PostFormat,
   type ProviderToken,
   type PublishInput,
   type PublishResult,
@@ -43,6 +44,7 @@ class YouTubeProvider extends BaseProvider implements SocialProvider {
     maxImages: 0,
     maxVideos: 1,
     requiresMedia: true,
+    supportedFormats: ["reel", "video"] as PostFormat[],
   };
 
   buildAuthUrl(input: AuthUrlInput): string {

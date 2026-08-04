@@ -210,6 +210,16 @@ export default defineSchema({
     claimToken: v.optional(v.string()),
     brandProfileId: v.optional(v.string()),
     source: v.union(v.literal("automation"), v.literal("manual")),
+    postFormat: v.optional(
+      v.union(
+        v.literal("image"),
+        v.literal("carousel"),
+        v.literal("reel"),
+        v.literal("video"),
+        v.literal("post"),
+        v.literal("text_post"),
+      ),
+    ),
     scheduledFor: v.number(),
     timezone: v.string(),
     status: v.union(
@@ -320,6 +330,74 @@ export default defineSchema({
     updatedAt: v.optional(v.number()),
   }).index("by_userId", ["userId"]).index("by_avatarId", ["avatarId"]),
 
+  myVideos: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    prompt: v.string(),
+    rawVideoUrl: v.string(),
+    rawStorageId: v.optional(v.id("_storage")),
+    rawStoragePath: v.optional(v.string()),
+    presetStyle: v.optional(v.string()),
+    postFormat: v.optional(
+      v.union(
+        v.literal("image"),
+        v.literal("carousel"),
+        v.literal("reel"),
+        v.literal("video"),
+        v.literal("post"),
+        v.literal("text_post"),
+      ),
+    ),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("processing"),
+      v.literal("editing"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    transcript: v.optional(v.string()),
+    takesPacked: v.optional(v.string()),
+    edl: v.optional(
+      v.object({
+        segments: v.array(
+          v.object({
+            id: v.string(),
+            startTime: v.number(),
+            endTime: v.number(),
+            speaker: v.optional(v.string()),
+            text: v.string(),
+            keep: v.boolean(),
+            colorGrade: v.optional(v.string()),
+            fadeMs: v.optional(v.number()),
+            subtitles: v.optional(v.array(v.string())),
+          }),
+        ),
+        totalDuration: v.number(),
+        editedDuration: v.number(),
+        colorGradePreset: v.string(),
+        subtitleStyle: v.object({
+          fontName: v.string(),
+          fontSize: v.number(),
+          bold: v.boolean(),
+          uppercase: v.boolean(),
+          chunkSize: v.number(),
+          marginV: v.number(),
+        }),
+      }),
+    ),
+    editedVideoUrl: v.optional(v.string()),
+    editedStorageId: v.optional(v.id("_storage")),
+    generatedCaption: v.optional(v.string()),
+    generatedHashtags: v.optional(v.array(v.string())),
+    platforms: v.optional(v.array(socialPlatform)),
+    postId: v.optional(v.id("posts")),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_status", ["status"]),
+
 
   /**
    * One-time OAuth state nonces. The Firebase implementation used a stateless
@@ -398,6 +476,16 @@ export default defineSchema({
     // double-generates a deck.
     idempotencyKey: v.string(),
     slot: v.number(), // 0..n-1 position within the day's deck
+    postFormat: v.optional(
+      v.union(
+        v.literal("image"),
+        v.literal("carousel"),
+        v.literal("reel"),
+        v.literal("video"),
+        v.literal("post"),
+        v.literal("text_post"),
+      ),
+    ),
     platforms: v.array(socialPlatform),
     status: v.union(
       v.literal("pending"),
@@ -423,6 +511,7 @@ export default defineSchema({
     creativePlan: v.optional(
       v.object({
         engineVersion: v.string(),
+        templateId: v.optional(v.string()),
         formatId: v.string(),
         hookFamily: v.string(),
         openingVisual: v.string(),
@@ -619,4 +708,33 @@ export default defineSchema({
     duration: v.number(),
     timestamp: v.number(),
   }).index("by_timestamp", ["timestamp"]),
+
+  warmedAccountListings: defineTable({
+    userId: v.string(),
+    platform: v.union(v.literal("instagram"), v.literal("youtube")),
+    title: v.string(),
+    handleOrUrl: v.string(),
+    followerCount: v.number(),
+    followerCountLabel: v.optional(v.string()),
+    avgViews: v.optional(v.number()),
+    avgLikes: v.optional(v.number()),
+    engagementRate: v.optional(v.string()),
+    accountAgeMonths: v.number(),
+    niche: v.string(),
+    askingPrice: v.number(),
+    contactEmail: v.string(),
+    transferNotes: v.optional(v.string()),
+    status: v.union(
+      v.literal("under_review"),
+      v.literal("verified"),
+      v.literal("rejected"),
+      v.literal("sold"),
+    ),
+    rejectionReason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_status", ["status"])
+    .index("by_platform", ["platform"]),
 });

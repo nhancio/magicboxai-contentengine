@@ -27,6 +27,8 @@ import {
   TrendingUp,
   Loader2,
   CalendarClock,
+  Clock,
+  Calendar,
   Link2,
   Send,
   ChevronLeft,
@@ -71,12 +73,14 @@ function formatSlot(ms: number) {
 type Suggestion = {
   _id: string;
   slot: number;
+  scheduledAt?: number;
   platforms: string[];
   hook?: string;
   angle?: string;
   caption: string;
   hashtags: string[];
   mediaPlan?: { type: string; prompt?: string };
+  creativePlan?: { templateId?: string; hookFamily?: string; formatId?: string };
   media?: { type: string; url: string }[];
   trendRefs?: string[];
 };
@@ -119,6 +123,10 @@ function Card({
   const logoUrl = connectedAccount?.avatarUrl || brand?.logoUrl;
 
   const asset = s.media?.[0];
+  const templateName = s.creativePlan?.templateId
+    ?.split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
   const isRendering = !asset && !!s.mediaPlan && s.mediaPlan.type !== "none";
   const previewContent: PreviewContent = {
     caption: s.caption,
@@ -136,6 +144,25 @@ function Card({
         }
       : undefined,
   };
+
+  const slotNum = (s.slot ?? 0) + 1;
+  let dayLabelStr = `Day ${slotNum} of 7`;
+  let timeLabelStr = "9:00 AM";
+
+  if (s.scheduledAt) {
+    const scheduledDate = new Date(s.scheduledAt);
+    const dayName = scheduledDate.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    const timeName = scheduledDate.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    dayLabelStr = `Day ${slotNum} of 7 · ${dayName}`;
+    timeLabelStr = timeName;
+  }
 
   function handleDragEnd(_: unknown, info: PanInfo) {
     if (Math.abs(info.offset.x) < SWIPE_THRESHOLD) return;
@@ -172,15 +199,47 @@ function Card({
         Skip
       </motion.div>
 
-      <div className="mb-4 flex items-center gap-2">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          {platform}
-        </span>
+      {/* Day & Scheduled Time Header */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 border border-brand/20 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-brand">
+            <Calendar className="h-3 w-3" />
+            {dayLabelStr}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+            <Clock className="h-3 w-3 text-muted-foreground" />
+            Scheduled: {timeLabelStr}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Icon className="h-4 w-4 text-muted-foreground" />
+          <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+            {platform}
+          </span>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {s.mediaPlan?.type === "video" && (
           <span className="inline-flex items-center gap-1 rounded-full bg-brand/15 border border-brand/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-brand font-semibold">
             <Video className="h-3 w-3" />
-            AI Video
+            {platform === "youtube" || platform === "instagram" ? "Reel / Short" : "Reel / Video"}
+          </span>
+        )}
+        {s.mediaPlan?.type === "image" && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">
+            <Sparkles className="h-3 w-3" />
+            Image Post
+          </span>
+        )}
+        {(!s.mediaPlan || s.mediaPlan.type === "none") && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-secondary border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Standard Post
+          </span>
+        )}
+        {templateName && (
+          <span className="hidden rounded-full border border-border bg-secondary/60 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:inline-flex">
+            {templateName}
           </span>
         )}
         {s.trendRefs && s.trendRefs.length > 0 && (
@@ -499,13 +558,13 @@ export default function Maya() {
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <header className="mb-6 sm:mb-8">
+      <header className="mb-4 sm:mb-6">
         <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-          Daily deck · {deck?.batchDate ?? "—"}
+          7-Day Social Deck · {deck?.batchDate ?? "—"}
         </p>
         <h1 className="mt-2 font-display text-3xl text-foreground sm:text-4xl">Maya</h1>
         <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Post</span> for the next best time or{" "}
+          <span className="font-medium text-foreground">Post</span> for the scheduled time or{" "}
           <span className="font-medium text-foreground">Now</span> to publish immediately
           <span className="hidden sm:inline">
             {" "}— swipe right to post / left to skip
@@ -513,6 +572,75 @@ export default function Maya() {
           <span className="sm:hidden">. Use the buttons below on mobile.</span>
         </p>
       </header>
+
+      {/* 9:00 AM Schedule Banner */}
+      <div className="mb-5 flex items-center gap-3 rounded-2xl border border-brand/25 bg-brand/[0.06] p-3.5 sm:p-4">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/15 text-brand">
+          <Clock className="h-5 w-5" />
+        </div>
+        <div className="flex-1 text-xs sm:text-sm">
+          <p className="font-semibold text-foreground">
+            Maya generates your 7-day social deck every morning at 9:00 AM
+          </p>
+          <p className="text-muted-foreground text-[11px] sm:text-xs">
+            1 post per day for the upcoming week. Review and approve below.
+          </p>
+        </div>
+      </div>
+
+      {/* 7-Day Week Navigation Bar */}
+      {pending.length > 0 && (
+        <div className="mb-4 overflow-x-auto pb-1">
+          <div className="flex min-w-max items-center gap-1.5 sm:gap-2">
+            {Array.from({ length: 7 }).map((_, slotIdx) => {
+              const [y, m, d] = (deck?.batchDate ?? "2026-08-04").split("-").map(Number);
+              const targetDate = new Date(y, m - 1, d + slotIdx);
+              const dayName = targetDate.toLocaleDateString("en-US", { weekday: "short" });
+              const dateNum = targetDate.getDate();
+
+              const suggestion = pending.find((p) => p.slot === slotIdx);
+              const isSelected = activeSuggestion?.slot === slotIdx;
+              const isPending = !!suggestion;
+
+              return (
+                <button
+                  key={slotIdx}
+                  type="button"
+                  onClick={() => {
+                    if (suggestion) {
+                      const idx = pending.findIndex((p) => p._id === suggestion._id);
+                      if (idx !== -1) setActiveIndex(idx);
+                    }
+                  }}
+                  disabled={!isPending}
+                  className={cn(
+                    "flex flex-col items-center justify-center rounded-xl px-3 py-2 transition-all min-w-[4.25rem]",
+                    isSelected
+                      ? "bg-brand text-brand-foreground shadow-md ring-2 ring-brand/30"
+                      : isPending
+                        ? "bg-card border border-border hover:border-brand/40 text-foreground cursor-pointer"
+                        : "bg-secondary/40 border border-transparent text-muted-foreground/50 opacity-60 cursor-not-allowed"
+                  )}
+                >
+                  <span className="font-mono text-[10px] uppercase tracking-wider opacity-80">
+                    Day {slotIdx + 1}
+                  </span>
+                  <span className="text-xs font-bold leading-tight">
+                    {dayName} {dateNum}
+                  </span>
+                  {isSelected ? (
+                    <span className="mt-1 h-1 w-1 rounded-full bg-brand-foreground" />
+                  ) : isPending ? (
+                    <span className="mt-1 h-1 w-1 rounded-full bg-emerald-500" />
+                  ) : (
+                    <span className="mt-1 text-[9px] uppercase tracking-tight text-muted-foreground">Done</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Deck — only the top card is in flow so action buttons stay visible below */}
       <div className="relative">
