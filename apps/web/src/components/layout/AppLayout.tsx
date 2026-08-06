@@ -25,6 +25,7 @@ import {
   LockKeyhole,
   LogOut,
   Menu,
+  MessageSquare,
   Palette,
   Settings,
   Sparkles,
@@ -59,6 +60,7 @@ const NAV_SECTIONS = [
 
 const BOTTOM_NAV = [
   { label: "Pricing", path: "/pricing", icon: CreditCard },
+  { label: "Feedback", path: "/feedback", icon: MessageSquare },
   { label: "Settings", path: "/settings", icon: Settings },
 ] as const;
 
