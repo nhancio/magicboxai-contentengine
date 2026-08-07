@@ -98,6 +98,25 @@ export default defineSchema({
     industry: v.optional(v.string()),
     toneOfVoice: v.optional(v.string()),
     audience: v.optional(v.string()),
+    coreIdentity: v.optional(v.string()),
+    productOffering: v.optional(v.string()),
+    uniqueBenefits: v.optional(v.string()),
+    problemSolution: v.optional(v.string()),
+    mission: v.optional(v.string()),
+    differentiation: v.optional(v.string()),
+    ownedSpace: v.optional(v.string()),
+    contentAngles: v.optional(v.array(v.string())),
+    toneDos: v.optional(v.array(v.string())),
+    toneDonts: v.optional(v.array(v.string())),
+    customerSegments: v.optional(
+      v.array(
+        v.object({
+          segmentName: v.string(),
+          percentage: v.number(),
+        })
+      )
+    ),
+    competitors: v.optional(v.array(v.string())),
     bannedTopics: v.optional(v.array(v.string())),
     hashtagSets: v.optional(v.object({ default: v.array(v.string()) })),
     sampleCaptions: v.optional(v.array(v.string())),

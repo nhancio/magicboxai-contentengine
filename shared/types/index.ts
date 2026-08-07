@@ -142,6 +142,25 @@ export interface BrandProfile {
   industry: string;
   toneOfVoice: string;
   audience: string;
+  
+  // Brand Identity & Product
+  coreIdentity?: string;
+  productOffering?: string;
+  uniqueBenefits?: string;
+  problemSolution?: string;
+
+  // Purpose & Positioning
+  mission?: string;
+  differentiation?: string;
+  ownedSpace?: string;
+
+  // New Layout Fields
+  contentAngles?: string[];
+  toneDos?: string[];
+  toneDonts?: string[];
+  customerSegments?: Array<{ segmentName: string; percentage: number }>;
+  competitors?: string[];
+
   bannedTopics?: string[];
   hashtagSets?: { default: string[] };
   sampleCaptions?: string[];
