@@ -718,7 +718,7 @@ export default function Settings() {
                               const body = encodeURIComponent(
                                 `Please start an account deletion request for ${user?.email ?? "my account"}.`,
                               );
-                              window.location.href = `mailto:support@magicboxai.in?subject=${subject}&body=${body}`;
+                              window.location.href = `mailto:hello@nhancio.com?subject=${subject}&body=${body}`;
                               setDeleteDialogOpen(false);
                             }}
                           >

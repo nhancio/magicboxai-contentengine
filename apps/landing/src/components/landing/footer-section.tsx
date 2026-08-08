@@ -17,7 +17,7 @@ const footerLinks = {
   ],
   Company: [
     { name: "FAQ", href: "#faq" },
-    { name: "Contact", href: "mailto:support@magicboxai.in" },
+    { name: "Contact", href: "mailto:hello@nhancio.com" },
   ],
   Legal: [
     { name: "Privacy", href: "/privacy.html" },
@@ -62,8 +62,8 @@ export function FooterSection() {
                   Terms of Service
                 </a>
               </div>
-              <a href="mailto:support@magicboxai.in" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-                support@magicboxai.in
+              <a href="mailto:hello@nhancio.com" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+                hello@nhancio.com
               </a>
             </div>
 

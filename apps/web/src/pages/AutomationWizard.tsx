@@ -241,482 +241,518 @@ export default function AutomationWizard() {
  }
  };
 
- return (
- <div className="mx-auto max-w-3xl">
- {/* Stepper */}
- <div className="mb-8">
- <button
- onClick={() => navigate("/automations")}
- className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
- >
- <ArrowLeft className="h-4 w-4" /> Automations
- </button>
- <h1 className="font-display text-4xl leading-none text-foreground">
- {editId ?"Edit automation" :"New automation"}
- </h1>
- <div className="mt-5 flex items-center gap-2">
- {STEPS.map((label, i) => (
- <div key={label} className="flex flex-1 items-center gap-2">
- <button
- onClick={() => i < step && setStep(i)}
- className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors",
- i < step
- ?"bg-brand text-brand-foreground"
- : i === step
- ?"bg-brand/10 text-brand ring-1 ring-brand/30"
- :"bg-secondary text-muted-foreground"
- )}
- >
- {i < step ? <Check className="h-3.5 w-3.5" /> : i + 1}
- </button>
- <span
- className={cn("hidden text-xs sm:block",
- i === step ?"text-foreground" :"text-muted-foreground"
- )}
- >
- {label}
- </span>
- {i < STEPS.length - 1 && <div className="h-px flex-1 bg-border" />}
- </div>
- ))}
- </div>
- </div>
+  return (
+    <div className="mx-auto max-w-2xl py-8 px-4">
+      <button
+        onClick={() => navigate("/automations")}
+        className="mb-6 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" /> Automations
+      </button>
 
- <AnimatePresence mode="wait">
- <motion.div
- key={step}
- initial={{ opacity: 0, y: 8 }}
- animate={{ opacity: 1, y: 0 }}
- exit={{ opacity: 0, y: -8 }}
- transition={{ duration: 0.18 }}
- >
- {/* Step 0 — Brief */}
- {step === 0 && (
- <div className="glass-card space-y-5 p-6">
- <div className="space-y-2">
- <Label>Automation name</Label>
- <Input
- value={name}
- onChange={(e) => setName(e.target.value)}
- placeholder="Daily product tips"
- className="bg-secondary border-border"
- />
- </div>
- <div className="space-y-2">
- <Label>Content brief</Label>
- <Textarea
- value={brief}
- onChange={(e) => setBrief(e.target.value)}
- rows={5}
- placeholder="What should this automation post about? e.g. 'Share practical tips about supply-chain analytics for operations leaders, referencing trends in Indian manufacturing. Position Acme Analytics as the calm expert.'"
- className="bg-secondary border-border"
- />
- <p className="text-xs text-muted-foreground">
- The engine writes a fresh post from this brief on every run — it never repeats itself.
- </p>
- </div>
- <div className="space-y-2">
- <Label>Content style</Label>
- <div className="grid gap-2 sm:grid-cols-2">
- {PRESETS.map((p) => (
- <button
- key={p.id}
- onClick={() => setPreset(p.id)}
- className={cn("rounded-lg border p-3 text-left transition-colors",
- preset === p.id
- ?"border-brand/50 bg-brand/10"
- :"border-border bg-secondary hover:bg-accent"
- )}
- >
- <div className="text-sm font-medium text-foreground">{p.label}</div>
- <div className="text-xs text-muted-foreground">{p.hint}</div>
- </button>
- ))}
- </div>
- </div>
- <div className="grid gap-4 sm:grid-cols-2">
- <div className="space-y-2">
- <Label>Tone (optional)</Label>
- <Input
- value={tone}
- onChange={(e) => setTone(e.target.value)}
- placeholder="confident, human, no fluff"
- className="bg-secondary border-border"
- />
- </div>
- {brands.length > 0 && (
- <div className="space-y-2">
- <Label>Brand kit</Label>
- <select
- value={brandProfileId}
- onChange={(e) => setBrandProfileId(e.target.value)}
- className="h-10 w-full rounded-md border border-border bg-secondary px-3 text-sm"
- >
- <option value="">No brand kit</option>
- {brands.map((b) => (
- <option key={b.id} value={b.id}>
- {b.name}
- </option>
- ))}
- </select>
- </div>
- )}
- </div>
- </div>
- )}
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden flex flex-col min-h-[600px]">
+        {/* Wizard Header */}
+        <div className="px-8 pt-6 pb-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-semibold text-foreground text-sm">{STEPS[step]}</span>
+            <span className="text-sm text-muted-foreground font-medium">
+              {step + 1} / {STEPS.length}
+            </span>
+          </div>
+          <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+            <div
+              className="h-full bg-brand transition-all duration-300 ease-in-out rounded-full"
+              style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+            />
+          </div>
+        </div>
 
- {/* Step 1 — Channels */}
- {step === 1 && (
- <div className="glass-card space-y-4 p-6">
- <div className="flex items-center justify-between">
- <div>
- <h2 className="font-semibold">Where should this post?</h2>
- <p className="text-xs text-muted-foreground">
- Pick the connected accounts this automation publishes to.
- </p>
- </div>
- <Button
- variant="outline"
- size="sm"
- onClick={() => navigate("/settings")}
- >
- <Plus className="mr-1.5 h-3.5 w-3.5" />
- Connect channels
- </Button>
- </div>
- {accounts.length === 0 ? (
- <div className="rounded-lg border border-dashed border-border p-8 text-center">
- <p className="text-sm text-muted-foreground">No connected accounts yet.</p>
- <p className="mt-1 text-xs text-muted-foreground">
- Connect YouTube, LinkedIn, or Instagram in Settings, then come back to pick them here.
- </p>
- </div>
- ) : (
- <div className="grid gap-2.5 sm:grid-cols-2">
- {accounts.map((account) => {
- const meta = PLATFORM_META[account.platform];
- if (!meta) return null;
- const selected = selectedAccounts.includes(account.id);
- return (
- <button
- key={account.id}
- onClick={() =>
- setSelectedAccounts((prev) =>
- selected
- ? prev.filter((x) => x !== account.id)
- : [...prev, account.id]
- )
- }
- className={cn("flex items-center gap-3 rounded-xl border p-3.5 text-left transition-colors",
- selected
- ?"border-brand/50 bg-brand/10"
- :"border-border bg-secondary hover:bg-accent"
- )}
- >
- <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground text-background">
- <meta.icon className="h-5 w-5" />
- </div>
- <div className="min-w-0 flex-1">
- <div className="truncate text-sm font-medium text-foreground">{meta.label}</div>
- <div className="truncate text-xs text-muted-foreground">
- @{account.username || account.displayName}
- </div>
- </div>
- <div
- className={cn("flex h-5 w-5 items-center justify-center rounded-full border",
- selected
- ?"border-brand bg-brand"
- :"border-foreground/20"
- )}
- >
- {selected && <Check className="h-3 w-3 text-brand-foreground" />}
- </div>
- </button>
- );
- })}
- </div>
- )}
- </div>
- )}
+        <div className="h-px w-full bg-border" />
 
- {/* Step 2 — Content types */}
- {step === 2 && (
- <div className="glass-card space-y-4 p-6">
- <h2 className="font-semibold">What should each post include?</h2>
- <div className="space-y-2.5">
- <div className="flex items-center gap-3 rounded-lg border border-border bg-secondary p-4 opacity-70">
- <Type className="h-5 w-5 text-brand" />
- <div className="flex-1">
- <div className="text-sm font-medium text-foreground">Written post</div>
- <div className="text-xs text-muted-foreground">
- Platform-native caption written fresh each run — always on
- </div>
- </div>
- <Check className="h-4 w-4 text-brand" />
- </div>
- {[
- {
- on: withImage,
- set: setWithImage,
- icon: ImageIcon,
- title:"AI image",
- hint:"A scroll-stopping visual generated to match the post",
- },
- {
- on: withVideo,
- set: setWithVideo,
- icon: Video,
- title:"AI video",
- hint:"Short vertical video — generated 2 hours ahead of post time",
- },
- ].map(({ on, set, icon: Icon, title, hint }) => (
- <button
- key={title}
- onClick={() => set(!on)}
- className={cn("flex w-full items-center gap-3 rounded-lg border p-4 text-left transition-colors",
- on
- ?"border-brand/50 bg-brand/10"
- :"border-border bg-secondary hover:bg-accent"
- )}
- >
- <Icon className={cn("h-5 w-5", on ?"text-brand" :"text-muted-foreground")} />
- <div className="flex-1">
- <div className="text-sm font-medium text-foreground">{title}</div>
- <div className="text-xs text-muted-foreground">{hint}</div>
- </div>
- <div
- className={cn("h-5 w-9 rounded-full p-0.5 transition-colors",
- on ?"bg-brand" :"bg-muted-foreground/40"
- )}
- >
- <div
- className={cn("h-4 w-4 rounded-full bg-background shadow-sm transition-transform",
- on &&"translate-x-4"
- )}
- />
- </div>
- </button>
- ))}
- </div>
+        {/* Wizard Body */}
+        <div className="flex-1 p-8">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.15 }}
+            >
+              {/* Step 0 — Brief */}
+              {step === 0 && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-foreground mb-2">What's this campaign about?</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Set up the foundation for your automation. The engine writes a fresh post from this brief on every run.
+                    </p>
+                  </div>
 
- <button
- onClick={() => setRequiresApproval(!requiresApproval)}
- className={cn("flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-colors",
- requiresApproval
- ?"border-emerald-500/50 bg-emerald-600/10"
- :"border-border bg-secondary hover:bg-accent"
- )}
- >
- <ShieldCheck
- className={cn("h-5 w-5", requiresApproval ?"text-emerald-300" :"text-muted-foreground")}
- />
- <div className="flex-1">
- <div className="text-sm font-medium">Require approval before posting</div>
- <div className="text-xs text-muted-foreground">
- Generated posts wait in your approval queue instead of publishing automatically
- </div>
- </div>
- <div
- className={cn("h-5 w-9 rounded-full p-0.5 transition-colors",
- requiresApproval ?"bg-emerald-600" :"bg-accent"
- )}
- >
- <div
- className={cn("h-4 w-4 rounded-full bg-card transition-transform",
- requiresApproval &&"translate-x-4"
- )}
- />
- </div>
- </button>
- </div>
- )}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Automation name (Optional)</Label>
+                      <Input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="e.g. Daily product tips"
+                        className="bg-secondary/50 border-border h-11"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Content brief</Label>
+                      <Textarea
+                        value={brief}
+                        onChange={(e) => setBrief(e.target.value)}
+                        rows={5}
+                        placeholder="What should this automation post about? e.g. 'Share practical tips about supply-chain analytics for operations leaders...'"
+                        className="bg-secondary/50 border-border resize-none"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Content Style</Label>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {PRESETS.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => setPreset(p.id)}
+                            className={cn(
+                              "rounded-xl border p-4 text-left transition-all",
+                              preset === p.id
+                                ? "border-brand bg-brand/5 ring-1 ring-brand/20 shadow-sm"
+                                : "border-border bg-secondary/30 hover:bg-secondary/80"
+                            )}
+                          >
+                            <div className="text-sm font-semibold text-foreground mb-1">{p.label}</div>
+                            <div className="text-xs text-muted-foreground leading-relaxed">{p.hint}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2 pt-2">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tone (Optional)</Label>
+                        <Input
+                          value={tone}
+                          onChange={(e) => setTone(e.target.value)}
+                          placeholder="confident, human, no fluff"
+                          className="bg-secondary/50 border-border h-11"
+                        />
+                      </div>
+                      {brands.length > 0 && (
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Brand kit</Label>
+                          <select
+                            value={brandProfileId}
+                            onChange={(e) => setBrandProfileId(e.target.value)}
+                            className="h-11 w-full rounded-md border border-border bg-secondary/50 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-brand"
+                          >
+                            <option value="">No brand kit</option>
+                            {brands.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
- {/* Step 3 — Schedule */}
- {step === 3 && (
- <div className="glass-card space-y-5 p-6">
- <div className="flex items-center gap-2">
- <CalendarClock className="h-5 w-5 text-brand" />
- <h2 className="font-semibold">When should it post?</h2>
- </div>
- <div className="space-y-2">
- <Label>Time of day</Label>
- <Input
- type="time"
- value={time}
- onChange={(e) => setTime(e.target.value)}
- className="w-40 bg-card/[0.04] border-border [color-scheme:dark]"
- />
- <p className="text-xs text-muted-foreground">Timezone: {timezone}</p>
- </div>
- <div className="space-y-2">
- <Label>Days</Label>
- <div className="flex flex-wrap gap-2">
- {DAYS.map((day, i) => {
- const on = daysOfWeek.includes(i);
- return (
- <button
- key={day}
- onClick={() =>
- setDaysOfWeek((prev) =>
- on ? prev.filter((d) => d !== i) : [...prev, i].sort()
- )
- }
- className={cn("h-10 w-12 rounded-lg border text-sm font-medium transition-colors",
- on
- ?"border-brand/60 bg-brand/20 text-brand"
- :"border-border/[0.08] bg-card/[0.02] text-muted-foreground hover:bg-card/[0.05]"
- )}
- >
- {day}
- </button>
- );
- })}
- </div>
- <p className="text-xs text-muted-foreground">
- {daysOfWeek.length === 0
- ?"No days selected — posts every day"
- : `Posts on ${daysOfWeek.map((d) => DAYS[d]).join(",")}`}
- </p>
- </div>
- <div className="rounded-xl border border-brand/20 bg-brand/[0.07] p-4 text-sm text-brand/90">
- “{name ||"This automation"}” will post{""}
- {daysOfWeek.length === 0 || daysOfWeek.length === 7
- ?"daily"
- : `every ${daysOfWeek.map((d) => DAYS[d]).join(",")}`}{""}
- at {time} ({timezone}). Content is generated ahead of time, so it lands on the dot.
- </div>
- </div>
- )}
+              {/* Step 1 — Channels */}
+              {step === 1 && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-foreground mb-2">Where should we post?</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Pick one or more connected accounts. You can mix your own connected accounts and warmed accounts.
+                    </p>
+                  </div>
+                  
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate("/settings")}
+                      className="text-xs font-medium h-9"
+                    >
+                      <Plus className="mr-1.5 h-3.5 w-3.5" />
+                      Connect an account
+                    </Button>
+                  </div>
 
- {/* Step 4 — Review */}
- {step === 4 && (
- <div className="space-y-5">
- <div className="glass-card p-6">
- <div className="mb-4 flex items-center justify-between">
- <div>
- <h2 className="font-semibold">Here's how it will look</h2>
- <p className="text-xs text-muted-foreground">
- A sample generated from your brief — every run creates a fresh take.
- </p>
- </div>
- <Button
- variant="outline"
- size="sm"
- onClick={handlePreview}
- disabled={generatingPreview}
- >
- {generatingPreview ? (
- <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
- ) : (
- <Sparkles className="mr-1.5 h-3.5 w-3.5" />
- )}
- Regenerate
- </Button>
- </div>
- {selectedPlatforms.length > 1 && (
- <div className="mb-4 flex gap-2">
- {selectedPlatforms.map((platform) => {
- const meta = PLATFORM_META[platform];
- return (
- <button
- key={platform}
- onClick={() => {
- setPreviewPlatform(platform);
- setPreview(null);
- }}
- className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium",
- previewPlatform === platform
- ?"border-brand/60 bg-brand/15 text-brand"
- :"border-border/[0.08] text-muted-foreground"
- )}
- >
- <meta.icon className="h-3.5 w-3.5" /> {meta.label}
- </button>
- );
- })}
- </div>
- )}
- <div className="flex justify-center py-2">
- {generatingPreview ? (
- <div className="flex h-72 flex-col items-center justify-center gap-3 text-muted-foreground">
- <Loader2 className="h-6 w-6 animate-spin text-brand" />
- <span className="text-sm">Writing your sample post…</span>
- </div>
- ) : preview ? (
- <PlatformPreview
- platform={previewPlatform}
- content={{
- caption: preview.caption,
- hashtags: preview.hashtags,
- brandName: brand?.name ?? name,
- handle: brand?.name?.toLowerCase().replace(/\s+/g,"") ?? undefined,
- logoUrl: brand?.logoUrl,
- }}
- />
- ) : (
- <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
- Preview unavailable — you can still launch the automation.
- </div>
- )}
- </div>
- </div>
+                  {accounts.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border p-12 text-center bg-secondary/20">
+                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-secondary mb-4">
+                         <Globe2 className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <h3 className="text-sm font-semibold text-foreground mb-1">No accounts connected yet</h3>
+                      <p className="text-xs text-muted-foreground mb-6 max-w-sm mx-auto">
+                        To run an automation, connect your social accounts in Settings first.
+                      </p>
+                      <Button onClick={() => navigate("/settings")} className="bg-brand hover:bg-brand/90 text-brand-foreground">
+                         Connect an account
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {accounts.map((account) => {
+                        const meta = PLATFORM_META[account.platform];
+                        if (!meta) return null;
+                        const selected = selectedAccounts.includes(account.id);
+                        return (
+                          <button
+                            key={account.id}
+                            onClick={() =>
+                              setSelectedAccounts((prev) =>
+                                selected
+                                  ? prev.filter((x) => x !== account.id)
+                                  : [...prev, account.id]
+                              )
+                            }
+                            className={cn(
+                              "flex items-center gap-4 rounded-xl border p-4 text-left transition-all",
+                              selected
+                                ? "border-brand bg-brand/5 ring-1 ring-brand/20 shadow-sm"
+                                : "border-border bg-secondary/30 hover:bg-secondary/80"
+                            )}
+                          >
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
+                              <meta.icon className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-semibold text-foreground">{meta.label}</div>
+                              <div className="truncate text-xs text-muted-foreground">
+                                @{account.username || account.displayName}
+                              </div>
+                            </div>
+                            <div
+                              className={cn(
+                                "flex h-5 w-5 shrink-0 items-center justify-center rounded border",
+                                selected
+                                  ? "border-brand bg-brand text-brand-foreground"
+                                  : "border-muted-foreground/30"
+                              )}
+                            >
+                              {selected && <Check className="h-3.5 w-3.5" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
- <div className="glass-card space-y-2 p-5 text-sm">
- {[
- ["Brief", brief.slice(0, 120) + (brief.length > 120 ?"…" :"")],
- ["Channels",
- selectedPlatforms.map((p) => PLATFORM_META[p].label).join(",") ||"—",
- ],
- ["Includes",
- ["post copy", withImage &&"AI image", withVideo &&"AI video"]
- .filter(Boolean)
- .join(" +"),
- ],
- ["Schedule",
- `${daysOfWeek.length === 0 || daysOfWeek.length === 7 ?"Daily" : daysOfWeek.map((d) => DAYS[d]).join(",")} at ${time} (${timezone})`,
- ],
- ["Approval", requiresApproval ?"Manual approval required" :"Fully automatic"],
- ].map(([k, v]) => (
- <div key={k as string} className="flex gap-4">
- <span className="w-24 shrink-0 text-muted-foreground">{k}</span>
- <span className="text-foreground">{v}</span>
- </div>
- ))}
- </div>
- </div>
- )}
- </motion.div>
- </AnimatePresence>
+              {/* Step 2 — Content types */}
+              {step === 2 && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-foreground mb-2">What should each post include?</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Choose the types of media to generate alongside your text captions.
+                    </p>
+                  </div>
 
- {/* Footer nav */}
- <div className="mt-6 flex items-center justify-between">
- <Button
- variant="ghost"
- onClick={() => (step === 0 ? navigate("/automations") : setStep(step - 1))}
- className="text-muted-foreground hover:text-foreground"
- >
- <ArrowLeft className="mr-1.5 h-4 w-4" />
- {step === 0 ?"Cancel" :"Back"}
- </Button>
- {step < STEPS.length - 1 ? (
- <Button
- onClick={() => setStep(step + 1)}
- disabled={!canNext}
- className="bg-brand hover:bg-brand"
- >
- Continue <ArrowRight className="ml-1.5 h-4 w-4" />
- </Button>
- ) : (
- <Button
- onClick={handleSave}
- disabled={loading}
- className="bg-brand hover:bg-brand"
- >
- {loading && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
- {editId ?"Save changes" :"Launch automation"}
- </Button>
- )}
- </div>
- </div>
- );
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-4 rounded-xl border border-border bg-secondary/20 p-4 opacity-70">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+                        <Type className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-foreground">Written post</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Platform-native caption written fresh each run — always on
+                        </div>
+                      </div>
+                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-brand bg-brand text-brand-foreground">
+                         <Check className="h-3.5 w-3.5" />
+                      </div>
+                    </div>
+
+                    {[
+                      {
+                        on: withImage,
+                        set: setWithImage,
+                        icon: ImageIcon,
+                        title: "AI image",
+                        hint: "A scroll-stopping visual generated to match the post",
+                      },
+                      {
+                        on: withVideo,
+                        set: setWithVideo,
+                        icon: Video,
+                        title: "AI video",
+                        hint: "Short vertical video — generated 2 hours ahead of post time",
+                      },
+                    ].map(({ on, set, icon: Icon, title, hint }) => (
+                      <button
+                        key={title}
+                        onClick={() => set(!on)}
+                        className={cn(
+                          "flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-all",
+                          on
+                            ? "border-brand bg-brand/5 ring-1 ring-brand/20 shadow-sm"
+                            : "border-border bg-secondary/30 hover:bg-secondary/80"
+                        )}
+                      >
+                        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-full", on ? "bg-brand/10 text-brand" : "bg-secondary text-muted-foreground")}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-sm font-semibold text-foreground">{title}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>
+                        </div>
+                        <div
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
+                            on
+                              ? "border-brand bg-brand text-brand-foreground"
+                              : "border-muted-foreground/30"
+                          )}
+                        >
+                          {on && <Check className="h-3.5 w-3.5" />}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="pt-4 border-t border-border">
+                    <button
+                      onClick={() => setRequiresApproval(!requiresApproval)}
+                      className={cn(
+                        "flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-all",
+                        requiresApproval
+                          ? "border-emerald-500/50 bg-emerald-500/5 ring-1 ring-emerald-500/20 shadow-sm"
+                          : "border-border bg-secondary/30 hover:bg-secondary/80"
+                      )}
+                    >
+                      <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-full", requiresApproval ? "bg-emerald-500/10 text-emerald-600" : "bg-secondary text-muted-foreground")}>
+                        <ShieldCheck className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-foreground">Require approval before posting</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Generated posts wait in your approval queue instead of publishing automatically
+                        </div>
+                      </div>
+                      <div
+                        className={cn(
+                          "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+                          requiresApproval ? "bg-emerald-500" : "bg-secondary border border-border"
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "h-4 w-4 rounded-full bg-background shadow-sm transition-transform",
+                            requiresApproval && "translate-x-4"
+                          )}
+                        />
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3 — Schedule */}
+              {step === 3 && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-foreground mb-2">How often, and for how long?</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Set up your posting cadence and schedule window.
+                    </p>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between py-2 border-b border-border pb-6">
+                       <div>
+                         <div className="text-sm font-semibold text-foreground mb-1">Time of day</div>
+                         <div className="text-xs text-muted-foreground">Timezone: {timezone}</div>
+                       </div>
+                       <Input
+                        type="time"
+                        value={time}
+                        onChange={(e) => setTime(e.target.value)}
+                        className="w-32 bg-secondary/50 border-border font-medium h-10 [color-scheme:dark]"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="text-sm font-semibold text-foreground">Posting Days</div>
+                      <div className="flex flex-wrap gap-2">
+                        {DAYS.map((day, i) => {
+                          const on = daysOfWeek.includes(i);
+                          return (
+                            <button
+                              key={day}
+                              onClick={() =>
+                                setDaysOfWeek((prev) =>
+                                  on ? prev.filter((d) => d !== i) : [...prev, i].sort()
+                                )
+                              }
+                              className={cn(
+                                "h-11 w-14 rounded-lg border text-sm font-semibold transition-all",
+                                on
+                                  ? "border-brand bg-brand/10 text-brand shadow-sm"
+                                  : "border-border bg-secondary/50 text-muted-foreground hover:bg-secondary/80"
+                              )}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {daysOfWeek.length === 0
+                          ? "No days selected — posts every day."
+                          : `Posts on ${daysOfWeek.map((d) => DAYS[d]).join(", ")}.`}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-brand/20 bg-brand/5 p-4 text-sm text-brand/90 leading-relaxed shadow-sm">
+                      <span className="font-semibold">Schedule Summary:</span><br/>
+                      This automation will post {daysOfWeek.length === 0 || daysOfWeek.length === 7 ? "daily" : `every ${daysOfWeek.map((d) => DAYS[d]).join(", ")}`} at {time}. Content is generated ahead of time so it launches seamlessly.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 4 — Review */}
+              {step === 4 && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-foreground mb-2">Review your campaign</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Check your configuration and see a sample of what the automation will generate.
+                    </p>
+                  </div>
+                  
+                  <div className="rounded-xl border border-border bg-secondary/20 p-5 space-y-4">
+                    <div className="flex items-center justify-between border-b border-border/50 pb-4">
+                       <div>
+                         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Campaign Summary</div>
+                         <div className="text-sm font-medium text-foreground">{name || "Untitled Automation"}</div>
+                       </div>
+                       <div className="text-right">
+                         <div className="text-sm font-medium text-foreground">{selectedAccounts.length} Account(s)</div>
+                         <div className="text-xs text-muted-foreground">{daysOfWeek.length === 0 || daysOfWeek.length === 7 ? "Daily" : `${daysOfWeek.length} days/week`} at {time}</div>
+                       </div>
+                    </div>
+                    <div className="text-sm text-foreground leading-relaxed">
+                       <span className="font-semibold">Brief:</span> {brief}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-foreground">Sample Generation</h3>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handlePreview}
+                        disabled={generatingPreview}
+                        className="h-8 px-3 text-xs"
+                      >
+                        {generatingPreview ? (
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="mr-1.5 h-3.5 w-3.5 text-brand" />
+                        )}
+                        Regenerate
+                      </Button>
+                    </div>
+
+                    {selectedPlatforms.length > 1 && (
+                      <div className="flex gap-2">
+                        {selectedPlatforms.map((platform) => {
+                          const meta = PLATFORM_META[platform];
+                          return (
+                            <button
+                              key={platform}
+                              onClick={() => {
+                                setPreviewPlatform(platform);
+                                setPreview(null);
+                              }}
+                              className={cn(
+                                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                                previewPlatform === platform
+                                  ? "border-brand bg-brand/10 text-brand"
+                                  : "border-border bg-secondary/50 text-muted-foreground hover:bg-secondary/80"
+                              )}
+                            >
+                              <meta.icon className="h-3.5 w-3.5" /> {meta.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    
+                    <div className="flex justify-center rounded-xl border border-border bg-secondary/10 p-6 min-h-[300px]">
+                      {generatingPreview ? (
+                        <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground h-full min-h-[250px]">
+                          <Loader2 className="h-6 w-6 animate-spin text-brand" />
+                          <span className="text-sm font-medium">Writing your sample post…</span>
+                        </div>
+                      ) : preview ? (
+                        <PlatformPreview
+                          platform={previewPlatform}
+                          content={{
+                            caption: preview.caption,
+                            hashtags: preview.hashtags,
+                            brandName: brand?.name ?? name,
+                            handle: brand?.name?.toLowerCase().replace(/\s+/g, "") ?? undefined,
+                            logoUrl: brand?.logoUrl,
+                          }}
+                        />
+                      ) : (
+                        <div className="flex h-full min-h-[250px] items-center justify-center text-sm text-muted-foreground">
+                          Preview unavailable — you can still launch the automation.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        <div className="h-px w-full bg-border" />
+
+        {/* Wizard Footer */}
+        <div className="px-8 py-5 bg-card flex items-center justify-between rounded-b-xl">
+          <Button
+            variant="ghost"
+            onClick={() => (step === 0 ? navigate("/automations") : setStep(step - 1))}
+            className="text-muted-foreground hover:text-foreground hover:bg-secondary/50 px-4 h-11"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            {step === 0 ? "Cancel" : "Back"}
+          </Button>
+
+          {step < STEPS.length - 1 ? (
+            <Button
+              onClick={() => setStep(step + 1)}
+              disabled={!canNext}
+              className="bg-brand hover:bg-brand/90 text-brand-foreground px-6 h-11 font-semibold shadow-sm transition-all active:scale-[0.98]"
+            >
+              Continue <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSave}
+              disabled={loading || !canNext}
+              className="bg-brand hover:bg-brand/90 text-brand-foreground px-6 h-11 font-semibold shadow-sm transition-all active:scale-[0.98]"
+            >
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editId ? "Save changes" : "Continue to launch"} <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }

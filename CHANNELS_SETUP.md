@@ -55,7 +55,7 @@ npx convex env set LINKEDIN_CLIENT_SECRET <secret>
 3. **OAuth consent screen** branding (must match the public homepage):
    - **App name:** `MagicBox` (exact match to https://magicboxai.in/ — do not use
      “MagicBox AI”, “MagicBox App”, or the company legal name alone)
-   - **User support email:** `support@magicboxai.in`
+   - **User support email:** `hello@nhancio.com`
    - **App logo:** same logo as the homepage (`logo-512.png` / brand mark)
    - **Application home page:** `https://magicboxai.in/`
    - **Privacy policy:** `https://magicboxai.in/privacy.html`
