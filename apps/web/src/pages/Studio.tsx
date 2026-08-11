@@ -12,6 +12,7 @@ import { Button } from "@shared/components/ui/button";
 import { Input } from "@shared/components/ui/input";
 import { Label } from "@shared/components/ui/label";
 import { Textarea } from "@shared/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/components/ui/select";
 import { cn } from "@shared/lib/utils";
 import Carousel from "./Carousel";
 import PlatformPreview, { type PreviewContent } from "../components/previews/PlatformPreview";
@@ -215,7 +216,9 @@ export default function Studio() {
   useEffect(() => {
     if ((postType !== "video" && postType !== "image") || !creatorPresets?.length) return;
     if (!creatorPresets.some((preset) => preset.id === selectedPresetId)) {
-      setSelectedPresetId(creatorPresets[0].id);
+      const firstPreset = creatorPresets[0];
+      setSelectedPresetId(firstPreset.id);
+      setPrompt((prev) => prev ? prev : (firstPreset.starterPrompt || ""));
     }
   }, [creatorPresets, postType, selectedPresetId]);
 
@@ -553,518 +556,357 @@ export default function Studio() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 space-y-8 animate-fade-in">
-      <header>
+    <div className="mx-auto flex h-[calc(100vh-theme(spacing.16))] max-w-7xl w-full flex-col animate-fade-in relative pb-6">
+      <header className="px-6 py-4 shrink-0 border-b border-border/40">
         <span className="eyebrow">Create</span>
-        <h1 className="mt-2 font-display text-3xl md:text-4xl text-foreground flex items-center gap-3">
-          <Sparkles className="h-7 w-7 text-brand" /> Studio
+        <h1 className="mt-1 font-display text-2xl md:text-3xl text-foreground flex items-center gap-2">
+          <Sparkles className="h-6 w-6 text-brand" /> Studio
         </h1>
-        <p className="mt-2 text-muted-foreground">
-          Select your channel, choose a post type, provide creative direction, and create.
-        </p>
       </header>
 
-      {/* STEP 1: SELECT CHANNEL */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-          <span>1</span> · Select Channel
-        </h2>
-        <div className="flex flex-wrap gap-2.5">
-          {CHANNELS.map((ch) => {
-            const Icon = ch.icon;
-            const isSelected = channel === ch.id;
-            const isConnected = (accounts ?? []).some(
-              (a: any) => a.platform === ch.id && a.status === "active"
-            );
+      {/* Main Viewing Area with Left-Controls / Right-Preview Grid */}
+      {/* ponytail: persistent 2-column layout prevents any layout shifts, overlaps, or inversions at all zoom levels */}
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="grid gap-8 lg:grid-cols-12 items-start h-full">
 
-            return (
-              <button
-                key={ch.id}
-                type="button"
-                onClick={() => setChannel(ch.id)}
-                className={cn(
-                  "inline-flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-medium transition-all",
-                  isSelected
-                    ? "border-brand bg-brand/10 text-brand ring-2 ring-brand/30 shadow-sm"
-                    : "border-border bg-card text-muted-foreground hover:border-brand/40 hover:text-foreground"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{ch.label}</span>
-                {isConnected ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="h-3 w-3" /> Connected
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-muted-foreground/70">(Link)</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </section>
+          {/* LEFT COLUMN: Input Controls, Prompt Bar, Captions, Publish Options (Col span 5) */}
+          <div className="lg:col-span-5 space-y-6 flex flex-col justify-start">
+            
+            {/* 1. Unified Configuration & AI Chat Input Card */}
+            {/* ponytail: merged fragmented selectors and input into one cohesive card mirroring standard AI chat interfaces */}
+            <div className="rounded-2xl border border-border bg-card shadow-sm flex flex-col overflow-hidden">
+              <div className="p-5 bg-secondary/10 border-b border-border/40 space-y-4">
+                <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                  1. Configuration
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select value={channel} onValueChange={setChannel}>
+                    <SelectTrigger className="h-8 rounded-full bg-background hover:bg-secondary/60 text-xs border-border/60 px-3 w-full sm:w-auto min-w-[120px] gap-2 shadow-sm">
+                      <SelectValue placeholder="Channel" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CHANNELS.map(ch => (
+                        <SelectItem key={ch.id} value={ch.id}>
+                          <div className="flex items-center gap-2">
+                            <ch.icon className="h-3.5 w-3.5" />
+                            {ch.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-      {/* STEP 2: SELECT POST TYPE */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-          <span>2</span> · Select Post Type for {CHANNELS.find((c) => c.id === channel)?.label}
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {availablePostTypes.map((pt) => {
-            const Icon = pt.icon;
-            const isSelected = postType === pt.id;
-            return (
-              <button
-                key={pt.id}
-                type="button"
-                onClick={() => setPostType(pt.id)}
-                className={cn(
-                  "flex flex-col items-start rounded-xl border p-4 text-left transition-all",
-                  isSelected
-                    ? "border-brand bg-brand/10 ring-2 ring-brand/30 shadow-sm"
-                    : "border-border bg-card hover:border-brand/40"
-                )}
-              >
-                <div className="mb-2 flex items-center gap-2">
-                  <div
-                    className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-lg",
-                      isSelected ? "bg-brand text-brand-foreground" : "bg-secondary text-muted-foreground"
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <span className="font-semibold text-foreground text-sm">{pt.label}</span>
+                  <Select value={postType} onValueChange={(v) => setPostType(v as PostType)}>
+                    <SelectTrigger className="h-8 rounded-full bg-background hover:bg-secondary/60 text-xs border-border/60 px-3 w-full sm:w-auto min-w-[120px] gap-2 shadow-sm">
+                      <SelectValue placeholder="Post Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availablePostTypes.map(pt => (
+                        <SelectItem key={pt.id} value={pt.id}>
+                          <div className="flex items-center gap-2">
+                            <pt.icon className="h-3.5 w-3.5" />
+                            {pt.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={tone} onValueChange={(v) => setTone(v as any)}>
+                    <SelectTrigger className="h-8 rounded-full bg-background hover:bg-secondary/60 text-xs border-border/60 px-3 w-full sm:w-auto min-w-[100px] gap-2 shadow-sm">
+                      <SelectValue placeholder="Tone" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TONES.map(t => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {creatorPresets && creatorPresets.length > 0 && (
+                    <Select value={selectedPresetId} onValueChange={(v) => {
+                      setSelectedPresetId(v);
+                      const preset = creatorPresets.find(p => p.id === v);
+                      if (preset?.starterPrompt) setPrompt(preset.starterPrompt);
+                    }}>
+                      <SelectTrigger className="h-8 rounded-full bg-brand/5 hover:bg-brand/10 text-xs border-brand/30 text-brand px-3 w-full sm:w-auto min-w-[140px] gap-2 font-medium shadow-sm">
+                        <Wand2 className="h-3 w-3" />
+                        <SelectValue placeholder="Template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {creatorPresets.map(preset => (
+                          <SelectItem key={preset.id} value={preset.id}>
+                            <div className="flex flex-col">
+                               <span>{preset.name}</span>
+                               <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">{preset.category ?? "Creator"}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">{pt.description}</p>
-              </button>
-            );
-          })}
-        </div>
-      </section>
+              </div>
 
-      {(postType === "video" || postType === "reel" || postType === "image") && (
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h2 className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">
-                <TrendingUp className="h-3.5 w-3.5 text-brand" />
-                Trend-picked creator templates
-              </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Choose a format and create immediately. MagicBox supplies the prompt, hook structure, and shot direction.
-              </p>
-            </div>
-            <span className="rounded-full border border-border bg-card px-2.5 py-1 text-[10px] text-muted-foreground">
-              Refreshed from the live trend brief
-            </span>
-          </div>
-
-          {creatorPresets === undefined ? (
-            <div className="flex h-28 items-center justify-center rounded-2xl border border-border bg-card">
-              <Loader2 className="h-4 w-4 animate-spin text-brand" />
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {creatorPresets.slice(0, 8).map((preset) => {
-                const active = preset.id === selectedPresetId;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => setSelectedPresetId(preset.id)}
-                    className={cn(
-                      "group relative min-h-40 overflow-hidden rounded-2xl border p-4 text-left transition-all",
-                      active
-                        ? "border-brand bg-brand/10 ring-2 ring-brand/25 shadow-sm"
-                        : "border-border bg-card hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-sm",
+              <div className="p-4 sm:p-5">
+                {/* Media Upload Preview (if attached) */}
+                {media && (
+                  <div className="mb-3 relative inline-flex items-center gap-3 rounded-xl border border-border bg-secondary/30 p-2 pr-8 self-start">
+                    {media.type === "video" ? (
+                      <video src={media.url} className="h-10 w-10 rounded-lg object-cover" muted />
+                    ) : (
+                      <img src={media.url} alt="" className="h-10 w-10 rounded-lg object-cover" />
                     )}
-                  >
-                    <div className="mb-4 flex items-center justify-between gap-2">
-                      <span className="rounded-full bg-secondary px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-                        {preset.category ?? "Creator"}
-                      </span>
-                      {preset.isTrending ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-semibold text-emerald-700 dark:text-emerald-300">
-                          <TrendingUp className="h-2.5 w-2.5" /> Trending now
-                        </span>
-                      ) : null}
+                    <div>
+                      <p className="text-xs font-semibold capitalize text-foreground">{media.type} Attached</p>
                     </div>
-                    <h3 className="text-sm font-semibold text-foreground">{preset.name}</h3>
-                    <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
-                      {preset.description}
-                    </p>
-                    {preset.matchedTrend ? (
-                      <p className="mt-3 line-clamp-1 text-[10px] font-medium text-brand">
-                        Signal: {preset.matchedTrend}
-                      </p>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {selectedPreset?.rightsNote ? (
-            <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs leading-relaxed text-amber-900 dark:text-amber-200">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{selectedPreset.rightsNote}</span>
-            </div>
-          ) : null}
-        </section>
-      )}
-
-      {postType === "carousel" ? (
-        <section className="space-y-4">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-            3 &amp; 4 · Carousel Builder
-          </h2>
-          <Carousel embedded />
-        </section>
-      ) : (
-        <>
-          {/* STEP 3: INPUT PROMPT / CREATIVE / MEDIA */}
-          <section className="space-y-5 rounded-2xl border border-border bg-card p-6 shadow-xs">
-            <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-              <span>3</span> · Provide Creative Direction &amp; Assets
-            </h2>
-
-            {/* Prompt Input */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                {postType === "video" || postType === "image"
-                  ? "Optional creative direction"
-                  : "Prompt / Idea / Topic"}{" "}
-                <span className="text-muted-foreground font-normal">
-                  {postType === "video" || postType === "image"
-                    ? "(the selected template already includes a complete prompt)"
-                    : "(provide text or upload media)"}
-                </span>
-              </Label>
-              <Textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder={
-                  postType === "video" || postType === "image"
-                    ? selectedPreset?.starterPrompt || "Add a product, offer, or campaign detail—or leave blank to use the template."
-                    : "e.g. Write a thought-provoking post on why AI content creation is transforming marketing teams..."
-                }
-                rows={3}
-                className="resize-none"
-              />
-            </div>
-
-            {/* Tone Selector */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Tone of Voice</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {TONES.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTone(t)}
-                    className={cn(
-                      "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                      tone === t
-                        ? "border-brand bg-brand/10 text-brand font-semibold"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Optional Avatar Selection for Video */}
-            {postType === "video" && avatars.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Avatar (Optional)</Label>
-                <div className="flex flex-wrap gap-2">
-                  {avatars.map((a) => {
-                    const active = avatarId === a.id;
-                    const thumb = a.photoUrls?.[0];
-                    return (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => setAvatarId(avatarId === a.id ? "" : (a.id ?? ""))}
-                        className={cn(
-                          "flex w-[88px] flex-col items-center gap-1 rounded-xl border p-2 text-center transition-colors",
-                          active
-                            ? "border-brand bg-brand/10 ring-1 ring-brand"
-                            : "border-border hover:border-brand/40"
-                        )}
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-secondary">
-                          {thumb ? (
-                            <img src={thumb} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <User className="h-5 w-5 text-muted-foreground" />
-                          )}
-                        </div>
-                        <span className="w-full truncate text-[10px] font-medium">{a.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* WhatsApp Options */}
-            {channel === "whatsapp" && (
-              <div className="space-y-3 rounded-xl border border-border bg-secondary/30 p-4">
-                <div className="space-y-1.5">
-                  <Label>WhatsApp Recipients (Opted-in)</Label>
-                  <Input
-                    value={whatsappRecipients}
-                    onChange={(e) => setWhatsappRecipients(e.target.value)}
-                    placeholder="e.g. 919876543210, 14155552671"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    E.164 phone numbers with country code, separated by commas.
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Template Name (Optional)</Label>
-                  <Input
-                    value={whatsappTemplateName}
-                    onChange={(e) => setWhatsappTemplateName(e.target.value)}
-                    placeholder="e.g. marketing_update_v1"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Upload Image / Video */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                Upload Media <span className="text-muted-foreground font-normal">(Optional — upload photo or video)</span>
-              </Label>
-
-              {media ? (
-                <div className="relative inline-flex items-center gap-3 rounded-xl border border-border bg-secondary/50 p-3 pr-8">
-                  {media.type === "video" ? (
-                    <video src={media.url} className="h-16 w-16 rounded-lg object-cover" muted />
-                  ) : (
-                    <img src={media.url} alt="" className="h-16 w-16 rounded-lg object-cover" />
-                  )}
-                  <div>
-                    <p className="text-xs font-semibold capitalize text-foreground">{media.type} Attached</p>
-                    <p className="text-[11px] text-muted-foreground">Source: {media.source}</p>
+                    <Button
+                      type="button"
+                      onClick={() => setMedia(null)}
+                      className="absolute top-1 right-1 rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground h-5 w-5"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setMedia(null)}
-                    className="absolute top-2 right-2 rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-                    title="Remove media"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground transition-colors hover:border-brand/50 hover:text-foreground">
-                  {isUploading ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-brand" />
-                  ) : (
-                    <Upload className="h-4 w-4 text-brand" />
-                  )}
-                  <span>{isUploading ? "Uploading file..." : "Click to upload Image or Video file"}</span>
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    className="hidden"
-                    disabled={isUploading}
+                )}
+
+                {/* Modern AI Chat Input */}
+                <div className="relative flex items-end gap-2 rounded-2xl border border-border bg-background p-1.5 shadow-sm transition-all focus-within:border-brand/50 focus-within:ring-1 focus-within:ring-brand/50">
+                  <label className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors">
+                    {isUploading ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-brand" />
+                    ) : (
+                      <Upload className="h-5 w-5" />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      className="hidden"
+                      disabled={isUploading}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void handleFileUpload(f);
+                      }}
+                    />
+                  </label>
+                  
+                  <Textarea
+                    value={prompt}
                     onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) void handleFileUpload(f);
+                      setPrompt(e.target.value);
+                      e.target.style.height = "auto";
+                      e.target.style.height = `${e.target.scrollHeight}px`;
+                    }}
+                    placeholder={
+                      postType === "video" || postType === "image"
+                        ? selectedPreset?.starterPrompt || "Message Maya to create..."
+                        : "Message Maya to create..."
+                    }
+                    rows={1}
+                    className="flex-1 min-h-[40px] max-h-[160px] resize-none border-0 bg-transparent py-2.5 px-1 text-[14px] shadow-none focus-visible:ring-0 text-foreground placeholder:text-muted-foreground/60 leading-relaxed"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleCreate();
+                      }
                     }}
                   />
-                </label>
-              )}
-            </div>
-
-            {/* STEP 4: CREATE BUTTON */}
-            <div className="border-t border-border pt-4">
-              <Button
-                size="lg"
-                onClick={handleCreate}
-                disabled={
-                  isCreating ||
-                  isRenderingMedia ||
-                  (!prompt.trim() &&
-                    !media &&
-                    !((postType === "video" || postType === "image") && selectedPreset?.starterPrompt))
-                }
-                className="w-full sm:w-auto px-8"
-              >
-                {isCreating || isRenderingMedia ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating post &amp; creative...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    {(postType === "video" || postType === "image") && selectedPreset
-                      ? `Create with ${selectedPreset.name}`
-                      : "Create Post"}
-                  </>
-                )}
-              </Button>
-            </div>
-          </section>
-
-          {/* STEP 5: PREVIEW & PUBLISH */}
-          {(caption || media || isRenderingMedia) && (
-            <section className="space-y-6 rounded-2xl border border-border bg-card p-6 shadow-sm">
-              <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                <span>5</span> · Live Preview &amp; Actions
-              </h2>
-
-              <div className="grid gap-8 lg:grid-cols-12 items-start">
-                {/* Platform Preview Column */}
-                <div className="lg:col-span-6 flex justify-center bg-secondary/20 p-4 rounded-xl border border-border/50">
-                  <div className="w-full max-w-sm">
-                    {isRenderingMedia && !media ? (
-                      <div className="flex aspect-[9/16] w-full flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center">
-                        <Loader2 className="h-8 w-8 animate-spin text-brand mb-3" />
-                        <p className="text-sm font-medium text-foreground">Rendering AI Creative...</p>
-                        <p className="text-xs text-muted-foreground mt-1">Generating high-quality media for {channel}</p>
-                      </div>
-                    ) : (
-                      <PlatformPreview
-                        platform={channel as SocialPlatform}
-                        content={previewContent}
-                      />
+                  
+                  <Button
+                    onClick={handleCreate}
+                    disabled={
+                      isCreating ||
+                      isRenderingMedia ||
+                      (!prompt.trim() &&
+                        !media &&
+                        !((postType === "video" || postType === "image") && selectedPreset?.starterPrompt))
+                    }
+                    className={cn(
+                      "h-10 w-10 shrink-0 rounded-xl transition-all shadow-sm p-0 flex items-center justify-center",
+                      prompt.trim() || media ? "bg-brand text-brand-foreground hover:bg-brand/90" : "bg-secondary text-muted-foreground"
                     )}
+                  >
+                    {isCreating || isRenderingMedia ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Send className="h-5 w-5 ml-[-2px]" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Caption, Hashtags & Publish Options Panel (Only rendered once generated/generating) */}
+            {(caption || media || isRenderingMedia || postType === "carousel") && (
+              <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-5 animate-fade-in">
+                <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                  2. Edit & Publish Options
+                </p>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Caption</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={isRewriting || !caption.trim()}
+                      onClick={() => void handleRewriteUgc()}
+                      className="h-7 px-2 text-xs text-brand"
+                    >
+                      {isRewriting ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <Wand2 className="mr-1 h-3 w-3" />
+                      )}
+                      Rewrite as UGC
+                    </Button>
                   </div>
+                  <Textarea
+                    value={caption}
+                    onChange={(e) => setCaption(e.target.value)}
+                    rows={4}
+                    className="text-sm"
+                  />
                 </div>
 
-                {/* Edit & Action Column */}
-                <div className="lg:col-span-6 space-y-5">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-sm font-medium">Caption</Label>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={isRewriting || !caption.trim()}
-                        onClick={() => void handleRewriteUgc()}
-                        className="h-7 px-2 text-xs text-brand"
-                      >
-                        {isRewriting ? (
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        ) : (
-                          <Wand2 className="mr-1 h-3 w-3" />
-                        )}
-                        Rewrite as UGC
-                      </Button>
-                    </div>
-                    <Textarea
-                      value={caption}
-                      onChange={(e) => setCaption(e.target.value)}
-                      rows={5}
-                      className="text-sm"
-                    />
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Hashtags</Label>
+                  <Input
+                    value={hashtags}
+                    onChange={(e) => setHashtags(e.target.value)}
+                    placeholder="#marketing #ai #growth"
+                    className="text-sm"
+                  />
+                </div>
+
+                {postType !== "text" && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRegenerateMedia}
+                      disabled={isRenderingMedia || (!prompt.trim() && !selectedPreset?.starterPrompt)}
+                    >
+                      {isRenderingMedia ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      Regenerate AI Media
+                    </Button>
                   </div>
+                )}
 
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Hashtags</Label>
-                    <Input
-                      value={hashtags}
-                      onChange={(e) => setHashtags(e.target.value)}
-                      placeholder="#marketing #ai #growth"
-                      className="text-sm"
-                    />
+                {!connectedAccount && (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                    <Link2 className="h-4 w-4 shrink-0" />
+                    <span>
+                      No active {channel} account connected. You can publish as draft or{" "}
+                      <Link to="/settings" className="underline font-semibold">
+                        connect channel
+                      </Link>.
+                    </span>
                   </div>
+                )}
 
-                  {postType !== "text" && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleRegenerateMedia}
-                        disabled={isRenderingMedia || !prompt.trim()}
-                      >
-                        {isRenderingMedia ? (
-                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                        )}
-                        Regenerate AI Media
-                      </Button>
-                    </div>
-                  )}
+                {/* ACTION BUTTONS ON PREVIEW */}
+                <div className="border-t border-border pt-4 space-y-3">
+                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                    Publish Options
+                  </p>
+                  <div className="flex flex-wrap gap-2.5">
+                    <Button
+                      onClick={() => void handlePublish("now")}
+                      disabled={posting !== null}
+                      className="flex-1 min-w-[120px]"
+                    >
+                      {posting === "now" ? (
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="mr-1.5 h-4 w-4" />
+                      )}
+                      Post Now
+                    </Button>
 
-                  {!connectedAccount && (
-                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                      <Link2 className="h-4 w-4 shrink-0" />
-                      <span>
-                        No active {channel} account connected. You can publish as draft or{" "}
-                        <Link to="/settings" className="underline font-semibold">
-                          connect channel in Settings
-                        </Link>.
-                      </span>
-                    </div>
-                  )}
+                    <Button
+                      variant="outline"
+                      onClick={() => void handlePublish("schedule")}
+                      disabled={posting !== null}
+                      className="flex-1 min-w-[120px]"
+                    >
+                      {posting === "schedule" ? (
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                      ) : (
+                        <CalendarClock className="mr-1.5 h-4 w-4" />
+                      )}
+                      Post Best Time
+                    </Button>
 
-                  {/* ACTION BUTTONS ON PREVIEW */}
-                  <div className="border-t border-border pt-4 space-y-3">
-                    <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                      Publish Options
-                    </p>
-                    <div className="flex flex-wrap gap-2.5">
-                      <Button
-                        onClick={() => void handlePublish("now")}
-                        disabled={posting !== null}
-                        className="flex-1 min-w-[120px]"
-                      >
-                        {posting === "now" ? (
-                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Send className="mr-1.5 h-4 w-4" />
-                        )}
-                        Post Now
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        onClick={() => void handlePublish("schedule")}
-                        disabled={posting !== null}
-                        className="flex-1 min-w-[120px]"
-                      >
-                        {posting === "schedule" ? (
-                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                        ) : (
-                          <CalendarClock className="mr-1.5 h-4 w-4" />
-                        )}
-                        Post Best Time
-                      </Button>
-
-                      <Button
-                        variant="secondary"
-                        onClick={() => void handlePublish("draft")}
-                        disabled={posting !== null}
-                        className="flex-1 min-w-[120px]"
-                      >
-                        {posting === "draft" ? (
-                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="mr-1.5 h-4 w-4" />
-                        )}
-                        Save to Draft
-                      </Button>
-                    </div>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void handlePublish("draft")}
+                      disabled={posting !== null}
+                      className="flex-1 min-w-[120px]"
+                    >
+                      {posting === "draft" ? (
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-1.5 h-4 w-4" />
+                      )}
+                      Save to Draft
+                    </Button>
                   </div>
                 </div>
               </div>
-            </section>
-          )}
-        </>
-      )}
+            )}
+          </div>
+
+          {/* RIGHT COLUMN: Live Generated Media / Post Preview (Col span 7) */}
+          {/* ponytail: constrained height with internal scroll handles arbitrary length posts without ever breaking/overflowing the layout */}
+          <div className="lg:col-span-7 flex flex-col items-center bg-secondary/10 dark:bg-secondary/20 rounded-2xl border-2 border-border/70 shadow-inner overflow-hidden relative h-[600px] lg:h-[calc(100vh-11rem)] lg:sticky lg:top-6">
+            <div className="w-full h-full overflow-y-auto p-4 sm:p-6 lg:p-8 flex flex-col items-center scrollbar-thin">
+              {postType === "carousel" ? (
+                 <Carousel embedded />
+              ) : caption || media || isRenderingMedia ? (
+                <div className="w-full max-w-sm mx-auto transition-all duration-300 transform-gpu shrink-0">
+                  {isRenderingMedia && !media ? (
+                    <div className="flex aspect-[9/16] w-full flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-lg my-auto min-h-[400px]">
+                      <Loader2 className="h-8 w-8 animate-spin text-brand mb-3" />
+                      <p className="text-sm font-medium text-foreground">Rendering AI Creative...</p>
+                      <p className="text-xs text-muted-foreground mt-1">Generating high-quality media for {channel}</p>
+                    </div>
+                  ) : (
+                    <PlatformPreview
+                      platform={channel as SocialPlatform}
+                      content={previewContent}
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center space-y-4 max-w-md my-auto h-full min-h-[400px]">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/10 text-brand shadow-md">
+                    <ImagePlus className="h-8 w-8" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-lg font-semibold text-foreground">Interactive Preview Canvas</p>
+                    <p className="text-sm text-muted-foreground px-4 leading-relaxed">
+                      Choose a template or write a prompt on the left to instantly generate high-reach posts and view previews here.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Subtle bottom fade to indicate scrollability */}
+            {(caption || media || isRenderingMedia || postType === "carousel") && (
+              <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-secondary/10 dark:from-secondary/20 to-transparent pointer-events-none rounded-b-2xl" />
+            )}
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 }
