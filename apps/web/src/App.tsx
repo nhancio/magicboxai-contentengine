@@ -32,6 +32,7 @@ const MyVideo = lazy(() => import("./pages/MyVideo"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Pricing = lazy(() => import("./pages/Pricing"));
 const WarmedUpAccounts = lazy(() => import("./pages/WarmedUpAccounts"));
+const Feedback = lazy(() => import("./pages/Feedback"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -126,6 +127,7 @@ export default function App() {
                 <Route path="/avatar-creator" element={<Navigate to="/avatars?tab=create" replace />} />
                 <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
                 <Route path="/pricing" element={<ProtectedRoute><Pricing /></ProtectedRoute>} />
+                <Route path="/feedback" element={<ProtectedRoute><Feedback /></ProtectedRoute>} />
                 <Route path="/warmed-up-accounts" element={<ProtectedRoute><WarmedUpAccounts /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
