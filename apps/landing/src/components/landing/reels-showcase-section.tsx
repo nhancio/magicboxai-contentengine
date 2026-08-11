@@ -302,9 +302,6 @@ export function ReelsShowcaseSection() {
           isInteractingRef.current = false;
           pauseAutoScroll(5000);
         }}
-        onScroll={() => {
-          pauseAutoScroll(4000);
-        }}
         className="no-scrollbar flex gap-4 overflow-x-auto touch-pan-x cursor-grab active:cursor-grabbing px-6 pb-4 lg:px-12 select-none"
       >
         {[0, 1].flatMap((copy) =>

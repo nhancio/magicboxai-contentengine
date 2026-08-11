@@ -93,7 +93,7 @@ export function AboutMagicBoxSection() {
               asChild
               size="lg"
               variant="brand"
-              className="group h-13 rounded-full px-8 text-base shadow-[0_12px_24px_rgba(139,92,246,0.28)] transition-all hover:shadow-[0_16px_32px_rgba(139,92,246,0.38)]"
+              className="group h-16 rounded-full px-14 text-xl font-medium shadow-[0_12px_24px_rgba(139,92,246,0.28)] transition-all hover:shadow-[0_16px_32px_rgba(139,92,246,0.38)]"
             >
               <a
                 href={appLoginUrl()}
@@ -105,7 +105,7 @@ export function AboutMagicBoxSection() {
                 }
               >
                 Connect your channels
-                <ArrowUpRight className="ml-2 h-4.5 w-4.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                <ArrowUpRight className="ml-2 h-6 w-6 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </a>
             </Button>
           </div>
@@ -121,10 +121,11 @@ export function AboutMagicBoxSection() {
             ["Create", "Brand-aware copy and media", Sparkles],
             ["Review", "You approve every draft", Check],
             ["Publish", "Schedule when it matters", CalendarClock],
-          ].map(([label, detail, Icon]) => (
+          ].map(([label, detail, Icon], i) => (
             <div
               key={label as string}
-              className="group rounded-2xl border border-[#e2e8f0] bg-white p-5 text-left shadow-[0_10px_25px_rgba(15,23,42,0.04)] transition-all duration-300 hover:-translate-y-1 hover:border-brand/40 hover:shadow-[0_16px_35px_rgba(139,92,246,0.12)]"
+              className="group rounded-2xl border border-[#e2e8f0] bg-white p-5 text-left shadow-[0_10px_25px_rgba(15,23,42,0.04)] transition-all duration-300 hover:-translate-y-1 hover:border-brand/40 hover:shadow-[0_16px_35px_rgba(139,92,246,0.12)] animate-[float_5s_ease-in-out_infinite]"
+              style={{ animationDelay: `${i * 0.4}s` }}
             >
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/10 text-brand group-hover:bg-brand group-hover:text-brand-foreground transition-colors">
                 <Icon className="h-5 w-5" />

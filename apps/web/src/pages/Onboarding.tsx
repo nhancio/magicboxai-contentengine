@@ -799,26 +799,26 @@ export default function Onboarding() {
  };
 
  return (
- <div className="min-h-screen bg-background text-foreground">
- <div
- className={cn(
- "relative mx-auto px-4 py-12",
- step === 2 ? "max-w-6xl" : "max-w-2xl",
- )}
- >
- <div className="mb-10 text-center">
- <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-foreground text-background">
- {step === 0 ? <Globe2 className="h-6 w-6" /> : step === 1 ? <Link2 className="h-6 w-6" /> : <ShieldCheck className="h-6 w-6" />}
+ <div className="h-[100dvh] flex flex-col overflow-hidden bg-background text-foreground">
+  <div
+  className={cn(
+  "relative mx-auto flex flex-col flex-1 min-h-0 w-full py-4 lg:py-6",
+  step === 2 ? "max-w-[1600px] px-4 lg:px-8 xl:px-12" : "max-w-3xl px-4",
+  )}
+  >
+ <div className="mb-4 lg:mb-6 text-center shrink-0">
+ <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center overflow-hidden">
+  <img src="/logo.png" alt="MagicBox" className="h-full w-full object-contain" />
  </div>
- <span className="eyebrow">Get started</span>
- <h1 className="mt-2 font-display text-4xl tracking-tight">Turn your website into a campaign</h1>
- <p className="mt-2 text-muted-foreground">
+ <span className="eyebrow text-[10px]">Get started</span>
+ <h1 className="mt-1 font-display text-2xl sm:text-3xl tracking-tight">Turn your website into a campaign</h1>
+ <p className="mt-1 text-sm text-muted-foreground max-w-xl mx-auto">
  Start with your site. Review the creative. Nothing posts without your approval.
  </p>
  </div>
 
  {/* Stepper */}
- <div className="mb-8 flex items-center justify-center gap-3">
+ <div className="mb-4 flex items-center justify-center gap-3 shrink-0">
  {STEPS.map((s, i) => (
  <div key={s.title} className="flex items-center gap-3">
  <div
@@ -844,6 +844,7 @@ export default function Onboarding() {
  animate={{ opacity: 1, y: 0 }}
  exit={{ opacity: 0, y: -10 }}
  transition={{ duration: 0.2 }}
+ className="flex-1 min-h-0 overflow-y-auto no-scrollbar pb-6"
  >
       {step === 1 && (
         <div className="glass-card space-y-5 p-4 sm:p-6">
@@ -1079,7 +1080,7 @@ export default function Onboarding() {
     ? "Building…"
     : brandPhase === "ready" && extracted
     ? "Save brand & continue"
-    : "Build my campaign"}
+    : "Connect"}
 </Button>
  </div>
  </div>
@@ -1205,7 +1206,7 @@ export default function Onboarding() {
  {step === 2 && (
  <div
  className={cn(
- "grid gap-5",
+ "grid gap-5 lg:h-[calc(100vh-280px)]",
  previewCollapsed
  ? "lg:grid-cols-[minmax(0,1fr)_3.5rem]"
  : "lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]",
@@ -1213,8 +1214,8 @@ export default function Onboarding() {
  >
  <div
  className={cn(
- "min-w-0 space-y-5",
- !previewCollapsed && "pb-[min(52vh,440px)] lg:pb-0",
+ "min-w-0 space-y-5 lg:overflow-y-auto lg:pr-2 lg:pb-4 no-scrollbar",
+ !previewCollapsed && "pb-[min(52vh,440px)] lg:pb-4",
  )}
  >
  <div className="glass-card overflow-hidden">
@@ -1488,9 +1489,10 @@ export default function Onboarding() {
  collapsed={previewCollapsed}
  onCollapsedChange={setPreviewCollapsed}
  className={cn(
+ "h-full",
  previewCollapsed
- ? "min-h-[min(48vh,280px)] lg:min-h-[420px]"
- : "max-h-[min(48vh,420px)] min-h-0 lg:min-h-[480px] lg:max-h-[min(80vh,720px)]",
+ ? "min-h-[min(48vh,280px)] lg:min-h-0"
+ : "max-h-[min(48vh,420px)] min-h-0 lg:max-h-none",
  )}
  title={clientApproved ? "Approved preview" : "Approval preview"}
  platform={previewPlatform}

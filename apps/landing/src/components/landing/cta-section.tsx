@@ -75,7 +75,7 @@ export function CtaSection() {
                   asChild
                   size="lg"
                   variant="brand"
-                  className="group h-13 rounded-full px-8 text-base shadow-[0_12px_24px_rgba(139,92,246,0.28)] transition-all hover:shadow-[0_16px_32px_rgba(139,92,246,0.38)]"
+                  className="group h-14 rounded-full px-10 text-lg shadow-[0_12px_24px_rgba(139,92,246,0.28)] transition-all hover:shadow-[0_16px_32px_rgba(139,92,246,0.38)]"
                 >
                   <a
                     href={appLoginUrl()}
@@ -87,7 +87,7 @@ export function CtaSection() {
                     }
                   >
                     Create this week&apos;s plan
-                    <ArrowRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                    <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                   </a>
                 </Button>
 
@@ -95,7 +95,7 @@ export function CtaSection() {
                   asChild
                   size="lg"
                   variant="outline"
-                  className="h-13 rounded-full border-[#cbd5e1] bg-white px-7 text-base font-medium text-[#334155] shadow-xs hover:border-[#94a3b8] hover:bg-[#f8fafc]"
+                  className="h-14 rounded-full border-[#cbd5e1] bg-white px-8 text-lg font-medium text-[#334155] shadow-xs hover:border-[#94a3b8] hover:bg-[#f8fafc]"
                 >
                   <a
                     href={BOOKING_URL}
