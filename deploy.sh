@@ -165,17 +165,28 @@ push_to_github() {
     echo "$nested_repos" | sed 's/^/    /'
   fi
 
+  local branch
+  branch="$(git symbolic-ref --short HEAD)"
+
+  echo "  Syncing latest changes from $REMOTE_NAME/$branch..."
+  git fetch "$REMOTE_NAME" "$branch" || true
+
   git add -A
 
   if git diff --cached --quiet; then
-    echo "  Nothing staged — working tree already matches the last commit."
+    echo "  Nothing staged — working tree matches local HEAD."
   else
     local message="${COMMIT_MESSAGE:-chore: deploy $(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
     git commit -m "$message"
   fi
 
-  local branch
-  branch="$(git symbolic-ref --short HEAD)"
+  echo "  Pulling remote changes from $REMOTE_NAME/$branch..."
+  git pull --rebase "$REMOTE_NAME" "$branch" || {
+    echo "⚠ Could not rebase automatically. Falling back to standard merge..."
+    git rebase --abort 2>/dev/null || true
+    git pull --no-rebase "$REMOTE_NAME" "$branch"
+  }
+
   echo "  Pushing '$branch' to $REMOTE_NAME..."
   push_with_github_account -u "$REMOTE_NAME" "$branch"
 }

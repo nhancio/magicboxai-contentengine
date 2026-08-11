@@ -539,6 +539,18 @@ Return ONLY a JSON object with exactly these keys:
 - "industry": string — a short phrase (e.g. "B2B SaaS", "DTC skincare", "3PL logistics").
 - "audience": string — who they sell to, in one concise sentence.
 - "tone": string — their brand voice in 3-6 words (e.g. "Confident, plain-spoken, no hype").
+- "coreIdentity": string — what the company essentially is and does.
+- "productOffering": string — the main products or services they offer.
+- "uniqueBenefits": string — the key benefits that their products provide.
+- "problemSolution": string — the problem they solve for their customers.
+- "mission": string — the overarching goal or mission of the brand.
+- "differentiation": string — how they distinguish themselves from competitors.
+- "ownedSpace": string — the unique category or space they own in the market.
+- "contentAngles": array of exactly 3 concise content pillar titles
+- "toneDos": array of up to 5 concise tone Do's
+- "toneDonts": array of up to 5 concise tone Don'ts
+- "customerSegments": array of objects with "segmentName" (string) and "percentage" (number, total 100)
+- "competitors": array of string competitor names
 - "hashtags": array of 5-8 lowercase hashtag words WITHOUT the # (e.g. ["supplychain","manufacturing"]), relevant to their industry and audience.
 - "sampleCaptions": array of exactly 2 short social captions (max 140 chars each) written in the brand's voice about what they do.
 If a field is genuinely unknowable from the text, use an empty string or empty array. Do not invent facts.
@@ -556,6 +568,23 @@ function parseBrandJson(text) {
         industry: str(parsed.industry, 120),
         audience: str(parsed.audience, 300),
         tone: str(parsed.tone, 200),
+        coreIdentity: str(parsed.coreIdentity, 500),
+        productOffering: str(parsed.productOffering, 500),
+        uniqueBenefits: str(parsed.uniqueBenefits, 500),
+        problemSolution: str(parsed.problemSolution, 500),
+        mission: str(parsed.mission, 500),
+        differentiation: str(parsed.differentiation, 500),
+        ownedSpace: str(parsed.ownedSpace, 500),
+        contentAngles: Array.isArray(parsed.contentAngles) ? parsed.contentAngles.map(x => str(x, 100)) : [],
+        toneDos: Array.isArray(parsed.toneDos) ? parsed.toneDos.map(x => str(x, 100)) : [],
+        toneDonts: Array.isArray(parsed.toneDonts) ? parsed.toneDonts.map(x => str(x, 100)) : [],
+        customerSegments: Array.isArray(parsed.customerSegments)
+            ? parsed.customerSegments.map(x => ({
+                segmentName: str(x === null || x === void 0 ? void 0 : x.segmentName, 100),
+                percentage: typeof (x === null || x === void 0 ? void 0 : x.percentage) === 'number' ? x.percentage : 0
+            }))
+            : [],
+        competitors: Array.isArray(parsed.competitors) ? parsed.competitors.map(x => str(x, 100)) : [],
         hashtags: Array.isArray(parsed.hashtags)
             ? parsed.hashtags.slice(0, 8).map((x) => str(x, 40).replace(/^#/, "")).filter(Boolean)
             : [],
