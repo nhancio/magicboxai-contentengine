@@ -18,15 +18,17 @@ import {
  * Meta's newer apps (and the "API setup with Instagram login" product) reject
  * the old Facebook-Login scopes (`instagram_basic`, `instagram_content_publish`,
  * `pages_*`). This provider uses:
- *   - Authorize: www.instagram.com/oauth/authorize
- *   - Tokens:    api.instagram.com + graph.instagram.com
- *   - Publish:   graph.instagram.com
+ *   - Authorize: www.instagram.com/oauth/authorize  (Business Login — required)
+ *   - Tokens:    api.instagram.com + graph.instagram.com (unversioned exchange)
+ *   - Publish:   graph.instagram.com/v21.0
  *
  * No Facebook Page is required. Credentials are the Instagram App ID/Secret
  * from App Dashboard → Instagram → API setup with Instagram login
  * (not the Facebook App ID used by the Facebook Page provider).
  */
 const GRAPH = "https://graph.instagram.com/v21.0";
+/** Token exchange/refresh — Meta docs use the unversioned host. */
+const GRAPH_TOKEN = "https://graph.instagram.com";
 
 /** Container polling: 20 attempts x 6s == ~2 min ceiling. */
 const POLL_ATTEMPTS = 20;
@@ -39,6 +41,9 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
   readonly scopes = [
     "instagram_business_basic",
     "instagram_business_content_publish",
+    // Stats / insights (Instagram Login). Matches Meta Business login embed scopes
+    // for analytics; messaging/comments stay optional and are not requested here.
+    "instagram_business_manage_insights",
   ];
 
   readonly credentialEnv = {
@@ -63,6 +68,7 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
       response_type: "code",
       scope: this.scopes.join(","),
     });
+    // Meta Business Login requires www.instagram.com (not api.instagram.com).
     return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
   }
 
@@ -73,13 +79,19 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
       client_secret: i.clientSecret,
       grant_type: "authorization_code",
       redirect_uri: i.redirectUri,
-      code: i.code,
+      code: i.code.replace(/#_$/, ""),
     });
-    const short = await this.http("https://api.instagram.com/oauth/access_token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: shortBody,
-    });
+
+    let short: any;
+    try {
+      short = await this.http("https://api.instagram.com/oauth/access_token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: shortBody.toString(),
+      });
+    } catch (e) {
+      throw this.wrapStep("short-lived token", e);
+    }
 
     // Response shape: { access_token, user_id, permissions? } or { data: [{...}] }
     const shortToken: string | undefined =
@@ -90,24 +102,40 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
     if (!shortToken) throw new BadBodyError("instagram token exchange returned no access_token");
 
     // 2) short-lived (~1h) -> long-lived (~60d)
-    const long = await this.getOrPostToken(
-      "https://graph.instagram.com/access_token",
-      {
+    // Meta docs say GET; some apps need POST. Both can return the misleading
+    // IGApiException "method type: get|post" when the IG user isn't a Tester /
+    // Advanced Access isn't granted — in that case keep the short-lived token
+    // so Connect still succeeds (token lasts ~1h until Meta access is fixed).
+    let long: { access_token?: string; expires_in?: number } = {};
+    try {
+      long = await this.exchangeOrRefreshToken(`${GRAPH_TOKEN}/access_token`, {
         grant_type: "ig_exchange_token",
         client_secret: i.clientSecret,
         access_token: shortToken,
-      },
-    );
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/method type:\s*(get|post)/i.test(msg) || /IGApiException/i.test(msg)) {
+        console.warn(
+          "[instagram] long-lived token blocked by Meta (tester/App Review?). Using 1h token.",
+          msg.slice(0, 180),
+        );
+        long = {};
+      } else {
+        throw this.wrapStep("long-lived token", e);
+      }
+    }
     const accessToken: string = long.access_token ?? shortToken;
+    const expiresAt = long.expires_in
+      ? Date.now() + long.expires_in * 1000
+      : Date.now() + 60 * 60 * 1000; // short-lived fallback ~1h
 
-    // 3) profile for display — user_id from /me is the IG id used for publish
-    const me = await this.http(
-      `${GRAPH}/me?` +
-        new URLSearchParams({
-          fields: "user_id,username,name,account_type,profile_picture_url",
-          access_token: accessToken,
-        }).toString(),
-    );
+
+    // 3) profile for display — optional. Token exchange already returns user_id.
+    // Meta often returns IGApiException "method type: get" on /me when the IG
+    // account is not an App Tester / Business isn't verified — same wording as
+    // a real HTTP-method bug. Never fail connect solely on profile fetch.
+    const me = await this.fetchProfile(accessToken, scopedUserId);
 
     const igUserId = String(me.user_id ?? scopedUserId);
     if (!igUserId) {
@@ -125,7 +153,7 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
         token: {
           // Instagram User token publishes directly — no Page token needed.
           accessToken,
-          expiresAt: long.expires_in ? Date.now() + long.expires_in * 1000 : undefined,
+          expiresAt,
           igUserId,
           scopes: this.scopes,
         },
@@ -135,13 +163,18 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
 
   async refresh(t: ProviderToken, _clientId: string, _clientSecret: string): Promise<ProviderToken> {
     // Long-lived IG tokens can be refreshed while still valid (and >24h old).
-    const refreshed = await this.getOrPostToken(
-      "https://graph.instagram.com/refresh_access_token",
-      {
-        grant_type: "ig_refresh_token",
-        access_token: t.accessToken,
-      },
-    );
+    let refreshed: any;
+    try {
+      refreshed = await this.exchangeOrRefreshToken(
+        `${GRAPH_TOKEN}/refresh_access_token`,
+        {
+          grant_type: "ig_refresh_token",
+          access_token: t.accessToken,
+        },
+      );
+    } catch (e) {
+      throw this.wrapStep("refresh token", e);
+    }
     if (!refreshed.access_token) {
       throw new NotEnoughScopesError(
         "instagram token refresh failed; user must reconnect",
@@ -156,28 +189,95 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
     };
   }
 
-  private async getOrPostToken(
+  private wrapStep(step: string, e: unknown): Error {
+    const msg = e instanceof Error ? e.message : String(e);
+    return new BadBodyError(`instagram ${step}: ${msg}`);
+  }
+
+  /**
+   * Best-effort profile. Prefer /me, then /{id}. On Meta's misleading
+   * "method type: get" access errors, return whatever id we already have.
+   */
+  private async fetchProfile(
+    accessToken: string,
+    scopedUserId: string,
+  ): Promise<{
+    user_id?: string;
+    username?: string;
+    name?: string;
+    profile_picture_url?: string;
+  }> {
+    const fields = "user_id,username,name,profile_picture_url";
+    const attempts: string[] = [
+      `${GRAPH_TOKEN}/me?${new URLSearchParams({ fields, access_token: accessToken })}`,
+      `${GRAPH}/me?${new URLSearchParams({ fields, access_token: accessToken })}`,
+    ];
+    if (scopedUserId) {
+      attempts.push(
+        `${GRAPH_TOKEN}/${scopedUserId}?${new URLSearchParams({
+          fields: "username,name,profile_picture_url",
+          access_token: accessToken,
+        })}`,
+      );
+    }
+
+    for (const url of attempts) {
+      try {
+        const me = await this.http(url, { method: "GET", retries: 0 });
+        return {
+          user_id: me.user_id ? String(me.user_id) : scopedUserId || undefined,
+          username: me.username,
+          name: me.name,
+          profile_picture_url: me.profile_picture_url,
+        };
+      } catch {
+        /* try next */
+      }
+    }
+
+    return { user_id: scopedUserId || undefined };
+  }
+
+  /**
+   * Long-lived token exchange + refresh.
+   * Try POST (body), POST (query), then GET — Meta's required method varies by
+   * app/account, and "method type: get|post" is also their catch-all for
+   * missing Tester / Advanced Access.
+   */
+  private async exchangeOrRefreshToken(
     endpoint: string,
     params: Record<string, string>,
   ): Promise<any> {
-    const searchParams = new URLSearchParams(params);
-    // Try POST first for token endpoints as required by Meta's newer Graph API
-    try {
-      return await this.http(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: searchParams,
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/method type: post|unsupported request/i.test(msg)) {
-        // Fall back to GET if POST is rejected
-        return await this.http(`${endpoint}?${searchParams.toString()}`, {
+    const qs = new URLSearchParams(params).toString();
+    const attempts: Array<() => Promise<any>> = [
+      () =>
+        this.http(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: qs,
+          retries: 0,
+        }),
+      () =>
+        this.http(`${endpoint}?${qs}`, {
+          method: "POST",
+          retries: 0,
+        }),
+      () =>
+        this.http(`${endpoint}?${qs}`, {
           method: "GET",
-        });
+          retries: 0,
+        }),
+    ];
+
+    let lastErr: unknown;
+    for (const run of attempts) {
+      try {
+        return await run();
+      } catch (e) {
+        lastErr = e;
       }
-      throw e;
     }
+    throw lastErr instanceof Error ? lastErr : new BadBodyError(String(lastErr));
   }
 
   async publish(t: ProviderToken, input: PublishInput): Promise<PublishResult> {
@@ -242,7 +342,7 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
               image_url: image.url,
               is_carousel_item: "true",
               access_token: t.accessToken,
-            }),
+            }).toString(),
           });
           if (!child.id) {
             throw new BadBodyError("Instagram carousel child returned no creation id");
@@ -258,7 +358,7 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
             children: childIds.join(","),
             caption,
             access_token: t.accessToken,
-          }),
+          }).toString(),
         });
         creationId = parent.id;
       } else {
@@ -271,7 +371,7 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
         }
         const created = await this.http(`${GRAPH}/${igUserId}/media`, {
           method: "POST",
-          body: containerParams,
+          body: containerParams.toString(),
         });
         creationId = created.id;
       }
@@ -294,7 +394,7 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
     try {
       published = await this.http(`${GRAPH}/${igUserId}/media_publish`, {
         method: "POST",
-        body: new URLSearchParams({ creation_id: creationId, access_token: t.accessToken }),
+        body: new URLSearchParams({ creation_id: creationId, access_token: t.accessToken }).toString(),
         retries: 0,
       });
     } catch (e) {
