@@ -9,6 +9,7 @@ import {
   getBrandProfiles,
   saveBrandProfile,
   deleteBrandProfile,
+  updateBrandProfile,
 } from "@shared/lib/automations";
 import {
   extractBrandFromWebsite,
@@ -16,6 +17,7 @@ import {
 } from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
 import { Input } from "@shared/components/ui/input";
+import { Textarea } from "@shared/components/ui/textarea";
 import { cn } from "@shared/lib/utils";
 import { captureEvent } from "@shared/lib/analytics";
 import { isConvexConfigured } from "../lib/convex";
@@ -28,6 +30,7 @@ import {
   Sparkles,
   Trash2,
   Type,
+  Pencil,
 } from "lucide-react";
 
 type Phase = "idle" | "scanning" | "ready" | "saving";
@@ -61,6 +64,8 @@ function Swatch({ hex, label }: { hex?: string; label: string }) {
     </div>
   );
 }
+
+import { BrandKitDetail } from "../components/brand/BrandKitDetail";
 
 export default function BrandKit() {
   const { user } = useAuth();
@@ -152,6 +157,18 @@ export default function BrandKit() {
         sampleCaptions: extracted.sampleCaptions?.length
           ? extracted.sampleCaptions
           : undefined,
+        coreIdentity: extracted.coreIdentity || undefined,
+        productOffering: extracted.productOffering || undefined,
+        uniqueBenefits: extracted.uniqueBenefits || undefined,
+        problemSolution: extracted.problemSolution || undefined,
+        mission: extracted.mission || undefined,
+        differentiation: extracted.differentiation || undefined,
+        ownedSpace: extracted.ownedSpace || undefined,
+        contentAngles: extracted.contentAngles || undefined,
+        toneDos: extracted.toneDos || undefined,
+        toneDonts: extracted.toneDonts || undefined,
+        customerSegments: extracted.customerSegments || undefined,
+        competitors: extracted.competitors || undefined,
       });
       if (isConvexConfigured) {
         try {
@@ -176,6 +193,18 @@ export default function BrandKit() {
             sampleCaptions: extracted.sampleCaptions?.length
               ? extracted.sampleCaptions
               : undefined,
+            coreIdentity: extracted.coreIdentity || undefined,
+            productOffering: extracted.productOffering || undefined,
+            uniqueBenefits: extracted.uniqueBenefits || undefined,
+            problemSolution: extracted.problemSolution || undefined,
+            mission: extracted.mission || undefined,
+            differentiation: extracted.differentiation || undefined,
+            ownedSpace: extracted.ownedSpace || undefined,
+            contentAngles: extracted.contentAngles || undefined,
+            toneDos: extracted.toneDos || undefined,
+            toneDonts: extracted.toneDonts || undefined,
+            customerSegments: extracted.customerSegments || undefined,
+            competitors: extracted.competitors || undefined,
           });
         } catch (error) {
           console.warn("[brand-kit] Convex brand sync will retry from the saved kit", error);
@@ -369,83 +398,38 @@ export default function BrandKit() {
               </div>
             </div>
 
-            <div className="grid gap-6 p-6 lg:grid-cols-[1fr_1.2fr]">
-              <div>
-                <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Palette
-                </p>
-                <div className="flex flex-wrap gap-4">
-                  <Swatch hex={extracted.colors.primary} label="Primary" />
-                  <Swatch hex={extracted.colors.secondary} label="Secondary" />
-                  <Swatch hex={extracted.colors.accent} label="Accent" />
-                  {!extracted.colors.primary && (
-                    <p className="text-sm text-muted-foreground">No strong palette found.</p>
-                  )}
-                </div>
-                {extracted.fonts?.length > 0 && (
-                  <div className="mt-6">
-                    <p className="mb-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                      <Type className="h-3 w-3" /> Fonts
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {extracted.fonts.slice(0, 4).map((f) => (
-                        <span
-                          key={f}
-                          className="rounded-full border border-border bg-secondary px-3 py-1 text-xs text-foreground/80"
-                        >
-                          {f}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                    Audience
-                  </p>
-                  <p className="text-sm leading-relaxed text-foreground/90">
-                    {extracted.audience || "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                    Tone of voice
-                  </p>
-                  <p className="text-sm leading-relaxed text-foreground/90">
-                    {extracted.tone || "—"}
-                  </p>
-                </div>
-                {extracted.hashtags?.length > 0 && (
-                  <div>
-                    <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                      Hashtags
-                    </p>
-                    <p className="font-mono text-xs text-brand">
-                      {extracted.hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ")}
-                    </p>
-                  </div>
-                )}
-                {extracted.sampleCaptions?.length > 0 && (
-                  <div>
-                    <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                      Sample captions
-                    </p>
-                    <ul className="space-y-2">
-                      {extracted.sampleCaptions.map((c) => (
-                        <li
-                          key={c}
-                          className="rounded-lg border border-border bg-secondary/60 px-3 py-2 text-sm italic text-muted-foreground"
-                        >
-                          “{c}”
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
+            <div className="p-6">
+              <BrandKitDetail 
+                brand={{
+                  id: "preview",
+                  name: extracted.companyName || "Untitled brand",
+                  industry: extracted.industry || "",
+                  toneOfVoice: extracted.tone || "",
+                  audience: extracted.audience || "",
+                  websiteUrl: extractedUrl,
+                  logoUrl: extracted.logoUrl || undefined,
+                  colors: {
+                    primary: extracted.colors.primary || "#111111",
+                    secondary: extracted.colors.secondary,
+                    accent: extracted.colors.accent,
+                  },
+                  hashtagSets: { default: (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean) },
+                  sampleCaptions: extracted.sampleCaptions || [],
+                  coreIdentity: extracted.coreIdentity,
+                  productOffering: extracted.productOffering,
+                  uniqueBenefits: extracted.uniqueBenefits,
+                  problemSolution: extracted.problemSolution,
+                  mission: extracted.mission,
+                  differentiation: extracted.differentiation,
+                  ownedSpace: extracted.ownedSpace,
+                  contentAngles: extracted.contentAngles,
+                  toneDos: extracted.toneDos,
+                  toneDonts: extracted.toneDonts,
+                  customerSegments: extracted.customerSegments,
+                  competitors: extracted.competitors,
+                } as BrandProfile} 
+                onUpdated={() => {}} 
+              />
             </div>
           </motion.section>
         )}
@@ -523,17 +507,25 @@ export default function BrandKit() {
                           ))}
                       </div>
                     </div>
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       aria-label={`Delete ${brand.name}`}
                       className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-secondary hover:text-red-600 group-hover:opacity-100"
                       onClick={(e) => {
                         e.stopPropagation();
                         void handleDelete(brand.id);
                       }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void handleDelete(brand.id);
+                        }
+                      }}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    </div>
                   </div>
                 </button>
               );
@@ -542,37 +534,9 @@ export default function BrandKit() {
         )}
 
         {selected && (
-          <div className="mt-4 rounded-2xl border border-border bg-card p-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="font-display text-lg">{selected.name}</h3>
-              {selected.websiteUrl && (
-                <a
-                  href={selected.websiteUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 font-mono text-[11px] text-brand hover:underline"
-                >
-                  {selected.websiteUrl.replace(/^https?:\/\//, "")}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <p className="text-sm text-muted-foreground">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-foreground/50">
-                  Audience
-                </span>
-                <br />
-                {selected.audience || "—"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-foreground/50">
-                  Tone
-                </span>
-                <br />
-                {selected.toneOfVoice || "—"}
-              </p>
-            </div>
+          <div className="mt-10 space-y-6">
+
+            <BrandKitDetail brand={selected} onUpdated={refresh} />
           </div>
         )}
       </section>

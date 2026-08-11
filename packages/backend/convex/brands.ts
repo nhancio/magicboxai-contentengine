@@ -36,6 +36,25 @@ export const upsertFromWebsite = mutation({
     industry: v.optional(v.string()),
     toneOfVoice: v.optional(v.string()),
     audience: v.optional(v.string()),
+    coreIdentity: v.optional(v.string()),
+    productOffering: v.optional(v.string()),
+    uniqueBenefits: v.optional(v.string()),
+    problemSolution: v.optional(v.string()),
+    mission: v.optional(v.string()),
+    differentiation: v.optional(v.string()),
+    ownedSpace: v.optional(v.string()),
+    contentAngles: v.optional(v.array(v.string())),
+    toneDos: v.optional(v.array(v.string())),
+    toneDonts: v.optional(v.array(v.string())),
+    customerSegments: v.optional(
+      v.array(
+        v.object({
+          segmentName: v.string(),
+          percentage: v.number(),
+        })
+      )
+    ),
+    competitors: v.optional(v.array(v.string())),
     hashtagSets: v.optional(v.object({ default: v.array(v.string()) })),
     sampleCaptions: v.optional(v.array(v.string())),
   },
@@ -63,6 +82,18 @@ export const upsertFromWebsite = mutation({
       ...(args.industry ? { industry: args.industry } : {}),
       ...(args.toneOfVoice ? { toneOfVoice: args.toneOfVoice } : {}),
       ...(args.audience ? { audience: args.audience } : {}),
+      ...(args.coreIdentity ? { coreIdentity: args.coreIdentity } : {}),
+      ...(args.productOffering ? { productOffering: args.productOffering } : {}),
+      ...(args.uniqueBenefits ? { uniqueBenefits: args.uniqueBenefits } : {}),
+      ...(args.problemSolution ? { problemSolution: args.problemSolution } : {}),
+      ...(args.mission ? { mission: args.mission } : {}),
+      ...(args.differentiation ? { differentiation: args.differentiation } : {}),
+      ...(args.ownedSpace ? { ownedSpace: args.ownedSpace } : {}),
+      ...(args.contentAngles ? { contentAngles: args.contentAngles } : {}),
+      ...(args.toneDos ? { toneDos: args.toneDos } : {}),
+      ...(args.toneDonts ? { toneDonts: args.toneDonts } : {}),
+      ...(args.customerSegments ? { customerSegments: args.customerSegments } : {}),
+      ...(args.competitors ? { competitors: args.competitors } : {}),
       ...(args.hashtagSets ? { hashtagSets: args.hashtagSets } : {}),
       ...(args.sampleCaptions ? { sampleCaptions: args.sampleCaptions } : {}),
       updatedAt: now,
@@ -128,3 +159,49 @@ export const removeByLegacyId = mutation({
     return { removed: true };
   },
 });
+
+/** Update specific details of a brand kit from the UI. */
+export const updateDetails = mutation({
+  args: {
+    legacyId: v.string(),
+    coreIdentity: v.optional(v.string()),
+    productOffering: v.optional(v.string()),
+    uniqueBenefits: v.optional(v.string()),
+    problemSolution: v.optional(v.string()),
+    mission: v.optional(v.string()),
+    differentiation: v.optional(v.string()),
+    ownedSpace: v.optional(v.string()),
+    contentAngles: v.optional(v.array(v.string())),
+    toneDos: v.optional(v.array(v.string())),
+    toneDonts: v.optional(v.array(v.string())),
+    customerSegments: v.optional(
+      v.array(
+        v.object({
+          segmentName: v.string(),
+          percentage: v.number(),
+        })
+      )
+    ),
+    competitors: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const uid = await requireUid(ctx);
+    const existing = await ctx.db
+      .query("brandProfiles")
+      .withIndex("by_legacyId", (q) => q.eq("legacyId", args.legacyId))
+      .unique();
+      
+    if (!existing || existing.userId !== uid) {
+      throw new Error("Brand profile not found");
+    }
+
+    const { legacyId, ...updates } = args;
+    await ctx.db.patch(existing._id, {
+      ...updates,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+

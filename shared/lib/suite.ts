@@ -184,6 +184,20 @@ export type BrandExtractResult = {
   brandedImageSource: "website" | "generated" | "";
   colors: { primary?: string; secondary?: string; accent?: string };
   fonts: string[];
+  
+  coreIdentity?: string;
+  productOffering?: string;
+  uniqueBenefits?: string;
+  problemSolution?: string;
+  mission?: string;
+  differentiation?: string;
+  ownedSpace?: string;
+
+  contentAngles?: string[];
+  toneDos?: string[];
+  toneDonts?: string[];
+  customerSegments?: Array<{ segmentName: string; percentage: number }>;
+  competitors?: string[];
 };
 
 export const extractBrandFromWebsite = callable<{ url: string }, BrandExtractResult>(
