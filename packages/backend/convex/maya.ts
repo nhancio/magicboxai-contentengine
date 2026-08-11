@@ -388,6 +388,7 @@ export const deck = query({
       .withIndex("by_userId_batchDate", (q) => q.eq("userId", uid).eq("batchDate", batchDate))
       .collect();
 
+    console.log(`[maya] deck query for ${uid}, batchDate: ${batchDate}. total rows: ${rows.length}, pending: ${rows.filter((r) => r.status === "pending").length}`);
     return {
       batchDate,
       locked: !activation.ready,
@@ -688,6 +689,7 @@ export const insertSuggestion = internalMutation({
     pillarId: v.optional(v.string()),
     batchDate: v.string(),
     slot: v.number(),
+    runId: v.optional(v.string()),
     postFormat: v.optional(
       v.union(
         v.literal("image"),
@@ -711,7 +713,7 @@ export const insertSuggestion = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const idempotencyKey = `${args.userId}_${args.batchDate}_${args.slot}`;
+    const idempotencyKey = `${args.userId}_${args.batchDate}_${args.slot}_${args.runId ?? "cron"}`;
 
     // Exactly-once per (user, day, slot) even if the cron double-fires.
     const existing = await ctx.db
@@ -780,6 +782,21 @@ function pickPillars<T extends { _id: string; name: string; weight: number; last
 /**
  * Generate one user's deck for one day. Idempotent on (userId, batchDate).
  */
+
+
+export const getMaxSlotForDay = internalQuery({
+  args: { userId: v.string(), batchDate: v.string() },
+  handler: async (ctx, { userId, batchDate }) => {
+    const rows = await ctx.db
+      .query("suggestions")
+      .withIndex("by_userId_batchDate", (q) => q.eq("userId", userId).eq("batchDate", batchDate))
+      .collect();
+    if (rows.length === 0) return -1;
+    const slots = rows.map((r) => (typeof r.slot === 'number' && !isNaN(r.slot)) ? r.slot : -1);
+    return Math.max(...slots);
+  }
+});
+
 export const generateForUser = internalAction({
   args: { userId: v.string(), force: v.optional(v.boolean()) },
   handler: async (ctx, { userId, force }): Promise<{ created: number; reason?: string }> => {
@@ -792,6 +809,10 @@ export const generateForUser = internalAction({
     if (!cfg.enabled && !force) return { created: 0, reason: "disabled" };
 
     const batchDate = localBatchDate(Date.now(), cfg.timezone);
+    const maxSlot = await ctx.runQuery(internal.maya.getMaxSlotForDay, { userId, batchDate });
+    const startSlot = maxSlot + 1;
+    const runId = Date.now().toString();
+    console.log(`[maya] generating for ${userId}, batchDate: ${batchDate}, maxSlot: ${maxSlot}, startSlot: ${startSlot}`);
 
     if (!force) {
       const existing = await ctx.runQuery(internal.maya.countBatch, { userId, batchDate });
@@ -986,7 +1007,8 @@ export const generateForUser = internalAction({
         brandProfileId: brand?._id,
         pillarId: pillar?._id,
         batchDate,
-        slot: created,
+        slot: startSlot + created,
+        runId,
         postFormat: format as any,
         scheduledAt: targetScheduledAt,
         platforms: [c.platform],

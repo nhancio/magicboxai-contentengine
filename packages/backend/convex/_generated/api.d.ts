@@ -36,6 +36,7 @@ import type * as myVideo from "../myVideo.js";
 import type * as posts from "../posts.js";
 import type * as publish from "../publish.js";
 import type * as scheduler from "../scheduler.js";
+import type * as seed from "../seed.js";
 import type * as social from "../social.js";
 import type * as studio from "../studio.js";
 import type * as trends from "../trends.js";
@@ -78,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   posts: typeof posts;
   publish: typeof publish;
   scheduler: typeof scheduler;
+  seed: typeof seed;
   social: typeof social;
   studio: typeof studio;
   trends: typeof trends;
