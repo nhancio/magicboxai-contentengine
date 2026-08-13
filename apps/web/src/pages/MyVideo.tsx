@@ -199,6 +199,7 @@ export default function MyVideo() {
       const resolved = await resolveUploadMutation({ storageId });
       setRawVideoUrl(resolved.url);
       setRawStorageId(resolved.storageId as Id<"_storage">);
+      setActiveProjectId(null); // Reset active project so the old preview clears
       setUploadProgress(100);
 
       if (!projectTitle) {
@@ -307,7 +308,7 @@ export default function MyVideo() {
   };
 
   const edl = activeProject?.edl;
-  const currentVideoUrl = activeProject?.editedVideoUrl || activeProject?.rawVideoUrl || rawVideoUrl;
+  const currentVideoUrl = activeProject?.editedVideoUrl || (edl ? (activeProject?.rawVideoUrl || rawVideoUrl) : undefined);
 
   return (
     <div className="space-y-8 pb-12">
@@ -324,7 +325,7 @@ export default function MyVideo() {
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
-            Conversational full-stack video editing powered by Gemini API & video-use. Automatically cut filler words,
+            Conversational full-stack video editing powered by Gemini API & video-use (from browser-use). Automatically cut filler words,
             apply 30ms audio fades, auto color grade, and burn bold 2-word uppercase subtitles for multi-channel publishing.
           </p>
         </div>
