@@ -432,7 +432,7 @@ export default function WarmedUpAccounts() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-12 animate-fade-in pb-12">
+    <div className="mx-auto max-w-7xl space-y-20 md:space-y-24 animate-fade-in pb-12">
       {/* Top Banner & Hero */}
       <div className="relative overflow-hidden rounded-2xl border border-brand/20 bg-gradient-to-br from-brand/10 via-card to-background p-6 sm:p-10 shadow-xl">
         <div className="absolute top-0 right-0 -mt-8 -mr-8 h-64 w-64 rounded-full bg-brand/10 blur-3xl pointer-events-none" />
@@ -487,50 +487,24 @@ export default function WarmedUpAccounts() {
         </div>
       </div>
 
-      {/* Feature Value Props Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-brand">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Speed</span>
-            <Clock className="w-4 h-4 text-brand" />
-          </div>
-          <div className="text-xl font-display text-foreground">Zero Days Warmup</div>
-          <p className="text-xs text-muted-foreground">
-            Start posting 50+ pieces of content daily on Day 1 without getting flagged or throttled.
-          </p>
+      {/* Feature Value Props Condensed Trust Strip */}
+      {/* ponytail: merged 4 bloated cards into 1 condensed high-density trust strip to reduce vertical noise */}
+      <div className="glass-card bg-card/30 border border-border/50 py-4 px-6 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 md:divide-x divide-border/30 text-sm">
+        <div className="flex items-center gap-2.5 flex-1 justify-center md:justify-start">
+          <Clock className="w-4 h-4 text-brand shrink-0" />
+          <span className="font-semibold text-foreground">Zero Days Warmup</span>
         </div>
-
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-emerald-500">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Trust</span>
-            <Shield className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-xl font-display text-foreground">Phone Verified (PVA)</div>
-          <p className="text-xs text-muted-foreground">
-            Aged 6–14+ months with organic human engagement baseline and pristine IP history.
-          </p>
+        <div className="flex items-center gap-2.5 flex-1 justify-center md:justify-start md:pl-6">
+          <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="font-semibold text-foreground">Phone Verified (PVA)</span>
         </div>
-
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-amber-500">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Listing</span>
-            <Tag className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-xl font-display text-foreground">List & Sell Account</div>
-          <p className="text-xs text-muted-foreground">
-            Submit your Instagram/YouTube accounts for review and list them for sale in our hub.
-          </p>
+        <div className="flex items-center gap-2.5 flex-1 justify-center md:justify-start md:pl-6">
+          <Tag className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="font-semibold text-foreground">List & Sell Account</span>
         </div>
-
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-purple-500">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Value</span>
-            <ShoppingBag className="w-4 h-4 text-purple-400" />
-          </div>
-          <div className="text-xl font-display text-foreground">$10 Flat Price</div>
-          <p className="text-xs text-muted-foreground">
-            Transparent $10 standard price per account with full ownership transfer and email control.
-          </p>
+        <div className="flex items-center gap-2.5 flex-1 justify-center md:justify-start md:pl-6">
+          <ShoppingBag className="w-4 h-4 text-purple-400 shrink-0" />
+          <span className="font-semibold text-foreground">$10 Flat Price</span>
         </div>
       </div>
 
@@ -666,11 +640,18 @@ export default function WarmedUpAccounts() {
                             <h3 className="font-display text-lg text-foreground leading-snug">
                               {account.title}
                             </h3>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                              <span>{account.age}</span>
-                              <span>•</span>
-                              <span className="text-emerald-400 font-medium">Trust Score {account.trustScore}%</span>
-                            </p>
+                            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                              <Badge variant="outline" className={cn(
+                                "text-[10px] px-1.5 py-0 font-semibold font-mono uppercase tracking-wider",
+                                isInstagram ? "border-rose-500/20 bg-rose-500/5 text-rose-400" : "border-red-500/20 bg-red-500/5 text-red-400"
+                              )}>
+                                {account.platform}
+                              </Badge>
+                              <Badge variant="outline" className="border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-[10px] px-1.5 py-0 font-semibold font-mono uppercase tracking-wider">
+                                Trust {account.trustScore}%
+                              </Badge>
+                              <span className="text-[10px] text-muted-foreground font-mono">{account.age}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -699,15 +680,32 @@ export default function WarmedUpAccounts() {
                         </div>
                       </div>
 
-                      {/* Features List */}
+                      {/* Features List - Cut to 3 max decision-relevant bullets */}
                       <ul className="space-y-2 text-xs text-muted-foreground pt-1">
-                        {account.features.map((feat, fIdx) => (
+                        {account.features.slice(0, 3).map((feat, fIdx) => (
                           <li key={fIdx} className="flex items-start gap-2">
                             <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
                             <span>{feat}</span>
                           </li>
                         ))}
                       </ul>
+
+                      {/* Secondary Details Expandable link (using native details/summary) */}
+                      {/* ponytail: native platform <details> handles toggle state with 0 bundle size */}
+                      <details className="group mt-3 text-xs text-muted-foreground">
+                        <summary className="cursor-pointer font-medium text-brand hover:underline select-none list-none flex items-center gap-1.5">
+                          <span>View Setup & Warranty Details</span>
+                          <span className="transition-transform duration-200 group-open:rotate-180">▾</span>
+                        </summary>
+                        <ul className="space-y-1.5 pt-2.5 pl-2.5 border-l border-border/40 mt-2">
+                          {account.features.slice(3).map((feat, fIdx) => (
+                            <li key={fIdx} className="flex items-start gap-1.5">
+                              <Check className="w-3 h-3 text-brand/80 shrink-0 mt-0.5" />
+                              <span className="text-[11px] leading-relaxed">{feat}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
                     </div>
 
                     {/* Footer Action */}
@@ -998,35 +996,30 @@ export default function WarmedUpAccounts() {
             </thead>
             <tbody className="divide-y divide-border/60">
               <tr>
-                <td className="py-3.5 px-4 font-medium text-foreground">Follower / Subscriber Base</td>
-                <td className="py-3.5 px-4 text-muted-foreground flex items-center gap-1.5">
-                  <XCircle className="w-4 h-4 text-red-400" />
-                  0 Followers (Zero Social Proof)
+                <td className="py-3 px-4 font-medium text-foreground">Followers & Social Proof</td>
+                <td className="py-3 px-4 text-muted-foreground flex items-center gap-1.5">
+                  <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span>0 Followers (Zero Social Proof)</span>
                 </td>
-                <td className="py-3.5 px-4 font-semibold text-emerald-400 bg-brand/5 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  5,000 – 10,000 Real Followers
+                <td className="py-3 px-4 font-semibold text-emerald-400 bg-brand/5 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>5,000 – 10,000 Real Followers</span>
                 </td>
               </tr>
               <tr>
-                <td className="py-3.5 px-4 font-medium text-foreground">Warmup Delay</td>
-                <td className="py-3.5 px-4 text-muted-foreground">90+ Days of slow manual activity</td>
-                <td className="py-3.5 px-4 font-semibold text-foreground bg-brand/5">0 Days (Instant Posting)</td>
+                <td className="py-3 px-4 font-medium text-foreground">Warmup Delay & Posting</td>
+                <td className="py-3 px-4 text-muted-foreground">90+ Days of slow manual activity</td>
+                <td className="py-3 px-4 font-semibold text-foreground bg-brand/5">0 Days (Instant 50+ posts/day)</td>
               </tr>
               <tr>
-                <td className="py-3.5 px-4 font-medium text-foreground">Daily Post Tolerance</td>
-                <td className="py-3.5 px-4 text-muted-foreground">1-2 posts/day max (rate-limited)</td>
-                <td className="py-3.5 px-4 font-semibold text-foreground bg-brand/5">50+ posts/day capability</td>
+                <td className="py-3 px-4 font-medium text-foreground">Ban & Shadowban Risk</td>
+                <td className="py-3 px-4 text-red-400">High risk of automated flags</td>
+                <td className="py-3 px-4 font-semibold text-emerald-400 bg-brand/5">Zero (PVA Clean Reputation)</td>
               </tr>
               <tr>
-                <td className="py-3.5 px-4 font-medium text-foreground">Shadowban Risk</td>
-                <td className="py-3.5 px-4 text-red-400">High risk of automated flags</td>
-                <td className="py-3.5 px-4 font-semibold text-emerald-400 bg-brand/5">Zero (PVA Clean Reputation)</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-medium text-foreground">MagicBox Automation Sync</td>
-                <td className="py-3.5 px-4 text-muted-foreground">Manual setup required</td>
-                <td className="py-3.5 px-4 font-semibold text-foreground bg-brand/5">1-Click Auto-Bind Connector</td>
+                <td className="py-3 px-4 font-medium text-foreground">Pricing & Setup Value</td>
+                <td className="py-3 px-4 text-muted-foreground">Time-intensive labor & proxy costs</td>
+                <td className="py-3 px-4 font-semibold text-emerald-400 bg-brand/5">$10 Flat (Immediate Publishing)</td>
               </tr>
             </tbody>
           </table>
@@ -1053,7 +1046,7 @@ export default function WarmedUpAccounts() {
             </div>
             <h3 className="font-display text-lg text-foreground">1. Select or List</h3>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Choose an aged account or submit your own Instagram / YouTube account. Credentials and metrics are validated.
+              Choose a pre-aged account or submit your own Instagram or YouTube channel for verification.
             </p>
           </div>
 
@@ -1061,9 +1054,9 @@ export default function WarmedUpAccounts() {
             <div className="w-8 h-8 rounded-lg bg-brand/10 text-brand font-mono font-bold flex items-center justify-center text-sm">
               02
             </div>
-            <h3 className="font-display text-lg text-foreground">2. Auto-Bind Connector</h3>
+            <h3 className="font-display text-lg text-foreground">2. Auto-Bind</h3>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              MagicBox automatically binds the OAuth connection into your channels manager. No manual daily logins or phone code hassles required.
+              MagicBox instantly connects the account credentials securely into your channels manager.
             </p>
           </div>
 
@@ -1071,9 +1064,9 @@ export default function WarmedUpAccounts() {
             <div className="w-8 h-8 rounded-lg bg-brand/10 text-brand font-mono font-bold flex items-center justify-center text-sm">
               03
             </div>
-            <h3 className="font-display text-lg text-foreground">3. Maya Auto-Publishes</h3>
+            <h3 className="font-display text-lg text-foreground">3. Auto-Publish</h3>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Maya AI writes, designs, and schedules posts straight to your warmed-up channel, driving high-reach distribution from Day 1.
+              Maya AI automatically designs, writes, and schedules high-reach posts directly to your new channel.
             </p>
           </div>
         </div>
@@ -1089,15 +1082,23 @@ export default function WarmedUpAccounts() {
           <h2 className="font-display text-2xl text-foreground">Everything you need to know</h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* ponytail: native details accordions closed by default reduce visual clutter & page length */}
+        <div className="space-y-3">
           {FAQS.map((faq, i) => (
-            <div key={i} className="space-y-1.5 p-4 rounded-xl bg-background/50 border border-border/80">
-              <h3 className="font-medium text-foreground text-sm flex items-start gap-2">
-                <Check className="w-4 h-4 text-brand shrink-0 mt-0.5" />
-                <span>{faq.question}</span>
-              </h3>
-              <p className="text-xs text-muted-foreground pl-6 leading-relaxed">{faq.answer}</p>
-            </div>
+            <details key={i} className="group p-4 rounded-xl bg-background/50 border border-border/80 transition-all duration-200 select-none [&_summary::-webkit-details-marker]:hidden">
+              <summary className="font-medium text-foreground text-sm flex items-start justify-between cursor-pointer list-none gap-4">
+                <div className="flex items-center gap-2.5">
+                  <HelpCircle className="w-4 h-4 text-brand shrink-0" />
+                  <span>{faq.question}</span>
+                </div>
+                <span className="text-muted-foreground font-mono transition-transform duration-200 group-open:rotate-180 shrink-0">
+                  ▾
+                </span>
+              </summary>
+              <div className="text-xs text-muted-foreground pl-6.5 pt-2.5 leading-relaxed border-t border-border/20 mt-2.5">
+                {faq.answer}
+              </div>
+            </details>
           ))}
         </div>
       </div>
