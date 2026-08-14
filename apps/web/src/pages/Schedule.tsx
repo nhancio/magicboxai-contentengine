@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { getSocialPostUrl } from "../lib/socialUrl";
 import { useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
-import type { Post, PostStatus, SocialPlatform } from "@shared/types";
-import { getPostsInRange } from "@shared/lib/automations";
+import type { BrandProfile, Post, PostStatus, SocialPlatform } from "@shared/types";
+import { getBrandProfiles, getPostsInRange } from "@shared/lib/automations";
 import { Button } from "@shared/components/ui/button";
 import { LottiePlayer } from "@shared/components/ui/lottie";
 import { cn } from "@shared/lib/utils";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
+import PreviewModule from "../components/previews/PreviewModule";
+import type { PreviewContent } from "../components/previews/PlatformPreview";
 import {
+  ArrowLeft,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -99,6 +103,9 @@ export default function Schedule() {
   const [legacyPosts, setLegacyPosts] = useState<Post[]>([]);
   const [legacyLoading, setLegacyLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
+  const [previewPost, setPreviewPost] = useState<Post | null>(null);
+  const [previewPlatform, setPreviewPlatform] = useState<SocialPlatform>("linkedin");
+  const [brands, setBrands] = useState<BrandProfile[]>([]);
 
   const days = useMemo(() => monthMatrix(anchor), [anchor]);
   const rangeStart = days[0];
@@ -123,6 +130,13 @@ export default function Schedule() {
       .catch(() => setLegacyPosts([]))
       .finally(() => setLegacyLoading(false));
   }, [user, rangeStart, rangeEnd]);
+
+  useEffect(() => {
+    if (!user) return;
+    getBrandProfiles(user.uid)
+      .then(setBrands)
+      .catch(() => setBrands([]));
+  }, [user]);
 
   const posts = useMemo(() => {
     const fromConvex = (convexPosts ?? []).map(toUiPost);
@@ -150,26 +164,79 @@ export default function Schedule() {
     year: "numeric",
   });
 
+  useEffect(() => {
+    setPreviewPost(null);
+  }, [selectedDay]);
+
+  useEffect(() => {
+    if (previewPost?.platforms?.[0]) {
+      setPreviewPlatform(previewPost.platforms[0]);
+    }
+  }, [previewPost?.id]);
+
+  const brandForPreview = useMemo(() => {
+    if (!brands.length) return null;
+    if (previewPost?.brandProfileId) {
+      const match = brands.find((b) => b.id === previewPost.brandProfileId);
+      if (match) return match;
+    }
+    return brands[0] ?? null;
+  }, [brands, previewPost?.brandProfileId]);
+
+  const previewContent: PreviewContent | null = previewPost
+    ? {
+        caption:
+          previewPost.content?.perPlatform?.[previewPlatform]?.caption ??
+          previewPost.content?.caption ??
+          previewPost.brief ??
+          "",
+        hashtags: previewPost.content?.hashtags,
+        imageUrl: previewPost.media?.find((m) => m.type === "image")?.url,
+        videoUrl: previewPost.media?.find((m) => m.type === "video")?.url,
+        brandName: brandForPreview?.name || "Your Brand",
+        logoUrl: brandForPreview?.logoUrl,
+        handle: brandForPreview?.name
+          ? brandForPreview.name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24)
+          : undefined,
+        brandColors: brandForPreview?.colors
+          ? {
+              primary: brandForPreview.colors.primary,
+              secondary: brandForPreview.colors.secondary,
+              accent: brandForPreview.colors.accent,
+            }
+          : undefined,
+      }
+    : null;
+
+  function handlePostClick(post: Post) {
+    if (post.status === "draft") {
+      setPreviewPost(post);
+      return;
+    }
+    const url = getSocialPostUrl(post);
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="mx-auto flex h-[calc(100dvh-5rem)] max-w-6xl flex-col overflow-hidden lg:h-[calc(100dvh-2.5rem)]">
+      <div className="mb-4 flex shrink-0 items-center justify-between sm:mb-5">
         <div>
           <span className="eyebrow">Schedule</span>
-          <h1 className="mt-2 font-display text-3xl">Calendar</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="mt-1 font-display text-2xl sm:mt-2 sm:text-3xl">Calendar</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground sm:mt-1">
             Every scheduled and published post across your channels.
           </p>
         </div>
-        <Button asChild>
-          <a href="/automations/new">
-            <Plus className="mr-1.5 h-4 w-4" /> New automation
-          </a>
+        <Button asChild className="shrink-0">
+          <Link to="/studio">
+            <Plus className="mr-1.5 h-4 w-4" /> Create now
+          </Link>
         </Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="glass-card p-5">
-          <div className="mb-4 flex items-center justify-between">
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 lg:grid-cols-2 lg:grid-rows-1 lg:gap-6">
+        <div className="glass-card flex min-h-0 flex-col p-4 sm:p-5">
+          <div className="mb-3 flex shrink-0 items-center justify-between sm:mb-4">
             <h2 className="font-display text-xl">{monthLabel}</h2>
             <div className="flex items-center gap-1">
               <Button
@@ -202,12 +269,15 @@ export default function Schedule() {
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-1">
-            {WEEKDAYS.map((d) => (
-              <div key={d} className="pb-2 text-center text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                {d}
-              </div>
-            ))}
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="grid shrink-0 grid-cols-7 gap-1">
+              {WEEKDAYS.map((d) => (
+                <div key={d} className="pb-1.5 text-center text-[10px] font-mono uppercase tracking-widest text-muted-foreground sm:pb-2">
+                  {d}
+                </div>
+              ))}
+            </div>
+            <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1">
             {days.map((day) => {
               const inMonth = day.getMonth() === anchor.getMonth();
               const isToday = dayKey(day) === dayKey(today);
@@ -218,7 +288,7 @@ export default function Schedule() {
                   key={day.toISOString()}
                   onClick={() => setSelectedDay(day)}
                   className={cn(
-                    "flex aspect-square flex-col items-center justify-start rounded-lg border p-1 pt-1.5 transition-colors sm:aspect-[4/3]",
+                    "flex min-h-0 flex-col items-center justify-start rounded-lg border p-0.5 pt-1 transition-colors sm:p-1 sm:pt-1.5",
                     isSelected
                       ? "border-brand/40 bg-brand/10"
                       : "border-transparent hover:bg-accent",
@@ -249,10 +319,11 @@ export default function Schedule() {
                 </button>
               );
             })}
+            </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3 text-[11px] text-muted-foreground">
-            {(["scheduled", "generating", "pending_approval", "posted", "failed"] as PostStatus[]).map((s) => (
+          <div className="mt-3 flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-t border-border pt-2.5 text-[11px] text-muted-foreground sm:mt-4 sm:pt-3">
+            {(["scheduled", "generating", "pending_approval", "posted", "failed", "draft"] as PostStatus[]).map((s) => (
               <span key={s} className="flex items-center gap-1.5">
                 <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[s])} />
                 {STATUS_LABEL[s]}
@@ -261,61 +332,94 @@ export default function Schedule() {
           </div>
         </div>
 
-        {/* Day detail */}
-        <div className="glass-card p-5">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-            <CalendarDays className="h-4 w-4 text-brand" />
-            {selectedDay.toLocaleDateString(undefined, {
-              weekday: "long",
-              month: "short",
-              day: "numeric",
-            })}
-          </h3>
-          {loading ? (
-            <div className="space-y-2">
-              {[0, 1].map((i) => (
-                <div key={i} className="h-16 animate-pulse rounded-lg bg-muted" />
-              ))}
-            </div>
-          ) : selectedPosts.length === 0 ? (
-            <div className="py-8 text-center">
-              <LottiePlayer size={96} className="mx-auto" />
-              <p className="mt-1 text-sm text-muted-foreground">Nothing scheduled this day.</p>
+        {/* Day detail / draft preview */}
+        <div className="glass-card flex min-h-0 flex-col overflow-hidden p-4 sm:p-5">
+          {previewPost ? (
+            <div className="flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto">
+              <button
+                type="button"
+                onClick={() => setPreviewPost(null)}
+                className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to day
+              </button>
+              <PreviewModule
+                className="min-h-[360px]"
+                title="Draft preview"
+                platform={previewPlatform}
+                onPlatformChange={setPreviewPlatform}
+                allowedPlatforms={
+                  previewPost.platforms?.length
+                    ? previewPost.platforms
+                    : (["linkedin", "instagram", "youtube", "facebook", "whatsapp"] as SocialPlatform[])
+                }
+                content={previewContent}
+                emptyHint="This draft has no content to preview yet."
+              />
             </div>
           ) : (
-            <div className="space-y-2.5">
-              {selectedPosts
-                .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime())
-                .map((post) => (
-                  <a
-                    key={post.id}
-                    href={getSocialPostUrl(post)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Open in social platform"
-                    className="block rounded-lg border border-border bg-secondary p-3 transition-colors hover:bg-accent"
-                  >
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[post.status])} />
-                      {STATUS_LABEL[post.status]}
-                      <span className="ml-auto">
-                        {post.scheduledFor.toLocaleTimeString(undefined, {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                    <p className="mt-1.5 line-clamp-2 text-sm text-foreground/80">
-                      {post.content?.caption ?? post.brief}
-                    </p>
-                    <div className="mt-2 flex items-center gap-1.5 text-muted-foreground">
-                      {post.platforms.map((p) => {
-                        const Icon = PLATFORM_ICONS[p];
-                        return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;
-                      })}
-                    </div>
-                  </a>
-                ))}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <h3 className="mb-3 flex shrink-0 items-center gap-2 text-sm font-semibold">
+                <CalendarDays className="h-4 w-4 text-brand" />
+                {selectedDay.toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "short",
+                  day: "numeric",
+                })}
+              </h3>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+              {loading ? (
+                <div className="space-y-2">
+                  {[0, 1].map((i) => (
+                    <div key={i} className="h-16 animate-pulse rounded-lg bg-muted" />
+                  ))}
+                </div>
+              ) : selectedPosts.length === 0 ? (
+                <div className="py-8 text-center">
+                  <LottiePlayer size={96} className="mx-auto" />
+                  <p className="mt-1 text-sm text-muted-foreground">Nothing scheduled this day.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {selectedPosts
+                    .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime())
+                    .map((post) => (
+                      <button
+                        key={post.id}
+                        type="button"
+                        onClick={() => handlePostClick(post)}
+                        title={
+                          post.status === "draft"
+                            ? "Preview draft"
+                            : "Open in social platform"
+                        }
+                        className="block w-full rounded-lg border border-border bg-secondary p-3 text-left transition-colors hover:bg-accent"
+                      >
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[post.status])} />
+                          {STATUS_LABEL[post.status]}
+                          <span className="ml-auto">
+                            {post.scheduledFor.toLocaleTimeString(undefined, {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                        </div>
+                        <p className="mt-1.5 line-clamp-2 text-sm text-foreground/80">
+                          {post.content?.caption ?? post.brief}
+                        </p>
+                        <div className="mt-2 flex items-center gap-1.5 text-muted-foreground">
+                          {post.platforms.map((p) => {
+                            const Icon = PLATFORM_ICONS[p];
+                            return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;
+                          })}
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              )}
+              </div>
             </div>
           )}
         </div>

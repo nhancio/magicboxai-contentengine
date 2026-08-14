@@ -126,6 +126,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         .toUpperCase()
     : "U";
 
+  const isCalendarRoute =
+    location.pathname === "/calendar" || location.pathname === "/schedule";
+
+  useEffect(() => {
+    if (!isCalendarRoute) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [isCalendarRoute]);
+
   const closeSidebar = () => setSidebarOpen(false);
   const billingPaid = billingSubscription
     ? (billingSubscription.plan === "pro" || billingSubscription.plan === "max") &&
@@ -336,7 +348,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-5 sm:py-6 md:px-8 lg:py-8">
+        <main
+          className={cn(
+            "mx-auto w-full max-w-[1600px] px-3 py-3 sm:px-5 sm:py-4 md:px-8 lg:py-5",
+            isCalendarRoute && "overflow-hidden",
+          )}
+        >
           {children}
         </main>
       </div>
