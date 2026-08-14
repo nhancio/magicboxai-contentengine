@@ -141,6 +141,11 @@ push_to_github() {
     exit 1
   fi
 
+  # Switch GitHub CLI (and thus git HTTPS credentials) before fetch/pull.
+  # GitHub reports private repos as "not found" when the active account cannot
+  # see them — fetch/pull used to run as whichever gh account was last active.
+  ensure_github_account
+
   if git remote get-url "$REMOTE_NAME" >/dev/null 2>&1; then
     local current_url
     current_url="$(git remote get-url "$REMOTE_NAME")"
