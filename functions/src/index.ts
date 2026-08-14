@@ -44,6 +44,7 @@ export { extractBrandFromWebsite, generateBrandedPostImage } from "./brand";
 export {
   onUserCreatedSendWelcome,
   onUserUpdatedClaimPendingEntitlement,
+  claimGuestEntitlement,
   triggerWelcomeEmail,
 } from "./welcome";
 export { createDodoCheckout, createDodoPortal, dodoWebhook, createGuestCheckout } from "./dodo";

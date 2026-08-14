@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from"react";
 import { useNavigate, useParams } from"react-router-dom";
 import { motion, AnimatePresence } from"framer-motion";
 import { toast } from"sonner";
-import { useQuery } from"convex/react";
+import { useMutation, useQuery } from"convex/react";
 import { useAuth } from"@shared/lib/auth";
 import type { SocialAccount, SocialPlatform, BrandProfile } from"@shared/types";
 import {
@@ -79,6 +79,12 @@ export default function AutomationWizard() {
  const [brands, setBrands] = useState<BrandProfile[]>([]);
 
  const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} :"skip");
+ const convexEdit = useQuery(
+  api.automations.get,
+  isConvexConfigured && editId ? { automationId: editId } : "skip",
+ );
+ const createConvex = useMutation(api.automations.create);
+ const updateConvex = useMutation(api.automations.update);
 
  const accounts: SocialAccount[] = useMemo(() => {
  const fromConvex: SocialAccount[] = (convexAccounts ?? [])
@@ -131,6 +137,21 @@ export default function AutomationWizard() {
 
  useEffect(() => {
  if (!editId) return;
+ if (isConvexConfigured && convexEdit === undefined) return;
+ if (convexEdit) {
+ setName(convexEdit.name);
+ setBrief(convexEdit.brief);
+ setPreset(convexEdit.preset);
+ setTone(convexEdit.tone ?? "");
+ setBrandProfileId(convexEdit.brandProfileId ?? "");
+ setSelectedAccounts(convexEdit.socialAccountIds);
+ setWithImage(convexEdit.contentTypes.image);
+ setWithVideo(convexEdit.contentTypes.video);
+ setRequiresApproval(convexEdit.requiresApproval);
+ setTime(convexEdit.schedule.time);
+ setDaysOfWeek(convexEdit.schedule.daysOfWeek ?? []);
+ return;
+ }
  getAutomation(editId).then((automation) => {
  if (!automation) return;
  setName(automation.name);
@@ -145,7 +166,7 @@ export default function AutomationWizard() {
  setTime(automation.schedule.time);
  setDaysOfWeek(automation.schedule.daysOfWeek ?? []);
  });
- }, [editId]);
+ }, [editId, convexEdit]);
 
  const selectedPlatforms = useMemo(() => {
  const set = new Set<SocialPlatform>();
@@ -203,6 +224,9 @@ export default function AutomationWizard() {
  const handleSave = async () => {
  setLoading(true);
  try {
+ if (isConvexConfigured && editId && convexEdit === undefined) {
+  throw new Error("Still loading this automation");
+ }
  const payload = {
  name,
  brief,
@@ -220,18 +244,34 @@ export default function AutomationWizard() {
  },
  requiresApproval,
  };
- if (editId) {
- await updateAutomation({ ...payload, id: editId });
- toast.success("Automation updated");
+ const useConvex =
+  isConvexConfigured && (!editId || !!convexEdit);
+ if (useConvex) {
+  if (editId) {
+   await updateConvex({ automationId: editId, ...payload });
+   toast.success("Automation updated");
+  } else {
+   await createConvex(payload);
+   captureEvent("automation_created", {
+    platforms: selectedPlatforms.join(","),
+    requires_approval: requiresApproval,
+   });
+   toast.success("Automation is live", {
+    description: `First post ${daysOfWeek.length ?"on the next selected day" :"tomorrow"} at ${time}`,
+   });
+  }
+ } else if (editId) {
+  await updateAutomation({ ...payload, id: editId });
+  toast.success("Automation updated");
  } else {
- await createAutomation(payload);
- captureEvent("automation_created", {
- platforms: selectedPlatforms.join(","),
- requires_approval: requiresApproval,
- });
- toast.success("Automation is live", {
- description: `First post ${daysOfWeek.length ?"on the next selected day" :"tomorrow"} at ${time}`,
- });
+  await createAutomation(payload);
+  captureEvent("automation_created", {
+   platforms: selectedPlatforms.join(","),
+   requires_approval: requiresApproval,
+  });
+  toast.success("Automation is live", {
+   description: `First post ${daysOfWeek.length ?"on the next selected day" :"tomorrow"} at ${time}`,
+  });
  }
  navigate("/automations");
  } catch (error) {

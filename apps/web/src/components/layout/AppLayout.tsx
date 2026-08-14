@@ -80,6 +80,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const claimTrial = useMutation(api.credits.claimTrial);
+  const syncPlan = useMutation(api.credits.syncPlan);
   const mayaActivation = useMayaActivation();
 
   // Firestore/Dodo is the billing source of truth. Refresh the signed claim
@@ -99,11 +100,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       });
     void syncBillingClaims({})
       .then(() => user.getIdToken(true))
+      .then(() => (isConvexConfigured ? syncPlan({}) : undefined))
       .catch((error) => console.warn("[billing] claim sync failed", error));
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, syncPlan]);
 
   useEffect(() => {
     if (!isConvexConfigured || !credits?.needsTrialClaim) return;

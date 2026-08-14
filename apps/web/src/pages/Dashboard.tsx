@@ -350,15 +350,12 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-2">
-              {upcoming.map((post) => (
-                <a
-                  key={post.id}
-                  href={getSocialPostUrl(post)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Open in social platform"
-                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent"
-                >
+              {upcoming.map((post) => {
+                const url = getSocialPostUrl(post);
+                const className =
+                  "flex items-center gap-3 rounded-lg border border-border bg-card p-3";
+                const inner = (
+                  <>
                   <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
                   <p className="min-w-0 flex-1 truncate text-sm text-foreground">
                     {post.content?.caption ?? post.brief}
@@ -376,8 +373,25 @@ export default function Dashboard() {
                       minute: "2-digit",
                     })}
                   </span>
-                </a>
-              ))}
+                  </>
+                );
+                return url ? (
+                  <a
+                    key={post.id}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="View post"
+                    className={cn(className, "transition-colors hover:bg-accent")}
+                  >
+                    {inner}
+                  </a>
+                ) : (
+                  <div key={post.id} className={className}>
+                    {inner}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -402,15 +416,12 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-2">
-              {recent.map((post) => (
-                <a
-                  key={post.id}
-                  href={getSocialPostUrl(post)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Open in social platform"
-                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent"
-                >
+              {recent.map((post) => {
+                const url = getSocialPostUrl(post);
+                const className =
+                  "flex items-center gap-3 rounded-lg border border-border bg-card p-3";
+                const inner = (
+                  <>
                   <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
                   <p className="min-w-0 flex-1 truncate text-sm text-foreground">
                     {post.content?.caption ?? post.brief}
@@ -418,8 +429,25 @@ export default function Dashboard() {
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {post.status === "posted" ? "Published" : "Failed"}
                   </span>
-                </a>
-              ))}
+                  </>
+                );
+                return url ? (
+                  <a
+                    key={post.id}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="View post"
+                    className={cn(className, "transition-colors hover:bg-accent")}
+                  >
+                    {inner}
+                  </a>
+                ) : (
+                  <div key={post.id} className={className}>
+                    {inner}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

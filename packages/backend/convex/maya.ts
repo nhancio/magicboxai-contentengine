@@ -25,6 +25,8 @@ import { aspectForPlatform } from "./media";
 import {
   DEFAULT_VEO_SECONDS,
   ensureTrialBalance,
+  releaseMonthlyPostQuota,
+  reserveMonthlyPostQuota,
   spendICredits,
 } from "./credits";
 import {
@@ -545,11 +547,18 @@ export const swipe = mutation({
     // it to "scheduled" once the media is attached. No channel yet -> draft.
     const status = !hasChannel ? "draft" : wantsVideo ? "generating" : "scheduled";
 
-    // Credits (drafts free). Image/text = 1 i. Video render bills v at Veo start.
+    // Credits (drafts free). Publishing requires a paid plan + monthly quota.
+    // Image/text = 1 i. Video render bills v at Veo start.
     if (hasChannel) {
-      await ensureTrialBalance(ctx, uid);
-      if (!wantsVideo) {
-        await spendICredits(ctx, uid, 1, "maya_post", String(s._id));
+      await reserveMonthlyPostQuota(ctx, uid);
+      try {
+        await ensureTrialBalance(ctx, uid);
+        if (!wantsVideo) {
+          await spendICredits(ctx, uid, 1, "maya_post", String(s._id));
+        }
+      } catch (error) {
+        await releaseMonthlyPostQuota(ctx, uid);
+        throw error;
       }
       // video: charged inside media.renderVideo
     }

@@ -174,7 +174,8 @@ export default defineSchema({
     .index("by_socialAccountId", ["socialAccountId"]),
 
   automations: defineTable({
-    legacyId: v.string(),
+    // Optional: native Convex automations have no Firestore ancestor.
+    legacyId: v.optional(v.string()),
     userId: v.string(),
     brandProfileId: v.optional(v.string()),
     name: v.string(),
@@ -705,6 +706,9 @@ export default defineSchema({
     iCredits: v.number(),
     vCredits: v.number(),
     trialGrantedAt: v.optional(v.number()),
+    // Calendar-month publishing quota (UTC), reserved when a non-draft post is created.
+    usageMonth: v.optional(v.string()),
+    postsThisMonth: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_userId", ["userId"]),
 

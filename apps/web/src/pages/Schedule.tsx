@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { getSocialPostUrl } from "../lib/socialUrl";
 import { useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
@@ -161,9 +162,9 @@ export default function Schedule() {
           </p>
         </div>
         <Button asChild>
-          <a href="/automations/new">
+          <Link to="/automations/new">
             <Plus className="mr-1.5 h-4 w-4" /> New automation
-          </a>
+          </Link>
         </Button>
       </div>
 
@@ -286,15 +287,12 @@ export default function Schedule() {
             <div className="space-y-2.5">
               {selectedPosts
                 .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime())
-                .map((post) => (
-                  <a
-                    key={post.id}
-                    href={getSocialPostUrl(post)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Open in social platform"
-                    className="block rounded-lg border border-border bg-secondary p-3 transition-colors hover:bg-accent"
-                  >
+                .map((post) => {
+                  const url = getSocialPostUrl(post);
+                  const className =
+                    "block rounded-lg border border-border bg-secondary p-3 transition-colors";
+                  const inner = (
+                    <>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[post.status])} />
                       {STATUS_LABEL[post.status]}
@@ -314,8 +312,25 @@ export default function Schedule() {
                         return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;
                       })}
                     </div>
-                  </a>
-                ))}
+                    </>
+                  );
+                  return url ? (
+                    <a
+                      key={post.id}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="View post"
+                      className={cn(className, "hover:bg-accent")}
+                    >
+                      {inner}
+                    </a>
+                  ) : (
+                    <div key={post.id} className={className}>
+                      {inner}
+                    </div>
+                  );
+                })}
             </div>
           )}
         </div>
