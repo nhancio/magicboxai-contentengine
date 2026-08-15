@@ -20,8 +20,8 @@ const footerLinks = {
     { name: "Contact", href: "mailto:hello@nhancio.com" },
   ],
   Legal: [
-    { name: "Privacy", href: "/privacy.html" },
-    { name: "Terms", href: "/terms.html" },
+    { name: "Privacy", href: "/privacy" },
+    { name: "Terms", href: "/terms" },
   ],
 };
 
@@ -50,13 +50,13 @@ export function FooterSection() {
               </p>
               <div className="mb-6 flex flex-wrap gap-4 text-sm">
                 <a
-                  href="/privacy.html"
+                  href="/privacy"
                   className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/80"
                 >
                   Privacy Policy
                 </a>
                 <a
-                  href="/terms.html"
+                  href="/terms"
                   className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/80"
                 >
                   Terms of Service

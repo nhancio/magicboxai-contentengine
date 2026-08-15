@@ -1,5 +1,7 @@
 {
   "framework": "vite",
+  "cleanUrls": true,
+  "trailingSlash": false,
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
@@ -16,5 +18,13 @@
       ]
     }
   ],
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "redirects": [
+    { "source": "/privacy.html", "destination": "/privacy", "permanent": true },
+    { "source": "/terms.html", "destination": "/terms", "permanent": true }
+  ],
+  "rewrites": [
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/terms", "destination": "/terms.html" },
+    { "source": "/((?!api/|privacy|terms).*)", "destination": "/index.html" }
+  ]
 }

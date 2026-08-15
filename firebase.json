@@ -10,6 +10,8 @@
     {
       "target": "landing",
       "public": "apps/landing/dist",
+      "cleanUrls": true,
+      "trailingSlash": false,
       "ignore": [
         "firebase.json",
         "**/.*",

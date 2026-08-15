@@ -2,7 +2,7 @@
  * Reusable phone-frame primitives for Ferryman-style storytelling.
  * Placeholder media slots accept a future video `src` without layout changes.
  */
-import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Bookmark,
   Heart,
@@ -123,68 +123,70 @@ function MediaBackdrop({
   media?: PhoneMedia;
   posterClassName: string;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [isInView, setIsInView] = useState(false);
 
   useEffect(() => {
-    const el = videoRef.current;
+    const el = containerRef.current;
     if (!el || !media?.src) return;
-
-    el.muted = true;
-    el.defaultMuted = true;
-    el.setAttribute("muted", "");
-    el.setAttribute("playsinline", "");
-    el.setAttribute("webkit-playsinline", "");
-    el.load();
-
-    const tryPlay = () => {
-      void el.play().catch(() => {
-        /* iOS may block until visible; retry on intersection */
-      });
-    };
-
-    tryPlay();
-    el.addEventListener("loadeddata", tryPlay);
-    el.addEventListener("canplay", tryPlay);
 
     const io =
       typeof IntersectionObserver !== "undefined"
         ? new IntersectionObserver(
-            (entries) => {
-              for (const entry of entries) {
-                if (entry.isIntersecting) tryPlay();
-                else el.pause();
+            ([entry]) => {
+              if (entry.isIntersecting) {
+                setIsInView(true);
+                const vid = videoRef.current;
+                if (vid) void vid.play().catch(() => {});
+              } else {
+                const vid = videoRef.current;
+                if (vid) vid.pause();
               }
             },
-            { threshold: 0.25 },
+            { rootMargin: "150px 0px", threshold: 0.15 }
           )
         : null;
-    io?.observe(el);
 
-    return () => {
-      el.removeEventListener("loadeddata", tryPlay);
-      el.removeEventListener("canplay", tryPlay);
-      io?.disconnect();
-    };
+    io?.observe(el);
+    return () => io?.disconnect();
   }, [media?.src]);
+
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !isInView) return;
+
+    vid.muted = true;
+    vid.defaultMuted = true;
+    vid.setAttribute("muted", "");
+    vid.setAttribute("playsinline", "");
+    vid.setAttribute("webkit-playsinline", "");
+
+    void vid.play().catch(() => {});
+  }, [isInView]);
 
   if (media?.src) {
     return (
-      <>
+      <div ref={containerRef} className="absolute inset-0 overflow-hidden">
         {/* Gradient under video so failed/loading frames never look blank black */}
         <div className={`absolute inset-0 bg-gradient-to-br ${posterClassName}`} />
-        <video
-          ref={videoRef}
-          className="absolute inset-0 h-full w-full object-cover"
-          src={media.src}
-          muted
-          loop
-          playsInline
-          autoPlay
-          preload="auto"
-          title="Social post preview video"
-          aria-label="Social post preview video"
-        />
-      </>
+        {isInView ? (
+          <video
+            ref={videoRef}
+            className="absolute inset-0 h-full w-full object-cover"
+            src={media.src}
+            muted
+            loop
+            playsInline
+            autoPlay
+            preload="metadata"
+            aria-hidden="true"
+            tabIndex={-1}
+            disablePictureInPicture
+            disableRemotePlayback
+          />
+        ) : null}
+      </div>
     );
   }
 
@@ -195,6 +197,8 @@ function MediaBackdrop({
         <img
           src={media.image}
           alt={media.caption ?? "Post media"}
+          loading="lazy"
+          decoding="async"
           className="absolute inset-0 h-full w-full object-cover"
         />
       </>

@@ -160,14 +160,16 @@ export function HeroSection() {
                   <video
                     ref={videoRef}
                     src="/videos/Cute_winking_animated_girl.mp4"
-                    poster="/videos/Cute_winking_animated_girl.mp4"
                     className="absolute inset-0 h-full w-full object-cover"
                     muted
                     loop
                     playsInline
                     autoPlay
-                    preload="auto"
-                    aria-label="Instagram Reel preview video"
+                    preload="metadata"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    disablePictureInPicture
+                    disableRemotePlayback
                   />
 
                   {/* Gradient Overlay for Readable Text */}

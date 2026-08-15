@@ -91,46 +91,68 @@ function ReelCard({
   index: number;
   ariaHidden?: boolean;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [isInView, setIsInView] = useState(false);
 
   useEffect(() => {
-    const el = videoRef.current;
+    const el = containerRef.current;
     if (!el) return;
-
-    el.muted = true;
-    el.setAttribute("muted", "");
-    el.setAttribute("playsinline", "");
-    el.setAttribute("webkit-playsinline", "");
 
     const io = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) void el.play().catch(() => {});
-        else el.pause();
+        if (entry.isIntersecting) {
+          setIsInView(true);
+          const vid = videoRef.current;
+          if (vid) void vid.play().catch(() => {});
+        } else {
+          const vid = videoRef.current;
+          if (vid) vid.pause();
+        }
       },
-      { threshold: 0.25 }
+      { rootMargin: "100px 0px", threshold: 0.2 }
     );
     io.observe(el);
     return () => io.disconnect();
   }, []);
 
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !isInView) return;
+
+    vid.muted = true;
+    vid.defaultMuted = true;
+    vid.setAttribute("muted", "");
+    vid.setAttribute("playsinline", "");
+    vid.setAttribute("webkit-playsinline", "");
+
+    void vid.play().catch(() => {});
+  }, [isInView]);
+
   return (
     <div
+      ref={containerRef}
       aria-hidden={ariaHidden}
       className="group relative aspect-[9/16] w-[200px] shrink-0 select-none overflow-hidden rounded-2xl border border-foreground/10 bg-neutral-900 shadow-sm transition-transform duration-300 hover:-translate-y-1 sm:w-[230px]"
       style={{ transitionDelay: `${index * 30}ms` }}
     >
       <div className={`absolute inset-0 pointer-events-none bg-gradient-to-br ${format.poster}`} />
-      <video
-        ref={videoRef}
-        className="absolute inset-0 h-full w-full object-cover pointer-events-none"
-        src={format.src}
-        muted
-        loop
-        playsInline
-        preload="metadata"
-        title={format.label}
-        aria-label={`${format.label} format video`}
-      />
+      {isInView ? (
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full object-cover pointer-events-none"
+          src={format.src}
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="metadata"
+          aria-hidden="true"
+          tabIndex={-1}
+          disablePictureInPicture
+          disableRemotePlayback
+        />
+      ) : null}
       <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/85 via-black/5 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 p-4 text-white pointer-events-none">
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/70">
