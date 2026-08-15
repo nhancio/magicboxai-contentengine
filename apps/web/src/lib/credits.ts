@@ -6,6 +6,7 @@ export type CreditBalanceLike = {
   trialDurationDays?: number;
   trialGranted?: boolean;
   hasPaidPlan?: boolean;
+  canRefreshTrial?: boolean;
 };
 
 export type TrialClock = {

@@ -518,6 +518,13 @@ export default function Settings() {
   const resetTrial = useMutation(api.credits.resetTrial);
   const [resettingTrial, setResettingTrial] = useState(false);
   const clock = trialClock(credits);
+  const canRefreshTrial = !!(
+    credits?.canRefreshTrial ||
+    (user?.email &&
+      ["compilelater@gmail.com", "nithindidigam@nhancio.com"].includes(
+        user.email.toLowerCase(),
+      ))
+  );
 
   useEffect(() => {
     if (!isConvexConfigured || !credits?.needsTrialClaim) return;
@@ -779,25 +786,27 @@ export default function Settings() {
                                 ? `Ends ${clock.endsOnLabel}`
                                 : ""}
                           </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={resettingTrial}
-                            onClick={async () => {
-                              setResettingTrial(true);
-                              try {
-                                await resetTrial({});
-                                toast.success("Free trial refreshed! 7 days and 50 i-credits / 100 v-credits granted.");
-                              } catch (e) {
-                                toast.error(`Failed to refresh trial: ${String(e)}`);
-                              } finally {
-                                setResettingTrial(false);
-                              }
-                            }}
-                            className="h-7 text-xs border-brand/40 hover:bg-brand/10 hover:text-brand"
-                          >
-                            {resettingTrial ? "Refreshing…" : "Refresh 7-day trial"}
-                          </Button>
+                          {canRefreshTrial && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={resettingTrial}
+                              onClick={async () => {
+                                setResettingTrial(true);
+                                try {
+                                  await resetTrial({});
+                                  toast.success("Free trial refreshed! 7 days and 50 i-credits / 100 v-credits granted.");
+                                } catch (e) {
+                                  toast.error(`Failed to refresh trial: ${String(e)}`);
+                                } finally {
+                                  setResettingTrial(false);
+                                }
+                              }}
+                              className="h-7 text-xs border-brand/40 hover:bg-brand/10 hover:text-brand"
+                            >
+                              {resettingTrial ? "Refreshing…" : "Refresh 7-day trial"}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     )}
