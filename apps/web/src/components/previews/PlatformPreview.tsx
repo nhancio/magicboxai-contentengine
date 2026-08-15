@@ -2,7 +2,7 @@
 // Each mockup mirrors the real platform's post anatomy so an enterprise
 // buyer instantly recognizes how their content will land.
 
-import type { ReactNode } from"react";
+import { useEffect, useState, type ReactNode } from"react";
 import type { SocialPlatform } from"@shared/types";
 import {
  BadgeCheck,
@@ -34,8 +34,17 @@ export interface PreviewContent {
 }
 
 function BrandAvatar({ content, className }: { content: PreviewContent; className: string }) {
- if (content.logoUrl) {
- return <img src={content.logoUrl} alt="" className={`${className} object-cover`} />;
+ const [logoFailed, setLogoFailed] = useState(false);
+ useEffect(() => setLogoFailed(false), [content.logoUrl]);
+ if (content.logoUrl && !logoFailed) {
+ return (
+ <img
+ src={content.logoUrl}
+ alt=""
+ className={`${className} object-cover`}
+ onError={() => setLogoFailed(true)}
+ />
+ );
  }
  const letter = (content.brandName ??"B").charAt(0).toUpperCase();
  const bg = content.brandColors?.primary ?? undefined;
@@ -54,7 +63,96 @@ function BrandAvatar({ content, className }: { content: PreviewContent; classNam
  );
 }
 
-function MediaSlot({ content, aspect }: { content: PreviewContent; aspect: string }) {
+/**
+ * Inline post image (Twitter/WhatsApp bubble). Renders nothing when the post
+ * has no image, and swaps to the channel icon when the image fails to load.
+ */
+function InlineMedia({
+ content,
+ imgClassName,
+ fallbackClassName,
+}: {
+ content: PreviewContent;
+ imgClassName: string;
+ fallbackClassName: string;
+}) {
+ const [imgFailed, setImgFailed] = useState(false);
+ useEffect(() => setImgFailed(false), [content.imageUrl]);
+ if (!content.imageUrl) return null;
+ if (imgFailed) {
+ return (
+ <div className={`flex items-center justify-center bg-zinc-900 ${fallbackClassName}`}>
+ <BrandAvatar content={content} className="h-14 w-14 rounded-2xl" />
+ </div>
+ );
+ }
+ return (
+ <img
+ src={content.imageUrl}
+ alt=""
+ className={imgClassName}
+ onError={() => setImgFailed(true)}
+ />
+ );
+}
+
+/** Centered channel icon shown when a provided image fails to render. */
+function ChannelIconFallback({ content, aspect }: { content: PreviewContent; aspect: string }) {
+ return (
+ <div
+ className={`relative flex w-full ${aspect} items-center justify-center overflow-hidden bg-zinc-900`}
+ >
+ <BrandAvatar content={content} className="h-16 w-16 rounded-2xl" />
+ </div>
+ );
+}
+
+/**
+ * Branded media area for media-first channels (Instagram, YouTube) when the
+ * post has no image — those platforms always show visual media, so a text-only
+ * layout would not reflect how the post actually looks.
+ */
+function BrandedMediaPlaceholder({ content, aspect }: { content: PreviewContent; aspect: string }) {
+ const primary = content.brandColors?.primary || "#7c3aed";
+ const secondary = content.brandColors?.secondary || "#1e1b4b";
+ const accent = content.brandColors?.accent || primary;
+ return (
+ <div
+ className={`relative w-full ${aspect} flex flex-col items-center justify-center gap-3 overflow-hidden`}
+ style={{
+ background: `linear-gradient(145deg, ${primary} 0%, ${secondary} 55%, ${accent} 100%)`,
+ }}
+ >
+ <div
+ className="absolute inset-0 opacity-30"
+ style={{
+ backgroundImage:
+ "radial-gradient(circle at 30% 20%, rgba(255,255,255,.45), transparent 42%), radial-gradient(circle at 80% 70%, rgba(0,0,0,.25), transparent 40%)",
+ }}
+ />
+ <div className="relative z-[1] flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white/90 shadow-lg">
+ <BrandAvatar content={content} className="h-12 w-12 rounded-xl" />
+ </div>
+ <span className="relative z-[1] max-w-[80%] text-center text-[11px] font-medium text-white/90 drop-shadow">
+ {content.brandName || "Your brand"}
+ </span>
+ </div>
+ );
+}
+
+function MediaSlot({
+ content,
+ aspect,
+ requireMedia = false,
+}: {
+ content: PreviewContent;
+ aspect: string;
+ /** Media-first platforms (Instagram, YouTube) always render a media area. */
+ requireMedia?: boolean;
+}) {
+ const [imgFailed, setImgFailed] = useState(false);
+ useEffect(() => setImgFailed(false), [content.imageUrl]);
+
  const resolvedAspect =
  content.mediaAspect === "4:5"
  ? "aspect-[4/5]"
@@ -92,39 +190,26 @@ function MediaSlot({ content, aspect }: { content: PreviewContent; aspect: strin
  </div>
  );
  }
- if (content.imageUrl) {
- return <img src={content.imageUrl} alt="" className={`w-full ${resolvedAspect} object-cover`} />;
+ // Image provided but failed to load → show the channel icon instead of a broken image.
+ if (content.imageUrl && imgFailed) {
+ return <ChannelIconFallback content={content} aspect={resolvedAspect} />;
  }
- const primary = content.brandColors?.primary || "#7c3aed";
- const secondary = content.brandColors?.secondary || "#1e1b4b";
- const accent = content.brandColors?.accent || primary;
+ if (content.imageUrl) {
  return (
- <div
- className={`relative w-full ${resolvedAspect} flex flex-col items-center justify-center gap-3 overflow-hidden`}
- style={{
- background: `linear-gradient(145deg, ${primary} 0%, ${secondary} 55%, ${accent} 100%)`,
- }}
- >
- <div className="absolute inset-0 opacity-30" style={{
- backgroundImage:
- "radial-gradient(circle at 30% 20%, rgba(255,255,255,.45), transparent 42%), radial-gradient(circle at 80% 70%, rgba(0,0,0,.25), transparent 40%)",
- }} />
- {content.logoUrl ? (
  <img
- src={content.logoUrl}
+ src={content.imageUrl}
  alt=""
- className="relative z-[1] h-16 w-16 rounded-2xl bg-white/90 object-contain p-2 shadow-lg"
+ className={`w-full ${resolvedAspect} object-cover`}
+ onError={() => setImgFailed(true)}
  />
- ) : (
- <div className="relative z-[1] flex h-16 w-16 items-center justify-center rounded-2xl bg-white/90 font-display text-2xl text-zinc-900 shadow-lg">
- {(content.brandName || "M").charAt(0).toUpperCase()}
- </div>
- )}
- <span className="relative z-[1] max-w-[80%] text-center text-[11px] font-medium text-white/90 drop-shadow">
- {content.brandName || "Your brand"}
- </span>
- </div>
  );
+ }
+ // No media in the post. Media-first channels still show a branded media
+ // area so the preview matches the real platform; text channels show nothing.
+ if (requireMedia) {
+ return <BrandedMediaPlaceholder content={content} aspect={resolvedAspect} />;
+ }
+ return null;
 }
 
 function formatHashtags(tags?: string[]) {
@@ -145,7 +230,7 @@ export function InstagramPreview({ content }: { content: PreviewContent }) {
  </span>
  <MoreHorizontal className="ml-auto h-4 w-4 text-zinc-400" />
  </div>
- <MediaSlot content={content} aspect="aspect-square" />
+ <MediaSlot content={content} aspect="aspect-square" requireMedia />
  <div className="space-y-1.5 px-3.5 py-3 text-white">
  <div className="flex items-center gap-4 text-white">
  <Heart className="h-[22px] w-[22px]" />
@@ -179,13 +264,11 @@ export function TwitterPreview({ content }: { content: PreviewContent }) {
  <p className="mt-0.5 whitespace-pre-line text-[14px] leading-snug text-zinc-100">
  {content.caption}
  </p>
- {content.imageUrl && (
- <img
- src={content.imageUrl}
- alt=""
- className="mt-3 w-full rounded-xl border border-zinc-700 object-cover"
+ <InlineMedia
+ content={content}
+ imgClassName="mt-3 w-full rounded-xl border border-zinc-700 object-cover"
+ fallbackClassName="mt-3 aspect-[16/9] w-full rounded-xl border border-zinc-700"
  />
- )}
  <div className="mt-3 flex items-center justify-between pr-8 text-zinc-400">
  <MessageCircle className="h-4 w-4" />
  <Repeat2 className="h-4 w-4" />
@@ -246,7 +329,7 @@ export function YouTubePreview({ content }: { content: PreviewContent }) {
  return (
  <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-zinc-800 bg-black text-white shadow-xl">
  <div className="relative">
- <MediaSlot content={content} aspect="aspect-video" />
+ <MediaSlot content={content} aspect="aspect-video" requireMedia />
  <span className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
  0:30
  </span>
@@ -338,20 +421,11 @@ export function WhatsAppPreview({ content }: { content: PreviewContent }) {
  }}
  >
  <div className="ml-auto max-w-[88%] overflow-hidden rounded-xl rounded-tr-sm bg-[#005c4b] shadow-sm">
- {content.imageUrl ? (
- <img
- src={content.imageUrl}
- alt=""
- className="aspect-[4/3] w-full object-cover"
+ <InlineMedia
+ content={content}
+ imgClassName="aspect-[4/3] w-full object-cover"
+ fallbackClassName="aspect-[4/3] w-full"
  />
- ) : (
- <div
- className="aspect-[4/3] w-full"
- style={{
- background: `linear-gradient(145deg, ${content.brandColors?.primary ?? "#128C7E"}, ${content.brandColors?.secondary ?? "#075E54"})`,
- }}
- />
- )}
  <div className="space-y-1 px-2.5 py-2">
  <p className="whitespace-pre-line text-[13px] leading-snug text-white/95">
  {body || "Your message"}
