@@ -6,6 +6,10 @@ export const inspectUser = query({
     uid: v.optional(v.string()),
     email: v.optional(v.string()),
   },
+  returns: v.object({
+    counts: v.record(v.string(), v.number()),
+    total: v.number(),
+  }),
   handler: async (ctx, args) => {
     const uid = args.uid;
     const email = args.email?.toLowerCase();
@@ -115,6 +119,10 @@ export const purgeUser = mutation({
     uid: v.optional(v.string()),
     email: v.optional(v.string()),
   },
+  returns: v.object({
+    deletedCounts: v.record(v.string(), v.number()),
+    total: v.number(),
+  }),
   handler: async (ctx, args) => {
     const uid = args.uid;
     const email = args.email?.toLowerCase();

@@ -467,8 +467,8 @@ export const balance = query({
 
     const grantedAt = row.trialGrantedAt ?? row.updatedAt ?? null;
     return {
-      iCredits: row.iCredits,
-      vCredits: row.vCredits,
+      iCredits: typeof row.iCredits === "number" ? row.iCredits : FREE_TRIAL_I,
+      vCredits: typeof row.vCredits === "number" ? row.vCredits : FREE_TRIAL_V,
       trialGranted: true,
       trialGrantedAt: grantedAt,
       trialExpiresAt: grantedAt ? trialExpiresAt(grantedAt) : null,

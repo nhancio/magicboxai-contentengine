@@ -131,6 +131,17 @@ exports.onUserCreatedSendWelcome = (0, firestore_1.onDocumentCreated)({
     if (!(snap === null || snap === void 0 ? void 0 : snap.exists))
         return;
     const data = snap.data();
+    // Ensure default trial credits are set in Firestore
+    if (!data.credits) {
+        await snap.ref.set({
+            credits: {
+                iCredits: 50,
+                vCredits: 100,
+                trialClaimed: true,
+                trialGrantedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+        }, { merge: true });
+    }
     const email = (_a = data.email) === null || _a === void 0 ? void 0 : _a.trim();
     if (!email) {
         logger.warn("[onUserCreatedSendWelcome] user doc has no email, skipping", {

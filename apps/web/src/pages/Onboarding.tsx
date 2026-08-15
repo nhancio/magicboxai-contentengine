@@ -483,7 +483,20 @@ export default function Onboarding() {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Extraction timed out after 14s")), 14000)
       );
-      return Promise.race([extractBrandFromWebsite({ url }), timeoutPromise]);
+      const runner = async () => {
+        if (isConvexConfigured) {
+          try {
+            const convexRes = await extractBrandConvex({ url });
+            if (convexRes && (convexRes.companyName || convexRes.logoUrl || convexRes.colors?.primary)) {
+              return convexRes as BrandExtractResult;
+            }
+          } catch (convexErr) {
+            console.warn("[onboarding] Convex extract error, falling back to Firebase callable:", convexErr);
+          }
+        }
+        return await extractBrandFromWebsite({ url });
+      };
+      return Promise.race([runner(), timeoutPromise]);
     };
 
     try {
@@ -551,24 +564,28 @@ export default function Onboarding() {
   };
 
   const handleSaveBrand = async () => {
-    if (!user || !extracted) return;
+    if (!user) {
+      toast.error("Please sign in to save your brand.");
+      return;
+    }
     setBrandPhase("saving");
     setSaving(true);
     try {
       const activeUrl = extractedUrl || normalizeInputUrl(websiteUrl) || "https://mybrand.com";
       const domain = extractDomain(activeUrl);
-      const finalName = brandName.trim() || extracted.companyName || deriveBrandNameFromDomain(domain);
-      const finalIndustry = extracted.industry || "General";
-      const finalTone = toneOfVoice.trim() || extracted.tone || "Professional, modern, clear";
-      const finalAudience = extracted.audience || "Target customers & industry peers";
+      const currentExtracted = extracted || createFallbackBrandResult(activeUrl, brandName || undefined);
+      const finalName = brandName.trim() || currentExtracted.companyName || deriveBrandNameFromDomain(domain);
+      const finalIndustry = currentExtracted.industry || "General";
+      const finalTone = toneOfVoice.trim() || currentExtracted.tone || "Professional, modern, clear";
+      const finalAudience = currentExtracted.audience || "Target customers & industry peers";
       const finalColors = {
-        primary: extracted.colors?.primary || "#18181b",
-        secondary: extracted.colors?.secondary || "#6366f1",
-        accent: extracted.colors?.accent || "#f59e0b",
+        primary: currentExtracted.colors?.primary || "#18181b",
+        secondary: currentExtracted.colors?.secondary || "#6366f1",
+        accent: currentExtracted.colors?.accent || "#f59e0b",
       };
-      const finalLogoUrl = extracted.logoUrl || `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-      const finalHashtags = (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean);
-      const finalSampleCaptions = extracted.sampleCaptions?.length ? extracted.sampleCaptions : undefined;
+      const finalLogoUrl = currentExtracted.logoUrl || `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+      const finalHashtags = (currentExtracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean);
+      const finalSampleCaptions = currentExtracted.sampleCaptions?.length ? currentExtracted.sampleCaptions : undefined;
 
       const id = await saveBrandProfile({
         userId: user.uid,
@@ -583,8 +600,8 @@ export default function Onboarding() {
           default: finalHashtags,
         },
         sampleCaptions: finalSampleCaptions,
-        websiteImages: extracted.websiteImages?.length ? extracted.websiteImages : undefined,
-        brandedImageUrl: extracted.brandedImageUrl || undefined,
+        websiteImages: currentExtracted.websiteImages?.length ? currentExtracted.websiteImages : undefined,
+        brandedImageUrl: currentExtracted.brandedImageUrl || undefined,
       });
 
       if (isConvexConfigured) {
@@ -986,362 +1003,598 @@ export default function Onboarding() {
  transition={{ duration: 0.2 }}
  className="flex-1 min-h-0 overflow-y-auto no-scrollbar pb-6"
  >
+      {step === 0 && (
+        <div className="glass-card p-5 sm:p-8 space-y-6">
+          {/* Phase A: Input State (Before Extraction) */}
+          {brandPhase === "idle" && (
+            <div className="space-y-6">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand/10 px-3 py-1 text-xs font-medium text-brand">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Step 1 of 3 · Website & Brand Kit
+                </div>
+                <h2 className="mt-3 font-display text-2xl sm:text-3xl text-foreground">
+                  Build your Brand Kit from your website
+                </h2>
+                <p className="mt-2 text-sm sm:text-base text-muted-foreground leading-relaxed">
+                  Enter your domain or website URL. MagicBox AI scans your homepage to automatically extract your logo, color palette, brand voice, and positioning.
+                </p>
+              </div>
+
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <Globe2 className="h-3.5 w-3.5 text-brand" />
+                    Website or Domain URL
+                  </label>
+                  <div className="relative">
+                    <Globe2 className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={websiteUrl}
+                      onChange={(e) => setWebsiteUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && websiteUrl.trim()) {
+                          e.preventDefault();
+                          void handleScanBrand();
+                        }
+                      }}
+                      placeholder="e.g. nhancio.com or https://yourbrand.com"
+                      className="h-13 bg-card border-border/90 pl-12 text-base shadow-sm focus-visible:ring-brand"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  onClick={() => void handleScanBrand()}
+                  disabled={!websiteUrl.trim()}
+                  className="w-full h-12 text-base font-semibold bg-brand hover:bg-brand/90 text-brand-foreground shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="h-4.5 w-4.5" />
+                  Analyze Website & Build Brand Kit
+                </Button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-border/50 text-xs sm:text-sm">
+                <button
+                  type="button"
+                  onClick={() => handleManualBrandEntry()}
+                  className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors underline-offset-4 hover:underline"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Or enter brand details manually
+                </button>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void deferOnboarding("website")}
+                  className="text-muted-foreground hover:text-foreground h-auto py-1 px-2"
+                >
+                  Skip setup for now →
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Phase B: Loading / Scanning State */}
+          {brandPhase === "scanning" && (
+            <div className="space-y-6 py-4">
+              <div className="text-center max-w-md mx-auto space-y-2">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-brand/20 bg-brand/10 text-brand shadow-inner">
+                  <Loader2 className="h-7 w-7 animate-spin text-brand" />
+                </div>
+                <h2 className="font-display text-2xl text-foreground">
+                  Analyzing {extractDomain(normalizeInputUrl(websiteUrl)) || "your website"}…
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  MagicBox AI is synthesizing your brand assets, color palette, and positioning.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-brand/20 bg-brand/[0.03] p-5 sm:p-6 space-y-3.5 max-w-lg mx-auto">
+                {SCAN_STEPS.map((stepItem, i) => {
+                  const isDone = i < scanStep;
+                  const isCurrent = i === scanStep;
+                  return (
+                    <div
+                      key={stepItem.title}
+                      className={cn(
+                        "flex items-start gap-3.5 transition-all duration-300",
+                        isCurrent
+                          ? "text-foreground font-medium"
+                          : isDone
+                          ? "text-muted-foreground"
+                          : "text-muted-foreground/40"
+                      )}
+                    >
+                      <div className="mt-0.5 shrink-0">
+                        {isDone ? (
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-brand/20 text-brand">
+                            <Check className="h-3.5 w-3.5" />
+                          </div>
+                        ) : isCurrent ? (
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-brand/20 text-brand">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          </div>
+                        ) : (
+                          <div className="h-5 w-5 rounded-full border border-border/80" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className={cn("text-sm", isCurrent && "font-semibold text-foreground")}>
+                          {stepItem.title}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {stepItem.detail}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-center pt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRescan}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancel and change URL
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Phase C: Preview & Confirmation State */}
+          {brandPhase === "ready" && extracted && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-4">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Brand Kit Extracted
+                  </div>
+                  <h2 className="mt-2 font-display text-2xl text-foreground">
+                    Review your Brand Profile
+                  </h2>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    Confirm your brand details below before connecting your social channels.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingBrand((prev) => !prev)}
+                    className="text-xs h-8 gap-1.5"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    {isEditingBrand ? "Done Editing" : "Edit Details"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRescan}
+                    className="text-xs h-8 gap-1.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Re-scan
+                  </Button>
+                </div>
+              </div>
+
+              {/* Rich Extracted Brand Preview Card */}
+              <div className="rounded-2xl border border-border/80 bg-card p-5 sm:p-6 space-y-6 shadow-sm">
+                {/* Brand Identity Header Row */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                  <div className="relative shrink-0">
+                    {extracted.logoUrl ? (
+                      <img
+                        src={extracted.logoUrl}
+                        alt=""
+                        className="h-16 w-16 rounded-xl border border-border bg-card object-contain p-1.5 shadow-sm"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-secondary font-display text-2xl font-bold text-foreground border border-border">
+                        {(brandName || extracted.companyName || "?").slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1 space-y-1.5 w-full">
+                    {isEditingBrand ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <label className="text-[11px] font-mono uppercase text-muted-foreground">Brand Name</label>
+                          <Input
+                            value={brandName || extracted.companyName}
+                            onChange={(e) => {
+                              setBrandName(e.target.value);
+                              updateExtractedField("companyName", e.target.value);
+                            }}
+                            className="h-9 mt-1 text-sm bg-secondary/50"
+                            placeholder="Brand Name"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-mono uppercase text-muted-foreground">Industry</label>
+                          <Input
+                            value={extracted.industry || ""}
+                            onChange={(e) => updateExtractedField("industry", e.target.value)}
+                            className="h-9 mt-1 text-sm bg-secondary/50"
+                            placeholder="e.g. Technology, Apparel, Healthcare"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-display text-2xl font-bold text-foreground leading-tight">
+                            {brandName || extracted.companyName || extractDomain(extractedUrl || websiteUrl)}
+                          </h3>
+                          {extracted.industry && (
+                            <span className="rounded-md border border-border/80 bg-secondary/80 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                              {extracted.industry}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Globe2 className="h-3.5 w-3.5" />
+                          <a
+                            href={extractedUrl || normalizeInputUrl(websiteUrl)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hover:text-foreground inline-flex items-center gap-1 underline-offset-4 hover:underline"
+                          >
+                            {extractDomain(extractedUrl || websiteUrl)}
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Color Palette Row */}
+                <div className="space-y-2.5 pt-2 border-t border-border/60">
+                  <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                    <Palette className="h-3.5 w-3.5 text-brand" />
+                    Extracted Brand Colors
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {(["primary", "secondary", "accent"] as const).map((key) => {
+                      const hex = extracted.colors?.[key] || (key === "primary" ? "#18181b" : key === "secondary" ? "#6366f1" : "#f59e0b");
+                      return (
+                        <div
+                          key={key}
+                          className="flex items-center gap-3 rounded-xl border border-border/70 bg-secondary/30 p-2.5"
+                        >
+                          <div
+                            className="h-9 w-9 rounded-lg border border-black/10 shadow-sm shrink-0"
+                            style={{ background: hex }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                              {key}
+                            </div>
+                            {isEditingBrand ? (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <input
+                                  type="color"
+                                  value={hex.startsWith("#") && hex.length === 7 ? hex : "#000000"}
+                                  onChange={(e) => updateColor(key, e.target.value)}
+                                  className="h-5 w-5 rounded cursor-pointer border-0 bg-transparent p-0"
+                                />
+                                <input
+                                  type="text"
+                                  value={hex}
+                                  onChange={(e) => updateColor(key, e.target.value)}
+                                  className="h-6 w-20 rounded border border-border bg-card px-1.5 font-mono text-xs"
+                                />
+                              </div>
+                            ) : (
+                              <div className="font-mono text-xs font-medium text-foreground">
+                                {hex}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Brand Positioning & Voice Row */}
+                <div className="space-y-3 pt-2 border-t border-border/60">
+                  <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                    <Sparkles className="h-3.5 w-3.5 text-brand" />
+                    Brand Positioning & Voice
+                  </div>
+
+                  {isEditingBrand ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[11px] font-mono uppercase text-muted-foreground">Core Tagline / Bio</label>
+                        <Input
+                          value={extracted.coreIdentity || extracted.mission || ""}
+                          onChange={(e) => updateExtractedField("coreIdentity", e.target.value)}
+                          className="h-9 mt-1 text-sm bg-secondary/50"
+                          placeholder="Short summary of what your brand does"
+                        />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="text-[11px] font-mono uppercase text-muted-foreground">Tone of Voice</label>
+                          <Input
+                            value={toneOfVoice || extracted.tone || ""}
+                            onChange={(e) => {
+                              setToneOfVoice(e.target.value);
+                              updateExtractedField("tone", e.target.value);
+                            }}
+                            className="h-9 mt-1 text-sm bg-secondary/50"
+                            placeholder="e.g. Professional, authoritative, friendly"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-mono uppercase text-muted-foreground">Target Audience</label>
+                          <Input
+                            value={extracted.audience || ""}
+                            onChange={(e) => updateExtractedField("audience", e.target.value)}
+                            className="h-9 mt-1 text-sm bg-secondary/50"
+                            placeholder="e.g. B2B founders, marketing leaders"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {(extracted.coreIdentity || extracted.mission || extracted.productOffering) && (
+                        <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed italic bg-secondary/30 rounded-xl p-3 border border-border/50">
+                          &ldquo;{extracted.coreIdentity || extracted.mission || extracted.productOffering}&rdquo;
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {(toneOfVoice || extracted.tone) && (
+                          <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-2.5 py-1 text-xs text-foreground">
+                            <Volume2 className="h-3.5 w-3.5 text-brand" />
+                            <span className="font-medium">Tone:</span>
+                            <span className="text-muted-foreground">{toneOfVoice || extracted.tone}</span>
+                          </div>
+                        )}
+
+                        {extracted.audience && (
+                          <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-2.5 py-1 text-xs text-foreground">
+                            <Users className="h-3.5 w-3.5 text-brand" />
+                            <span className="font-medium">Audience:</span>
+                            <span className="text-muted-foreground">{extracted.audience}</span>
+                          </div>
+                        )}
+
+                        {extracted.hashtags && extracted.hashtags.length > 0 && (
+                          <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-2.5 py-1 text-xs text-foreground">
+                            <Tag className="h-3.5 w-3.5 text-brand" />
+                            <span className="text-muted-foreground truncate max-w-[200px]">
+                              {extracted.hashtags.slice(0, 3).map((h) => `#${h.replace(/^#/, "")}`).join(" ")}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons: Clear Save & Continue */}
+              <div className="flex flex-col-reverse sm:flex-row items-center gap-3 pt-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => setStep(1)}
+                  className="w-full sm:w-auto text-muted-foreground hover:text-foreground text-sm"
+                >
+                  Skip to channels →
+                </Button>
+                <Button
+                  onClick={() => void handleSaveBrand()}
+                  disabled={saving}
+                  className="w-full sm:flex-1 h-12 text-base font-semibold bg-brand hover:bg-brand/90 text-brand-foreground shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                  {saving ? (
+                    <Loader2 className="h-4.5 w-4.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4.5 w-4.5" />
+                  )}
+                  <span>Save Brand Kit & Continue to Channels</span>
+                  <ArrowRight className="h-4.5 w-4.5 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {step === 1 && (
         <div className="glass-card space-y-5 p-4 sm:p-6">
- {preset && (
- <div className="rounded-lg border border-brand/20 bg-brand/[0.06] p-4">
- <div className="text-[11px] font-mono uppercase tracking-widest text-brand">
- {preset.label} setup
- </div>
- <p className="mt-1 text-sm text-foreground">
- Recommended for you — connect these channels to get started:
- </p>
- <div className="mt-3 flex flex-wrap gap-2">
- {preset.platforms.map((p) => {
- const meta = PLATFORM_META[p];
- if (!meta) return null;
- return (
- <span
- key={p}
- className="inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-card px-3 py-1 text-xs font-medium text-foreground"
- >
- <meta.icon className="h-3.5 w-3.5 text-brand" />
- {meta.label}
- </span>
- );
- })}
- </div>
- </div>
- )}
- <div>
- <h2 className="font-display text-2xl">{STEPS[1].title}</h2>
- <p className="mt-1 text-sm text-muted-foreground">
- Connect at least one channel where approved content can go. Nothing is posted
- at this step; the connection activates Maya after your website is ready.
- </p>
- </div>
+          {preset && (
+            <div className="rounded-lg border border-brand/20 bg-brand/[0.06] p-4">
+              <div className="text-[11px] font-mono uppercase tracking-widest text-brand">
+                {preset.label} setup
+              </div>
+              <p className="mt-1 text-sm text-foreground">
+                Recommended for you — connect these channels to get started:
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {preset.platforms.map((p) => {
+                  const meta = PLATFORM_META[p];
+                  if (!meta) return null;
+                  return (
+                    <span
+                      key={p}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-card px-3 py-1 text-xs font-medium text-foreground"
+                    >
+                      <meta.icon className="h-3.5 w-3.5 text-brand" />
+                      {meta.label}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <div>
+            <h2 className="font-display text-2xl">{STEPS[1].title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Connect at least one channel where approved content can go. Nothing is posted
+              at this step; the connection activates Maya after your website is ready.
+            </p>
+          </div>
 
- {accounts.length > 0 && (
- <div className="space-y-2">
- <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
- Connected · {accounts.length}
- </p>
- {accounts.map((account) => {
- const meta = PLATFORM_META[account.platform] ?? {
- label: account.platform,
- icon: Link2,
- };
- const Icon = meta.icon;
- const handle = channelHandle(account);
- const initials = (account.displayName || account.username || "?")
- .slice(0, 2)
- .toUpperCase();
- const needsReconnect = account.status === "expired";
- return (
- <div
- key={account.id}
- className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5"
- >
- <Avatar className="h-11 w-11 border border-border">
- <AvatarImage src={account.avatarUrl} alt="" />
- <AvatarFallback className="bg-secondary text-xs text-foreground">
- {initials}
- </AvatarFallback>
- </Avatar>
- <div className="min-w-0 flex-1">
- <div className="flex items-center gap-2">
- <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
- <span className="truncate text-sm font-medium text-foreground">
- {account.displayName || meta.label}
- </span>
- </div>
- <p className="truncate text-xs text-muted-foreground">
- {meta.label} · {handle}
- </p>
- </div>
- {needsReconnect ? (
- <Button
- size="sm"
- variant="outline"
- className="shrink-0 border-amber-500/30 text-amber-700"
- disabled={connecting !== null}
- onClick={() =>
- handleConnect(
- account.platform as "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp",
- )
- }
- >
- Reconnect
- </Button>
- ) : (
- <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-700">
- <Check className="h-3 w-3" /> Connected
- </span>
- )}
- </div>
- );
- })}
- </div>
- )}
-
-<div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
-  <p className="font-semibold text-foreground">Channel Setup Notes:</p>
-  <ul className="list-disc list-inside space-y-0.5">
-    <li><strong className="text-foreground">YouTube:</strong> If Google displays <em>&quot;Google hasn&apos;t verified this app&quot;</em>, click <strong>Advanced → Go to MagicBox (unsafe)</strong> to proceed.</li>
-    <li><strong className="text-foreground">Facebook, Instagram &amp; WhatsApp:</strong> If Meta displays <em>&quot;Feature unavailable&quot;</em>, ensure your Meta App is set to Live or your Meta account is added as a Tester/Admin in Meta Developer Dashboard.</li>
-  </ul>
-</div>
-
- <div className="grid gap-2 sm:grid-cols-2">
- {CONNECTABLE.filter((provider) => {
- const linked = connectedByPlatform.get(provider);
- // Already active → shown in the Connected list above; hide Connect.
- return !(linked && linked.status === "active");
- }).map((provider) => {
- const meta = PLATFORM_META[provider];
- const Icon = meta.icon;
- const linked = connectedByPlatform.get(provider);
- const busy = connecting === provider;
- const expired = linked?.status === "expired";
- return (
- <Button
- key={provider}
- onClick={() => handleConnect(provider)}
- disabled={connecting !== null}
- variant="outline"
- className="justify-start py-5"
- >
- {busy ? (
- <Loader2 className="mr-2 h-4 w-4 animate-spin" />
- ) : (
- <Icon className="mr-2 h-4 w-4" />
- )}
- {expired ? `Reconnect ${meta.label}` : `Connect ${meta.label}`}
- </Button>
- );
- })}
- <Button
- onClick={() => toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.")}
- variant="outline"
- className="justify-start py-5 border-dashed border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
- >
- <Flame className="mr-2 h-4 w-4 text-amber-500" />
- Buy Warmed Up Accounts — Soon
- </Button>
- </div>
-
-        <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[auto_auto_1fr]">
-          <Button
-            onClick={() => setStep(0)}
-            variant="ghost"
-            className="w-full sm:w-auto text-muted-foreground"
-          >
-            Back to website
-          </Button>
-          <Button
-            onClick={() => void deferOnboarding("social")}
-            variant="ghost"
-            className="w-full sm:w-auto text-muted-foreground"
-          >
-            Skip for now
-          </Button>
-          <Button
-            onClick={() => setStep(2)}
-            disabled={!hasActiveChannel}
-            className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm"
-          >
-            <span className="truncate">
-              {hasActiveChannel
-                ? "Review my campaign"
-                : "Connect one channel to continue"}
-            </span>
-            <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
-          </Button>
-        </div>
- </div>
- )}
-
-      {step === 0 && (
-        <div className="glass-card space-y-5 p-4 sm:p-6">
- <div>
- <h2 className="font-display text-2xl">Your website</h2>
- <p className="mt-1 text-sm text-muted-foreground">
- Paste your site URL. MagicBox extracts the strongest content, imagery, logo,
- palette, audience, and voice — then turns them into campaign drafts.
- </p>
- </div>
-
- <div className="space-y-3">
- <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-[0.18em] text-muted-foreground">
- <Globe2 className="h-3.5 w-3.5 text-brand" />
- Website → brand kit
- </div>
- <div className="flex flex-col gap-3 sm:flex-row">
- <div className="relative flex-1">
- <Globe2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
- <Input
- value={websiteUrl}
- onChange={(e) => {
- setWebsiteUrl(e.target.value);
- if (brandPhase === "ready") {
- setBrandPhase("idle");
- setExtracted(null);
- }
- }}
- onKeyDown={(e) => {
- if (e.key === "Enter") {
- e.preventDefault();
- void handleScanBrand();
- }
- }}
- placeholder="https://yourbrand.com"
- disabled={brandPhase === "scanning" || brandPhase === "saving"}
- className="h-12 bg-card border-border pl-10"
- />
- </div>
-<Button
-  type="button"
-  onClick={() => void handleScanBrand()}
-  disabled={
-    brandPhase === "scanning" ||
-    brandPhase === "saving" ||
-    !websiteUrl.trim()
-  }
-  className="h-12 shrink-0 px-6"
->
-  {brandPhase === "scanning" ? (
-    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-  ) : brandPhase === "ready" && extracted ? (
-    <Check className="mr-1.5 h-4 w-4" />
-  ) : (
-    <Sparkles className="mr-1.5 h-4 w-4" />
-  )}
-  {brandPhase === "scanning"
-    ? "Building…"
-    : brandPhase === "ready" && extracted
-    ? "Save brand & continue"
-    : "Connect"}
-</Button>
- </div>
- </div>
-
- {brandPhase === "scanning" && (
- <div className="rounded-xl border border-brand/20 bg-brand/[0.06] p-4">
- <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
- <Loader2 className="h-4 w-4 animate-spin text-brand" />
- Reading your brand…
- </div>
- <ul className="space-y-2">
-                {SCAN_STEPS.map((step, i) => (
-                  <li
-                    key={step.title}
-                    className={cn(
-                      "flex items-center gap-2 text-sm",
-                      i <= scanStep ? "text-foreground" : "text-muted-foreground/50"
-                    )}
+          {accounts.length > 0 && (
+            <div className="space-y-2">
+              <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+                Connected · {accounts.length}
+              </p>
+              {accounts.map((account) => {
+                const meta = PLATFORM_META[account.platform] ?? {
+                  label: account.platform,
+                  icon: Link2,
+                };
+                const Icon = meta.icon;
+                const handle = channelHandle(account);
+                const initials = (account.displayName || account.username || "?")
+                  .slice(0, 2)
+                  .toUpperCase();
+                const needsReconnect = account.status === "expired";
+                return (
+                  <div
+                    key={account.id}
+                    className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5"
                   >
-                    {i < scanStep ? (
-                      <Check className="h-3.5 w-3.5 text-brand" />
-                    ) : i === scanStep ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
+                    <Avatar className="h-11 w-11 border border-border">
+                      <AvatarImage src={account.avatarUrl} alt="" />
+                      <AvatarFallback className="bg-secondary text-xs text-foreground">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="truncate text-sm font-medium text-foreground">
+                          {account.displayName || meta.label}
+                        </span>
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {meta.label} · {handle}
+                      </p>
+                    </div>
+                    {needsReconnect ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 border-amber-500/30 text-amber-700"
+                        disabled={connecting !== null}
+                        onClick={() =>
+                          handleConnect(
+                            account.platform as "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp",
+                          )
+                        }
+                      >
+                        Reconnect
+                      </Button>
                     ) : (
-                      <span className="h-3.5 w-3.5 rounded-full border border-border" />
+                      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-700">
+                        <Check className="h-3 w-3" /> Connected
+                      </span>
                     )}
-                    <span>{step.title}</span>
-                  </li>
-                ))}
- </ul>
- </div>
- )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
- {brandPhase === "ready" && extracted && (
- <div className="space-y-4 rounded-xl border border-border bg-card p-4">
- <div className="flex items-start gap-3">
- {extracted.logoUrl ? (
- <img
- src={extracted.logoUrl}
- alt=""
- className="h-12 w-12 rounded-lg border border-border bg-secondary object-contain p-1"
- />
- ) : (
- <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-secondary font-display text-lg">
- {(extracted.companyName || "?").slice(0, 1)}
- </div>
- )}
- <div className="min-w-0 flex-1">
- <div className="font-display text-xl leading-tight">
- {extracted.companyName || new URL(extractedUrl).hostname}
- </div>
- <p className="mt-0.5 truncate text-xs text-muted-foreground">
- {extractedUrl.replace(/^https?:\/\//, "")}
- {extracted.industry ? ` · ${extracted.industry}` : ""}
- </p>
- </div>
- </div>
+          <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
+            <p className="font-semibold text-foreground">Channel Setup Notes:</p>
+            <ul className="list-disc list-inside space-y-0.5">
+              <li><strong className="text-foreground">YouTube:</strong> If Google displays <em>&quot;Google hasn&apos;t verified this app&quot;</em>, click <strong>Advanced → Go to MagicBox (unsafe)</strong> to proceed.</li>
+              <li><strong className="text-foreground">Facebook, Instagram &amp; WhatsApp:</strong> If Meta displays <em>&quot;Feature unavailable&quot;</em>, ensure your Meta App is set to Live or your Meta account is added as a Tester/Admin in Meta Developer Dashboard.</li>
+            </ul>
+          </div>
 
- {(extracted.colors.primary ||
- extracted.colors.secondary ||
- extracted.colors.accent) && (
- <div className="flex flex-wrap gap-3">
- {(["primary", "secondary", "accent"] as const).map((key) => {
- const hex = extracted.colors[key];
- if (!hex) return null;
- return (
- <div key={key} className="flex items-center gap-2">
- <div
- className="h-8 w-8 rounded-lg border border-border"
- style={{ background: hex }}
- />
- <div>
- <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
- {key}
- </div>
- <div className="font-mono text-xs">{hex}</div>
- </div>
- </div>
- );
- })}
- </div>
- )}
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CONNECTABLE.filter((provider) => {
+              const linked = connectedByPlatform.get(provider);
+              // Already active → shown in the Connected list above; hide Connect.
+              return !(linked && linked.status === "active");
+            }).map((provider) => {
+              const meta = PLATFORM_META[provider];
+              const Icon = meta.icon;
+              const linked = connectedByPlatform.get(provider);
+              const busy = connecting === provider;
+              const expired = linked?.status === "expired";
+              return (
+                <Button
+                  key={provider}
+                  onClick={() => handleConnect(provider)}
+                  disabled={connecting !== null}
+                  variant="outline"
+                  className="justify-start py-5"
+                >
+                  {busy ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Icon className="mr-2 h-4 w-4" />
+                  )}
+                  {expired ? `Reconnect ${meta.label}` : `Connect ${meta.label}`}
+                </Button>
+              );
+            })}
+            <Button
+              onClick={() => toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.")}
+              variant="outline"
+              className="justify-start py-5 border-dashed border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+            >
+              <Flame className="mr-2 h-4 w-4 text-amber-500" />
+              Buy Warmed Up Accounts — Soon
+            </Button>
+          </div>
 
- {(extracted.audience || extracted.tone) && (
- <div className="space-y-2 text-sm text-muted-foreground">
- {extracted.audience && (
- <p>
- <span className="font-medium text-foreground">Audience · </span>
- {extracted.audience}
- </p>
- )}
- {extracted.tone && (
- <p>
- <span className="font-medium text-foreground">Tone · </span>
- {extracted.tone}
- </p>
- )}
- </div>
- )}
- </div>
- )}
-
-        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:gap-3">
-          <Button
-            variant="ghost"
-            onClick={() => void deferOnboarding("website")}
-            className="w-full sm:flex-1 text-muted-foreground hover:text-foreground"
-          >
-            Skip setup for now
-          </Button>
-          <Button
-            onClick={() => void handleSaveBrand()}
-            disabled={saving || brandPhase !== "ready" || !extracted}
-            className="w-full sm:flex-1 bg-brand hover:bg-brand min-h-[2.5rem] py-2.5 px-3 text-sm h-auto"
-          >
-            {saving && <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" />}
-            <span className="truncate">Save brand & continue</span>
-          </Button>
+          <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[auto_auto_1fr]">
+            <Button
+              onClick={() => setStep(0)}
+              variant="ghost"
+              className="w-full sm:w-auto text-muted-foreground"
+            >
+              Back to website
+            </Button>
+            <Button
+              onClick={() => void deferOnboarding("social")}
+              variant="ghost"
+              className="w-full sm:w-auto text-muted-foreground"
+            >
+              Skip for now
+            </Button>
+            <Button
+              onClick={() => setStep(2)}
+              disabled={!hasActiveChannel}
+              className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm"
+            >
+              <span className="truncate">
+                {hasActiveChannel
+                  ? "Review my campaign"
+                  : "Connect one channel to continue"}
+              </span>
+              <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
+            </Button>
+          </div>
         </div>
- </div>
- )}
+      )}
 
  {step === 2 && (
  <div

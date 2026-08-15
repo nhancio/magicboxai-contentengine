@@ -523,15 +523,21 @@ deploy_vercel_app() {
   local app_name="$1"
   local app_dir="$2"
   local custom_domain="$3"
+  local project_name="${4:-}"
 
   log_step "Deploying ${BOLD}${app_name}${RESET} (${custom_domain}) → Vercel production..."
 
   (
     cd "$ROOT_DIR/$app_dir"
     if [[ ! -f .vercel/project.json ]]; then
-      log_error "${app_dir} is not linked to a Vercel project."
-      log_info "Link once via: cd ${app_dir} && npx vercel link --yes --scope ${SCOPE}"
-      exit 1
+      if [[ -n "$project_name" ]]; then
+        log_info "Auto-linking ${app_dir} to Vercel project ${project_name}..."
+        npx vercel link --yes --project "$project_name" --scope "$SCOPE"
+      else
+        log_error "${app_dir} is not linked to a Vercel project."
+        log_info "Link once via: cd ${app_dir} && npx vercel link --yes --scope ${SCOPE}"
+        exit 1
+      fi
     fi
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -560,9 +566,9 @@ stage_4_frontend() {
   log_step "Building all workspace frontends for production..."
   npm run build:hosting
 
-  deploy_vercel_app "landing" "apps/landing" "https://magicboxai.in"
-  deploy_vercel_app "web app" "apps/web" "https://app.magicboxai.in"
-  deploy_vercel_app "admin"   "apps/admin" "https://admin.magicboxai.in"
+  deploy_vercel_app "landing" "apps/landing" "https://magicboxai.in" "magicboxai-landing"
+  deploy_vercel_app "web app" "apps/web" "https://app.magicboxai.in" "magicboxai-web"
+  deploy_vercel_app "admin"   "apps/admin" "https://admin.magicboxai.in" "magicboxai-admin"
 
   local end_time=$(date +%s)
   TIME_STAGE_4=$((end_time - start_time))
