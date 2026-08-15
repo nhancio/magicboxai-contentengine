@@ -423,6 +423,28 @@ function publishLimitFrom(identity: unknown, plan: unknown): number {
 
 // ---- public ------------------------------------------------------------
 
+const TRIAL_REFRESH_ALLOWED_EMAILS = new Set([
+  "compilelater@gmail.com",
+  "nithindidigam@nhancio.com",
+]);
+
+async function isTrialRefreshAllowed(
+  ctx: { auth: { getUserIdentity: () => Promise<any> }; db: any },
+  userId: string,
+): Promise<boolean> {
+  const identity = await ctx.auth.getUserIdentity();
+  const identityEmail = typeof identity?.email === "string" ? identity.email.toLowerCase() : null;
+  if (identityEmail && TRIAL_REFRESH_ALLOWED_EMAILS.has(identityEmail)) {
+    return true;
+  }
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_legacyId", (q: any) => q.eq("legacyId", userId))
+    .unique();
+  const dbEmail = user?.email?.toLowerCase();
+  return !!(dbEmail && TRIAL_REFRESH_ALLOWED_EMAILS.has(dbEmail));
+}
+
 /** Client: current balance (auto-grants free trial once). */
 export const balance = query({
   args: {},
@@ -444,6 +466,7 @@ export const balance = query({
       (sub.status === "active" || sub.status === undefined);
     const hasPaidPlan = paid || identityPaid;
     const publishLimit = publishLimitFrom(identity, sub?.plan);
+    const canRefreshTrial = await isTrialRefreshAllowed(ctx, uid);
 
     if (!row) {
       // Queries can't write — client will call `claimTrial` in the background.
@@ -458,6 +481,7 @@ export const balance = query({
         trialDurationDays: FREE_TRIAL_DAYS,
         needsTrialClaim: true,
         hasPaidPlan,
+        canRefreshTrial,
         usageMonth: null as string | null,
         postsThisMonth: 0,
         publishLimit,
@@ -475,6 +499,7 @@ export const balance = query({
       trialDurationDays: FREE_TRIAL_DAYS,
       needsTrialClaim: false,
       hasPaidPlan,
+      canRefreshTrial,
       usageMonth: row.usageMonth ?? null,
       postsThisMonth: row.postsThisMonth ?? 0,
       publishLimit,
@@ -486,6 +511,11 @@ export const balance = query({
 /** Idempotent free-trial grant (safe to call from Dashboard on load). */
 export const claimTrial = mutation({
   args: {},
+  returns: v.object({
+    iCredits: v.number(),
+    vCredits: v.number(),
+    trialGranted: v.boolean(),
+  }),
   handler: async (ctx) => {
     const uid = await requireUid(ctx);
     const identity = await ctx.auth.getUserIdentity();
@@ -503,6 +533,51 @@ export const claimTrial = mutation({
           lastLoginAt: Date.now(),
         });
       }
+    }
+    return await ensureTrialBalance(ctx, uid);
+  },
+});
+
+/** Reset free-trial clock & replenish credits for the calling user. Only admin/authorized emails allowed. */
+export const resetTrial = mutation({
+  args: {},
+  returns: v.object({
+    iCredits: v.number(),
+    vCredits: v.number(),
+    trialGranted: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    const uid = await requireUid(ctx);
+    const allowed = await isTrialRefreshAllowed(ctx, uid);
+    if (!allowed) {
+      throw new Error("Unauthorized: Trial reset is restricted to administrators.");
+    }
+    const existing = await getRow(ctx, uid);
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        trialGrantedAt: now,
+        iCredits: FREE_TRIAL_I,
+        vCredits: FREE_TRIAL_V,
+        updatedAt: now,
+      });
+      await ctx.db.insert("creditLedger", {
+        userId: uid,
+        kind: "i",
+        delta: FREE_TRIAL_I,
+        reason: "trial_reset",
+        balanceAfter: FREE_TRIAL_I,
+        createdAt: now,
+      });
+      await ctx.db.insert("creditLedger", {
+        userId: uid,
+        kind: "v",
+        delta: FREE_TRIAL_V,
+        reason: "trial_reset",
+        balanceAfter: FREE_TRIAL_V,
+        createdAt: now,
+      });
+      return { iCredits: FREE_TRIAL_I, vCredits: FREE_TRIAL_V, trialGranted: true };
     }
     return await ensureTrialBalance(ctx, uid);
   },

@@ -306,6 +306,7 @@ export default function Maya() {
   const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const ensureConfig = useMutation(api.maya.ensureConfig);
   const swipe = useMutation(api.maya.swipe);
+  const resetTrial = useMutation(api.credits.resetTrial);
   const generateNow = useAction(api.maya.generateNow);
   const tClock = trialClock(credits as any);
 
@@ -378,9 +379,22 @@ export default function Maya() {
     } catch (e) {
       const message = String(e);
       if (/TrialExpired|free trial has ended|trial.*expired/i.test(message)) {
-        toast.error("Your free trial has ended. Upgrade to post from Maya.", {
-          action: { label: "View plans", onClick: () => (window.location.href = "/pricing?plan=pro") },
-        });
+        if (credits?.canRefreshTrial) {
+          toast.error("Your 7-day trial ended.", {
+            action: {
+              label: "Refresh 7 Days",
+              onClick: () => {
+                resetTrial({})
+                  .then(() => toast.success("Trial refreshed for 7 days! You can swipe now."))
+                  .catch((err) => toast.error(`Refresh failed: ${String(err)}`));
+              },
+            },
+          });
+        } else {
+          toast.error("Your free trial has ended. Upgrade to post from Maya.", {
+            action: { label: "View plans", onClick: () => (window.location.href = "/pricing?plan=pro") },
+          });
+        }
       } else {
         toast.error(`Couldn't save that swipe: ${message.slice(0, 90)}`);
       }

@@ -96,11 +96,11 @@ export function AboutMagicBoxSection() {
               className="group h-16 rounded-full px-14 text-xl font-medium shadow-[0_12px_24px_rgba(139,92,246,0.28)] transition-all hover:shadow-[0_16px_32px_rgba(139,92,246,0.38)]"
             >
               <a
-                href={appLoginUrl()}
+                href={appLoginUrl("/settings?tab=integrations")}
                 onClick={() =>
                   captureEvent("landing_cta_clicked", {
                     cta: "schedule_from_one_brief",
-                    destination: "onboarding",
+                    destination: "connections",
                   })
                 }
               >

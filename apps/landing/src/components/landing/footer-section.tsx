@@ -49,8 +49,9 @@ export function FooterSection() {
                 <span className="text-2xl font-display">MagicBox</span>
               </a>
               <p className="text-muted-foreground leading-relaxed mb-8 max-w-xs">
-                MagicBox is AI marketing automation software for creating, approving,
-                scheduling, and publishing social posts to Instagram, LinkedIn, and YouTube.
+                MagicBox is an AI vibe marketing platform and automated UGC distribution engine for
+                creating, approving, scheduling, and publishing on-brand social content to Instagram,
+                LinkedIn, and YouTube.
               </p>
               <p className="mb-6 max-w-sm text-xs leading-relaxed text-muted-foreground">
                 You connect each channel yourself. Google/YouTube access is requested only for

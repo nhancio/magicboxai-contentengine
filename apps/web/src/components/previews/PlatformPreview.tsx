@@ -2,35 +2,42 @@
 // Each mockup mirrors the real platform's post anatomy so an enterprise
 // buyer instantly recognizes how their content will land.
 
-import { useEffect, useState, type ReactNode } from"react";
-import type { SocialPlatform } from"@shared/types";
+import { useEffect, useState, type ReactNode } from "react";
+import type { SocialPlatform } from "@shared/types";
+import CreativeImageLoader from "../common/CreativeImageLoader";
 import {
- BadgeCheck,
- Bookmark,
- Globe2,
- Heart,
- MessageCircle,
- MoreHorizontal,
- Repeat2,
- Send,
- ThumbsUp,
-} from"lucide-react";
+  AlertCircle,
+  BadgeCheck,
+  Bookmark,
+  Globe2,
+  Heart,
+  MessageCircle,
+  MoreHorizontal,
+  RefreshCw,
+  Repeat2,
+  Send,
+  ThumbsUp,
+} from "lucide-react";
 
 export interface PreviewContent {
- caption: string;
- hashtags?: string[];
- imageUrl?: string;
- /** When present, the media slot plays this video (thumbnail via imageUrl). */
- videoUrl?: string;
- /** Live node rendered inside the media slot (e.g. a carousel slide). Wins over image/video. */
- mediaNode?: ReactNode;
- /** Finished creative ratio. Lets 4:5 feed work display without square cropping. */
- mediaAspect?: "1:1" | "4:5" | "16:9";
- brandName?: string;
- handle?: string;
- logoUrl?: string;
- /** Fetched brand palette — used when no imageUrl is available. */
- brandColors?: { primary?: string; secondary?: string; accent?: string };
+  caption: string;
+  hashtags?: string[];
+  imageUrl?: string;
+  /** When present, the media slot plays this video (thumbnail via imageUrl). */
+  videoUrl?: string;
+  /** Live node rendered inside the media slot (e.g. a carousel slide). Wins over image/video. */
+  mediaNode?: ReactNode;
+  /** Finished creative ratio. Lets 4:5 feed work display without square cropping. */
+  mediaAspect?: "1:1" | "4:5" | "16:9";
+  brandName?: string;
+  handle?: string;
+  logoUrl?: string;
+  /** Fetched brand palette — used when no imageUrl is available. */
+  brandColors?: { primary?: string; secondary?: string; accent?: string };
+  /** Explicit error when AI image/media generation fails */
+  mediaError?: string | null;
+  /** Callback to retry generating media */
+  onRetryMedia?: () => void;
 }
 
 function BrandAvatar({ content, className }: { content: PreviewContent; className: string }) {
@@ -140,81 +147,166 @@ function BrandedMediaPlaceholder({ content, aspect }: { content: PreviewContent;
  );
 }
 
-function MediaSlot({
- content,
- aspect,
- requireMedia = false,
+function ImageWithLoader({
+  src,
+  aspectClass,
+  onError,
 }: {
- content: PreviewContent;
- aspect: string;
- /** Media-first platforms (Instagram, YouTube) always render a media area. */
- requireMedia?: boolean;
+  src: string;
+  aspectClass: string;
+  onError: () => void;
 }) {
- const [imgFailed, setImgFailed] = useState(false);
- useEffect(() => setImgFailed(false), [content.imageUrl]);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
 
- const resolvedAspect =
- content.mediaAspect === "4:5"
- ? "aspect-[4/5]"
- : content.mediaAspect === "16:9"
- ? "aspect-video"
- : content.mediaAspect === "1:1"
- ? "aspect-square"
- : aspect;
- if (content.mediaNode) {
- return (
- <div
- className={`relative flex w-full ${resolvedAspect} items-center justify-center overflow-hidden bg-black`}
- >
- {content.mediaNode}
- </div>
- );
- }
- if (content.videoUrl) {
- // Generated videos are always 9:16 — preview them vertically, not in the
- // platform's photo aspect, so the mobile preview matches the real output.
- // The CONTAINER owns the 9:16 shape (a bare <video> with w-auto can collapse
- // to 0 before metadata loads, showing nothing); the video just fills it.
- return (
- <div className="mx-auto flex aspect-[9/16] w-full max-w-[300px] items-center justify-center overflow-hidden bg-black">
- <video
- src={content.videoUrl}
- poster={content.imageUrl}
- className="h-full w-full object-cover"
- autoPlay
- muted
- loop
- playsInline
- controls={false}
- />
- </div>
- );
- }
- // Image provided but failed to load → show the channel icon instead of a broken image.
- if (content.imageUrl && imgFailed) {
- return <ChannelIconFallback content={content} aspect={resolvedAspect} />;
- }
- if (content.imageUrl) {
- return (
- <img
- src={content.imageUrl}
- alt=""
- className={`w-full ${resolvedAspect} object-cover`}
- onError={() => setImgFailed(true)}
- />
- );
- }
- // No media in the post. Media-first channels still show a branded media
- // area so the preview matches the real platform; text channels show nothing.
- if (requireMedia) {
- return <BrandedMediaPlaceholder content={content} aspect={resolvedAspect} />;
- }
- return null;
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [src]);
+
+  if (failed) {
+    return (
+      <div
+        className={`relative flex w-full ${aspectClass} flex-col items-center justify-center gap-2 overflow-hidden bg-destructive/10 p-4 text-center text-destructive`}
+      >
+        <AlertCircle className="h-6 w-6" />
+        <p className="text-xs font-medium">Failed to load image</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`relative w-full ${aspectClass} overflow-hidden bg-card/60`}>
+      {!loaded && !failed && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
+          <CreativeImageLoader
+            aspectRatio="auto"
+            compact={true}
+            title="Loading image..."
+            className="h-full w-full rounded-none border-0 shadow-none bg-card/60"
+          />
+        </div>
+      )}
+      <img
+        src={src}
+        alt=""
+        className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          setFailed(true);
+          onError();
+        }}
+      />
+    </div>
+  );
+}
+
+function MediaSlot({
+  content,
+  aspect,
+  requireMedia = false,
+}: {
+  content: PreviewContent;
+  aspect: string;
+  /** Media-first platforms (Instagram, YouTube) always render a media area. */
+  requireMedia?: boolean;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => setImgFailed(false), [content.imageUrl]);
+
+  const resolvedAspect =
+    content.mediaAspect === "4:5"
+      ? "aspect-[4/5]"
+      : content.mediaAspect === "16:9"
+      ? "aspect-video"
+      : content.mediaAspect === "1:1"
+      ? "aspect-square"
+      : aspect;
+
+  if (content.mediaError && !content.imageUrl && !content.videoUrl && !content.mediaNode) {
+    return (
+      <div
+        className={`relative flex w-full ${resolvedAspect} flex-col items-center justify-center gap-2.5 overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-center text-destructive`}
+      >
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+          <AlertCircle className="h-5 w-5" />
+        </div>
+        <div className="max-w-[85%] space-y-1">
+          <p className="text-xs font-semibold">Image Generation Failed</p>
+          <p className="line-clamp-3 text-[11px] text-destructive/90 leading-tight">
+            {content.mediaError}
+          </p>
+        </div>
+        {content.onRetryMedia && (
+          <button
+            type="button"
+            onClick={content.onRetryMedia}
+            className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/20 px-2.5 py-1 text-[11px] font-medium text-destructive transition-colors hover:bg-destructive/30"
+          >
+            <RefreshCw className="h-3 w-3" /> Retry Generation
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (content.mediaNode) {
+    return (
+      <div
+        className={`relative flex w-full ${resolvedAspect} items-center justify-center overflow-hidden bg-black`}
+      >
+        {content.mediaNode}
+      </div>
+    );
+  }
+  if (content.videoUrl) {
+    // Generated videos are always 9:16 — preview them vertically, not in the
+    // platform's photo aspect, so the mobile preview matches the real output.
+    // The CONTAINER owns the 9:16 shape (a bare <video> with w-auto can collapse
+    // to 0 before metadata loads, showing nothing); the video just fills it.
+    return (
+      <div className="mx-auto flex aspect-[9/16] w-full max-w-[300px] items-center justify-center overflow-hidden bg-black">
+        <video
+          src={content.videoUrl}
+          poster={content.imageUrl}
+          className="h-full w-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+          controls={false}
+        />
+      </div>
+    );
+  }
+  // Image provided but failed to load → show the channel icon instead of a broken image.
+  if (content.imageUrl && imgFailed) {
+    return <ChannelIconFallback content={content} aspect={resolvedAspect} />;
+  }
+  if (content.imageUrl) {
+    return (
+      <ImageWithLoader
+        src={content.imageUrl}
+        aspectClass={resolvedAspect}
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
+  // No media in the post. Media-first channels still show a branded media
+  // area so the preview matches the real platform; text channels show nothing.
+  if (requireMedia) {
+    return <BrandedMediaPlaceholder content={content} aspect={resolvedAspect} />;
+  }
+  return null;
 }
 
 function formatHashtags(tags?: string[]) {
   if (!tags?.length) return "";
-  return tags.map((t) => (t.startsWith("#") ? t : `#${t}`)).join(" ");
+  return tags
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => (t.startsWith("#") ? t : `#${t.replace(/^[#\s]+/, "")}`))
+    .join(" ");
 }
 
 export function InstagramPreview({ content }: { content: PreviewContent }) {
@@ -249,22 +341,24 @@ export function InstagramPreview({ content }: { content: PreviewContent }) {
 }
 
 export function TwitterPreview({ content }: { content: PreviewContent }) {
- return (
- <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-black p-4 text-white shadow-xl">
- <div className="flex gap-3">
- <BrandAvatar content={content} className="h-10 w-10 shrink-0 rounded-full" />
- <div className="min-w-0 flex-1">
- <div className="flex items-center gap-1 text-[14px]">
- <span className="truncate font-bold text-white">{content.brandName ?? "Your Brand"}</span>
- <BadgeCheck className="h-4 w-4 shrink-0 fill-[#1d9bf0] text-black" />
- <span className="truncate text-zinc-400">
- @{content.handle ?? "yourbrand"} · now
- </span>
- </div>
- <p className="mt-0.5 whitespace-pre-line text-[14px] leading-snug text-zinc-100">
- {content.caption}
- </p>
- <InlineMedia
+  const tags = formatHashtags(content.hashtags);
+  return (
+    <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-black p-4 text-white shadow-xl">
+      <div className="flex gap-3">
+        <BrandAvatar content={content} className="h-10 w-10 shrink-0 rounded-full" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1 text-[14px]">
+            <span className="truncate font-bold text-white">{content.brandName ?? "Your Brand"}</span>
+            <BadgeCheck className="h-4 w-4 shrink-0 fill-[#1d9bf0] text-black" />
+            <span className="truncate text-zinc-400">
+              @{content.handle ?? "yourbrand"} · now
+            </span>
+          </div>
+          <p className="mt-0.5 whitespace-pre-line text-[14px] leading-snug text-zinc-100">
+            {content.caption}
+            {tags && <span className="text-[#1d9bf0]"> {tags}</span>}
+          </p>
+          <InlineMedia
  content={content}
  imgClassName="mt-3 w-full rounded-xl border border-zinc-700 object-cover"
  fallbackClassName="mt-3 aspect-[16/9] w-full rounded-xl border border-zinc-700"

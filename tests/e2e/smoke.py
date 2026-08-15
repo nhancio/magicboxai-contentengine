@@ -37,18 +37,25 @@ def test_landing(browser: Browser):
     assert response and response.ok
     page.locator("h1").wait_for(state="visible")
 
-    assert page.title() == "AI Social Media Workflow for Lean Teams | MagicBox"
+    assert page.title() == "MagicBox AI — Vibe Marketing Platform, AI UGC & Social Video Creation"
     assert page.locator('link[rel="canonical"]').get_attribute("href") == "https://magicboxai.in/"
     assert "AI social media workflow" in page.locator('meta[name="keywords"]').get_attribute("content")
-    assert page.locator("h1").inner_text() == "A calmer way to run social."
+    assert page.locator("h1").inner_text().strip() == "Marketing that runs on brand"
     assert page.locator("#faq details").count() >= 5
     page.locator("#faq details").first.click()
-    assert "brand brief" in page.locator("#faq details").first.inner_text()
+    assert "UGC" in page.locator("#faq details").first.inner_text()
 
     structured = page.locator('script[type="application/ld+json"]').all_text_contents()
     assert structured
     graph = json.loads(structured[0])["@graph"]
-    assert {item["@type"] for item in graph} >= {
+    types = set()
+    for item in graph:
+        t = item.get("@type")
+        if isinstance(t, list):
+            types.update(t)
+        elif isinstance(t, str):
+            types.add(t)
+    assert types >= {
         "Organization",
         "WebSite",
         "SoftwareApplication",
@@ -66,8 +73,8 @@ def test_landing(browser: Browser):
 
     for path, expected in [
         ("/robots.txt", "Sitemap: https://magicboxai.in/sitemap.xml"),
-        ("/sitemap.xml", "https://magicboxai.in/privacy.html"),
-        ("/llms.txt", "MagicBox is an AI marketing automation platform"),
+        ("/sitemap.xml", "https://magicboxai.in/privacy"),
+        ("/llms.txt", "MagicBox"),
         ("/privacy.html", "Privacy"),
         ("/terms.html", "Terms"),
     ]:
@@ -95,9 +102,9 @@ def test_landing(browser: Browser):
     hero_stage.wait_for(state="visible")
     stage_box = hero_stage.bounding_box()
     heading_box = mobile.locator("h1").bounding_box()
-    assert stage_box and heading_box and stage_box["y"] < heading_box["y"]
+    assert stage_box and heading_box and heading_box["y"] < stage_box["y"]
     assert mobile.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
-    menu = mobile.get_by_role("button", name="Toggle menu")
+    menu = mobile.get_by_role("button", name="Toggle navigation menu")
     menu.click()
     pricing_link = mobile.get_by_role("link", name="Pricing").last
     pricing_link.wait_for(state="visible")

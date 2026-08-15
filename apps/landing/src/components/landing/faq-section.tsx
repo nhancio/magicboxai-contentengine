@@ -1,15 +1,39 @@
 const faqs = [
   {
+    question: "What is vibe marketing and how does MagicBox AI automate it?",
+    answer:
+      "Vibe marketing is a modern, personality-driven marketing approach focused on aesthetic, relatable, and culturally resonant content (like UGC videos, trend-aware reels, and casual storytelling) rather than stiff corporate ads. MagicBox AI automates vibe marketing by analyzing your brand's unique tone and aesthetic from your website or brief, then automatically generating on-vibe AI avatar videos, UGC posts, and graphics tailored for Instagram, LinkedIn, and YouTube.",
+    related: { label: "See how it works", href: "#how-it-works" },
+  },
+  {
+    question: "Looking for a vibe marketing agency near me — how does MagicBox AI compare?",
+    answer:
+      "If you are searching for a vibe marketing agency near you, MagicBox provides both a 24/7 self-serve AI vibe marketing platform and a dedicated done-for-you managed agency service. While traditional local agencies charge thousands of dollars per month and take weeks to produce assets, MagicBox generates and schedules on-vibe, high-converting social campaigns in minutes from anywhere in the world.",
+    related: { label: "Explore managed service", href: "#pricing" },
+  },
+  {
     question: "What is a UGC factory and how does MagicBox automate UGC content creation?",
     answer:
-      "A UGC (User-Generated Content) factory is an automated system for producing authentic, relatable video and social content at scale. MagicBox acts as an AI UGC factory by taking your brand context and generating high-converting AI avatar videos, social posts, and graphics tailored for Instagram, LinkedIn, and YouTube without needing expensive video shoots.",
-    related: { label: "See how it works", href: "#how-it-works" },
+      "A UGC (User-Generated Content) factory is an automated system for producing authentic, relatable video and social content at scale. MagicBox acts as an AI UGC factory by taking your brand context and generating high-converting AI avatar videos, social posts, and graphics tailored for Instagram, LinkedIn, and YouTube without needing expensive video shoots or actor hiring.",
+    related: { label: "Explore reel formats", href: "#features" },
   },
   {
     question: "How do I create AI videos with MagicBox?",
     answer:
       "To create AI videos with MagicBox: 1) Input your website URL or brand brief to establish your brand profile. 2) Select your desired video format (Reels, Shorts, or LinkedIn video). 3) Let MagicBox generate the script, voiceover, and AI avatar visual. 4) Review the generated draft and click schedule to automate your marketing distribution.",
     related: { label: "Explore video features", href: "#features" },
+  },
+  {
+    question: "How does MagicBox capture my brand's unique vibe and aesthetic?",
+    answer:
+      "MagicBox analyzes your website, tone of voice, visual palette, and core value propositions to build a custom Brand Kit. Every generated script, caption, AI video, and image strictly adheres to your specific vibe, ensuring 100% brand consistency without generic-sounding outputs.",
+    related: { label: "See the workflow", href: "#about-magicbox" },
+  },
+  {
+    question: "Can MagicBox manage my marketing end-to-end like a dedicated agency?",
+    answer:
+      "Yes. Beyond our self-serve software plans, MagicBox offers a Done-For-You Managed Agency Service. Our team handles complete account setup, account warming, daily AI content creation, quality review, and multi-channel scheduling so you get a full-scale marketing engine on total autopilot.",
+    related: { label: "Compare plans & agency tier", href: "#pricing" },
   },
   {
     question: "How does MagicBox streamline AI content creation and marketing distribution?",
@@ -32,7 +56,7 @@ const faqs = [
   {
     question: "How is marketing with AI different from a basic scheduler?",
     answer:
-      "A scheduler publishes content you have already made. Marketing with AI can help create the caption and media for each channel before scheduling it. MagicBox combines generation, approval, scheduling, and publishing in one workflow.",
+      "A scheduler publishes content you have already made manually. Marketing with AI actively generates the vibe, captions, video scripts, and media for each channel before scheduling it. MagicBox combines generation, approval, scheduling, and publishing in one workflow.",
     related: { label: "Explore the features", href: "#features" },
   },
   {
@@ -50,7 +74,7 @@ const faqs = [
   {
     question: "Is MagicBox an AI agency near me?",
     answer:
-      "MagicBox is an online AI marketing platform built in India, not a location-based agency. If you are comparing an AI agency near you with software, MagicBox is the self-serve option for running repeatable content workflows from anywhere.",
+      "MagicBox is an online AI marketing platform and managed agency built in India and serving clients globally. If you are searching for an AI agency near you, MagicBox offers both a self-serve platform and done-for-you agency management from anywhere.",
     related: { label: "Compare pricing plans", href: "#pricing" },
   },
 ];

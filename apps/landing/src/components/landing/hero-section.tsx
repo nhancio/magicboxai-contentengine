@@ -89,7 +89,7 @@ export function HeroSection() {
             {/* Eyebrow */}
             <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-[0.18em] text-[#64748b]">
               <span className="h-px w-6 bg-[#94a3b8]" />
-              Marketing automation for modern teams
+              AI Vibe Marketing &amp; Automation Platform
             </div>
 
             {/* Main Headline */}
@@ -102,8 +102,8 @@ export function HeroSection() {
 
             {/* Subtitle */}
             <p className="max-w-xl text-base leading-relaxed text-[#475569] sm:text-lg lg:text-xl">
-              One prompt in. On-brand posts and images out — auto-published across Instagram, X, and
-              LinkedIn, exactly when your audience is watching.
+              One prompt in. On-vibe, high-converting posts and AI videos out — auto-published across Instagram,
+              LinkedIn, and YouTube, exactly when your audience is watching.
             </p>
 
             {/* CTAs */}
@@ -145,7 +145,7 @@ export function HeroSection() {
               isVisible ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0"
             }`}
           >
-            <div className="relative group">
+            <div data-testid="hero-phone-stage" className="relative group">
               {/* Glow Aura */}
               <div className="absolute -inset-4 rounded-[3rem] bg-gradient-to-r from-brand/30 via-fuchsia-500/20 to-purple-600/30 blur-2xl opacity-80 group-hover:opacity-100 transition-opacity" />
 

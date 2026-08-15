@@ -120,7 +120,6 @@ export default function Users() {
                   <TableHead>User</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Last Login</TableHead>
-                  <TableHead>Avatars Created</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -147,7 +146,6 @@ export default function Users() {
                       <TableCell className="text-white/50 text-xs">
                         {formatTimestamp(user.lastLoginAt)}
                       </TableCell>
-                      <TableCell className="text-white/40">&mdash;</TableCell>
                       <TableCell>
                         <Badge variant={active ? "success" : "secondary"}>
                           {active ? "Active" : "Inactive"}

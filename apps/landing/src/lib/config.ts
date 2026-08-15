@@ -20,7 +20,7 @@ export const APP_URL =
  * "Sign in" button. The app falls back to its normal sign-in card if the
  * handoff can't run, so this is always safe to include.
  */
-export function appLoginUrl(redirectTo = "/onboarding?preset=solo-founder") {
+export function appLoginUrl(redirectTo = "/") {
   return `${APP_URL}/login?intent=google&redirect=${encodeURIComponent(redirectTo)}`;
 }
 

@@ -30,7 +30,8 @@ import {
  readAutomationDraft,
  writePersisted,
 } from"../lib/drafts";
-import PlatformPreview from"../components/previews/PlatformPreview";
+import PlatformPreview from "../components/previews/PlatformPreview";
+import CreativeImageLoader from "../components/common/CreativeImageLoader";
 import {
  ArrowLeft,
  ArrowRight,
@@ -856,10 +857,12 @@ export default function AutomationWizard() {
                     {/* RIGHT: live preview */}
                     <div className="flex items-center justify-center rounded-xl border border-border bg-secondary/10 p-6 min-h-[420px] lg:h-full">
                       {isGeneratingCurrent ? (
-                        <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground h-full min-h-[250px]">
-                          <Loader2 className="h-6 w-6 animate-spin text-brand" />
-                          <span className="text-sm font-medium">Writing your sample post…</span>
-                        </div>
+                        <CreativeImageLoader
+                          aspectRatio="4:5"
+                          title="Writing sample post..."
+                          subtitle="Shaping copy & visual creative to your brand voice"
+                          className="max-w-sm w-full"
+                        />
                       ) : currentPreview ? (
                         <PlatformPreview
                           platform={previewPlatform}

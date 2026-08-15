@@ -7,9 +7,7 @@ import AdminGuard from "./components/layout/AdminGuard";
 const AdminLogin = lazy(() => import("./pages/AdminLogin"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Users = lazy(() => import("./pages/Users"));
-const Avatars = lazy(() => import("./pages/Avatars"));
 const ApiLogs = lazy(() => import("./pages/ApiLogs"));
-const ProductAnalytics = lazy(() => import("./pages/ProductAnalytics"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 
 function RouteFallback() {
@@ -53,14 +51,7 @@ export default function App() {
             </AdminGuard>
           }
         />
-        <Route
-          path="/avatars"
-          element={
-            <AdminGuard>
-              <Avatars />
-            </AdminGuard>
-          }
-        />
+        <Route path="/avatars" element={<Navigate to="/" replace />} />
         <Route
           path="/api-logs"
           element={
@@ -69,14 +60,7 @@ export default function App() {
             </AdminGuard>
           }
         />
-        <Route
-          path="/product-analytics"
-          element={
-            <AdminGuard>
-              <ProductAnalytics />
-            </AdminGuard>
-          }
-        />
+        <Route path="/product-analytics" element={<Navigate to="/" replace />} />
         <Route
           path="/settings"
           element={
