@@ -54,8 +54,23 @@ function trustedMediaUrl(raw: string): string {
   } catch {
     throw new Error("Media URL is invalid");
   }
+  // Convex storage: match the deployment's own origin so this works on both the
+  // cloud product (*.convex.cloud) and a self-hosted backend (which may be
+  // http://host:port). CONVEX_CLOUD_URL / CONVEX_SITE_URL are injected by the
+  // backend at runtime and point at this deployment.
+  const deploymentOrigins = [process.env.CONVEX_CLOUD_URL, process.env.CONVEX_SITE_URL]
+    .filter((o): o is string => Boolean(o))
+    .map((o) => {
+      try {
+        return new URL(o).origin;
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((o): o is string => Boolean(o));
   const convexStorage =
-    url.hostname.endsWith(".convex.cloud") && url.pathname.startsWith("/api/storage/");
+    (url.hostname.endsWith(".convex.cloud") || deploymentOrigins.includes(url.origin)) &&
+    url.pathname.startsWith("/api/storage/");
   const firebaseBrandCreative =
     url.hostname === "firebasestorage.googleapis.com" &&
     /^\/v0\/b\/magicboxai-50927\.(?:firebasestorage\.app|appspot\.com)\/o\/users%2F[^/]+%2Fbrand-creatives%2F/i.test(
@@ -63,16 +78,19 @@ function trustedMediaUrl(raw: string): string {
     ) &&
     url.searchParams.get("alt") === "media" &&
     Boolean(url.searchParams.get("token"));
-  if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    url.port ||
-    (!convexStorage && !firebaseBrandCreative)
-  ) {
+  if (url.username || url.password) {
     throw new Error("Media must be uploaded to MagicBox storage");
   }
-  return url.toString();
+  // Convex storage is pinned to this deployment's exact origin above, so a
+  // self-hosted http origin with a port is acceptable. Any other (Firebase)
+  // source must still be plain https with no port.
+  if (convexStorage) {
+    return url.toString();
+  }
+  if (firebaseBrandCreative && url.protocol === "https:" && !url.port) {
+    return url.toString();
+  }
+  throw new Error("Media must be uploaded to MagicBox storage");
 }
 
 function assertTextLength(value: string | undefined, label: string, maxLength: number): void {

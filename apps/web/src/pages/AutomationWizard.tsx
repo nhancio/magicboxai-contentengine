@@ -23,6 +23,13 @@ import { cn } from"@shared/lib/utils";
 import { captureEvent } from"@shared/lib/analytics";
 import { api } from"@convex/_generated/api";
 import { isConvexConfigured } from"../lib/convex";
+import {
+ AUTOMATION_STEPS as STEPS,
+ automationDraftKey,
+ clearAutomationDraft,
+ readAutomationDraft,
+ writePersisted,
+} from"../lib/drafts";
 import PlatformPreview from"../components/previews/PlatformPreview";
 import {
  ArrowLeft,
@@ -65,8 +72,6 @@ const PRESETS = [
 ] as const;
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-
-const STEPS = ["Brief","Channels","Content","Schedule","Review"] as const;
 
 export default function AutomationWizard() {
  const { user } = useAuth();
@@ -126,8 +131,12 @@ export default function AutomationWizard() {
 
  // review state
  const [previewPlatform, setPreviewPlatform] = useState<SocialPlatform>("instagram");
- const [preview, setPreview] = useState<{ caption: string; hashtags: string[] } | null>(null);
- const [generatingPreview, setGeneratingPreview] = useState(false);
+ // Cache a generated sample per platform so switching channels is instant and
+ // connected channels can be generated together in the background.
+ const [previews, setPreviews] = useState<
+ Partial<Record<SocialPlatform, { caption: string; hashtags: string[] }>>
+ >({});
+ const [generatingPlatforms, setGeneratingPlatforms] = useState<Set<SocialPlatform>>(new Set());
 
  useEffect(() => {
  if (!user) return;
@@ -168,6 +177,66 @@ export default function AutomationWizard() {
  });
  }, [editId, convexEdit]);
 
+ // Pick up an unfinished draft (the Drafts section on /automations links here).
+ // Editing an existing automation reads from Firestore instead.
+ const [hydrated, setHydrated] = useState(false);
+ useEffect(() => {
+ const draft = editId || !user ? null : readAutomationDraft(user.uid);
+ if (draft) {
+ setStep(draft.step);
+ setName(draft.name);
+ setBrief(draft.brief);
+ setPreset(draft.preset);
+ setTone(draft.tone);
+ setBrandProfileId(draft.brandProfileId);
+ setSelectedAccounts(draft.selectedAccounts);
+ setWithImage(draft.withImage);
+ setWithVideo(draft.withVideo);
+ setRequiresApproval(draft.requiresApproval);
+ setTime(draft.time);
+ setDaysOfWeek(draft.daysOfWeek);
+ }
+ setHydrated(true);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, []);
+
+ // Save on every change so closing the tab mid-wizard keeps the progress.
+ // `readAutomationDraft` treats an empty name and brief as "no draft".
+ useEffect(() => {
+ if (!hydrated || editId || !user) return;
+ writePersisted(automationDraftKey(user.uid), {
+ step,
+ name,
+ brief,
+ preset,
+ tone,
+ brandProfileId,
+ selectedAccounts,
+ withImage,
+ withVideo,
+ requiresApproval,
+ time,
+ daysOfWeek,
+ updatedAt: Date.now(),
+ });
+ }, [
+ hydrated,
+ editId,
+ user,
+ step,
+ name,
+ brief,
+ preset,
+ tone,
+ brandProfileId,
+ selectedAccounts,
+ withImage,
+ withVideo,
+ requiresApproval,
+ time,
+ daysOfWeek,
+ ]);
+
  const selectedPlatforms = useMemo(() => {
  const set = new Set<SocialPlatform>();
  for (const account of accounts) {
@@ -196,30 +265,70 @@ export default function AutomationWizard() {
  true,
  ][step];
 
- const handlePreview = async () => {
- setGeneratingPreview(true);
+ const currentPreview = previews[previewPlatform] ?? null;
+ const isGeneratingCurrent = generatingPlatforms.has(previewPlatform);
+ const generatingPreview = generatingPlatforms.size > 0;
+
+ const generateForPlatform = async (
+ platform: SocialPlatform,
+ opts?: { force?: boolean },
+ ) => {
+ if (!brief.trim()) return;
+ // Skip if we already have it (unless forcing) or it's already generating.
+ if (!opts?.force && previews[platform]) return;
+ if (generatingPlatforms.has(platform)) return;
+
+ setGeneratingPlatforms((prev) => {
+ const next = new Set(prev);
+ next.add(platform);
+ return next;
+ });
  try {
  const result = await generatePreviewContent({
  brief,
- platform: previewPlatform,
+ platform,
  preset,
  tone,
  brandProfileId: brandProfileId || undefined,
  });
- setPreview(result);
+ setPreviews((prev) => ({ ...prev, [platform]: result }));
  } catch (error) {
- toast.error(error instanceof Error ? error.message :"Preview generation failed");
+ // Only surface the error for the channel the user is currently viewing so
+ // background channels don't spam toasts.
+ if (platform === previewPlatform) {
+ toast.error(error instanceof Error ? error.message : "Preview generation failed");
+ }
  } finally {
- setGeneratingPreview(false);
+ setGeneratingPlatforms((prev) => {
+ const next = new Set(prev);
+ next.delete(platform);
+ return next;
+ });
  }
  };
 
- useEffect(() => {
- if (step === 4 && !preview && !generatingPreview && brief.trim()) {
- handlePreview();
+ // Generate the visible channel plus every other connected channel in the
+ // background. `force` regenerates all of them from scratch.
+ const generateAllPlatforms = (force = false) => {
+ const targets = selectedPlatforms.length ? selectedPlatforms : [previewPlatform];
+ // Prioritize the channel currently in view, then the rest in the background.
+ const ordered = [
+ previewPlatform,
+ ...targets.filter((p) => p !== previewPlatform),
+ ].filter((p, i, arr) => arr.indexOf(p) === i);
+ if (force) setPreviews({});
+ for (const platform of ordered) {
+ void generateForPlatform(platform, { force });
  }
+ };
+
+ const handlePreview = () => generateAllPlatforms(true);
+
+ useEffect(() => {
+ if (step !== 4 || !brief.trim()) return;
+ generateAllPlatforms(false);
  // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [step, previewPlatform]);
+ }, [step, selectedPlatforms]);
 
  const handleSave = async () => {
  setLoading(true);
@@ -252,6 +361,7 @@ export default function AutomationWizard() {
    toast.success("Automation updated");
   } else {
    await createConvex(payload);
+   if (user) clearAutomationDraft(user.uid);
    captureEvent("automation_created", {
     platforms: selectedPlatforms.join(","),
     requires_approval: requiresApproval,
@@ -265,6 +375,7 @@ export default function AutomationWizard() {
   toast.success("Automation updated");
  } else {
   await createAutomation(payload);
+  if (user) clearAutomationDraft(user.uid);
   captureEvent("automation_created", {
    platforms: selectedPlatforms.join(","),
    requires_approval: requiresApproval,
@@ -282,7 +393,7 @@ export default function AutomationWizard() {
  };
 
   return (
-    <div className="mx-auto max-w-2xl py-8 px-4">
+    <div className={cn("mx-auto py-8 px-4", step === 4 ? "max-w-6xl" : "max-w-2xl")}>
       <button
         onClick={() => navigate("/automations")}
         className="mb-6 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -669,79 +780,92 @@ export default function AutomationWizard() {
                       Check your configuration and see a sample of what the automation will generate.
                     </p>
                   </div>
-                  
-                  <div className="rounded-xl border border-border bg-secondary/20 p-5 space-y-4">
-                    <div className="flex items-center justify-between border-b border-border/50 pb-4">
-                       <div>
-                         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Campaign Summary</div>
-                         <div className="text-sm font-medium text-foreground">{name || "Untitled Automation"}</div>
-                       </div>
-                       <div className="text-right">
-                         <div className="text-sm font-medium text-foreground">{selectedAccounts.length} Account(s)</div>
-                         <div className="text-xs text-muted-foreground">{daysOfWeek.length === 0 || daysOfWeek.length === 7 ? "Daily" : `${daysOfWeek.length} days/week`} at {time}</div>
-                       </div>
-                    </div>
-                    <div className="text-sm text-foreground leading-relaxed">
-                       <span className="font-semibold">Brief:</span> {brief}
-                    </div>
-                  </div>
 
-                  <div className="space-y-4 pt-2">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-foreground">Sample Generation</h3>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handlePreview}
-                        disabled={generatingPreview}
-                        className="h-8 px-3 text-xs"
-                      >
-                        {generatingPreview ? (
-                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Sparkles className="mr-1.5 h-3.5 w-3.5 text-brand" />
-                        )}
-                        Regenerate
-                      </Button>
-                    </div>
-
-                    {selectedPlatforms.length > 1 && (
-                      <div className="flex gap-2">
-                        {selectedPlatforms.map((platform) => {
-                          const meta = PLATFORM_META[platform];
-                          return (
-                            <button
-                              key={platform}
-                              onClick={() => {
-                                setPreviewPlatform(platform);
-                                setPreview(null);
-                              }}
-                              className={cn(
-                                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                                previewPlatform === platform
-                                  ? "border-brand bg-brand/10 text-brand"
-                                  : "border-border bg-secondary/50 text-muted-foreground hover:bg-secondary/80"
-                              )}
-                            >
-                              <meta.icon className="h-3.5 w-3.5" /> {meta.label}
-                            </button>
-                          );
-                        })}
+                  {/* This screen only: details on the left, live preview on the right */}
+                  <div className="grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
+                    {/* LEFT: campaign summary + sample generation controls */}
+                    <div className="space-y-6">
+                      <div className="rounded-xl border border-border bg-secondary/20 p-5 space-y-4">
+                        <div className="flex items-center justify-between border-b border-border/50 pb-4">
+                           <div>
+                             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Campaign Summary</div>
+                             <div className="text-sm font-medium text-foreground">{name || "Untitled Automation"}</div>
+                           </div>
+                           <div className="text-right">
+                             <div className="text-sm font-medium text-foreground">{selectedAccounts.length} Account(s)</div>
+                             <div className="text-xs text-muted-foreground">{daysOfWeek.length === 0 || daysOfWeek.length === 7 ? "Daily" : `${daysOfWeek.length} days/week`} at {time}</div>
+                           </div>
+                        </div>
+                        <div className="text-sm text-foreground leading-relaxed">
+                           <span className="font-semibold">Brief:</span> {brief}
+                        </div>
                       </div>
-                    )}
-                    
-                    <div className="flex justify-center rounded-xl border border-border bg-secondary/10 p-6 min-h-[300px]">
-                      {generatingPreview ? (
+
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-foreground">Sample Generation</h3>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handlePreview}
+                            disabled={generatingPreview}
+                            className="h-8 px-3 text-xs"
+                          >
+                            {generatingPreview ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="mr-1.5 h-3.5 w-3.5 text-brand" />
+                            )}
+                            Regenerate
+                          </Button>
+                        </div>
+
+                        {selectedPlatforms.length > 1 && (
+                          <div className="flex flex-wrap gap-2">
+                            {selectedPlatforms.map((platform) => {
+                              const meta = PLATFORM_META[platform];
+                              const loadingThis = generatingPlatforms.has(platform);
+                              return (
+                                <button
+                                  key={platform}
+                                  onClick={() => {
+                                    setPreviewPlatform(platform);
+                                    void generateForPlatform(platform);
+                                  }}
+                                  className={cn(
+                                    "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                                    previewPlatform === platform
+                                      ? "border-brand bg-brand/10 text-brand"
+                                      : "border-border bg-secondary/50 text-muted-foreground hover:bg-secondary/80"
+                                  )}
+                                >
+                                  {loadingThis ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <meta.icon className="h-3.5 w-3.5" />
+                                  )}
+                                  {meta.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* RIGHT: live preview */}
+                    <div className="flex items-center justify-center rounded-xl border border-border bg-secondary/10 p-6 min-h-[420px] lg:h-full">
+                      {isGeneratingCurrent ? (
                         <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground h-full min-h-[250px]">
                           <Loader2 className="h-6 w-6 animate-spin text-brand" />
                           <span className="text-sm font-medium">Writing your sample post…</span>
                         </div>
-                      ) : preview ? (
+                      ) : currentPreview ? (
                         <PlatformPreview
                           platform={previewPlatform}
                           content={{
-                            caption: preview.caption,
-                            hashtags: preview.hashtags,
+                            caption: currentPreview.caption,
+                            hashtags: currentPreview.hashtags,
                             brandName: brand?.name ?? name,
                             handle: brand?.name?.toLowerCase().replace(/\s+/g, "") ?? undefined,
                             logoUrl: brand?.logoUrl,

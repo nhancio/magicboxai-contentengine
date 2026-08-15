@@ -16,6 +16,16 @@ import { cn } from "@shared/lib/utils";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
 import {
+  AUTOMATION_STEPS,
+  clearAutomationDraft,
+  clearStudioDraft,
+  readAutomationDraft,
+  readStudioDraft,
+  type AutomationDraft,
+  type StudioDraftSummary,
+} from "../lib/drafts";
+import {
+  ArrowRight,
   Bot,
   CalendarClock,
   Globe2,
@@ -23,8 +33,10 @@ import {
   Linkedin,
   Loader2,
   Pause,
+  Pencil,
   Play,
   Plus,
+  Sparkles,
   Trash2,
   Twitter,
   MessageCircle,
@@ -49,6 +61,15 @@ const STATUS_META: Record<Automation["status"], { label: string; dot: string }> 
   draft: { label: "Draft", dot: "bg-muted-foreground/40" },
   error: { label: "Needs attention", dot: "bg-red-500" },
 };
+
+function draftTime(ts: number): string {
+  return new Date(ts).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 type UiAutomation = Automation & { store: "convex" | "firebase" };
 
@@ -129,6 +150,15 @@ export default function Automations() {
   const [legacyLoading, setLegacyLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
+  const [wizardDraft, setWizardDraft] = useState<AutomationDraft | null>(null);
+  const [studioDraft, setStudioDraft] = useState<StudioDraftSummary | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    setWizardDraft(readAutomationDraft(user.uid));
+    setStudioDraft(readStudioDraft(user.uid));
+  }, [user]);
+
   const convexRows = useQuery(api.automations.list, isConvexConfigured ? {} : "skip");
   const setStatusConvex = useMutation(api.automations.setStatus);
   const removeConvex = useMutation(api.automations.remove);
@@ -201,6 +231,20 @@ export default function Automations() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const discardWizardDraft = () => {
+    if (!user) return;
+    clearAutomationDraft(user.uid);
+    setWizardDraft(null);
+    toast.success("Draft discarded");
+  };
+
+  const discardStudioDraft = () => {
+    if (!user) return;
+    clearStudioDraft(user.uid);
+    setStudioDraft(null);
+    toast.success("Studio draft discarded");
   };
 
   const remove = async (automation: UiAutomation) => {
@@ -345,6 +389,97 @@ export default function Automations() {
               </motion.div>
             );
           })}
+        </div>
+      )}
+
+      {(wizardDraft || studioDraft) && (
+        <div className="mt-10">
+          <h2 className="text-sm font-semibold text-foreground">Drafts</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Unfinished work, picked up where you left it.
+          </p>
+
+          <div className="mt-3 space-y-3">
+            {wizardDraft && (
+              <div className="glass-card flex flex-col gap-4 border-dashed p-5 sm:flex-row sm:items-center">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                  <Pencil className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2.5">
+                    <span className="truncate font-semibold text-foreground">
+                      {wizardDraft.name.trim() || "Untitled automation"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">Draft</span>
+                  </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">
+                    {wizardDraft.brief || "No brief yet"}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>
+                      Stopped on {AUTOMATION_STEPS[wizardDraft.step] ?? "Brief"} — step{" "}
+                      {wizardDraft.step + 1} of {AUTOMATION_STEPS.length}
+                    </span>
+                    <span>Saved {draftTime(wizardDraft.updatedAt)}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to="/automations/new">
+                      Resume <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={discardWizardDraft}
+                    className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                    title="Discard draft"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {studioDraft && (
+              <div className="glass-card flex flex-col gap-4 border-dashed p-5 sm:flex-row sm:items-center">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2.5">
+                    <span className="truncate font-semibold text-foreground">Studio post</span>
+                    <span className="text-xs capitalize text-muted-foreground">
+                      {studioDraft.postType} · {studioDraft.channel}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">
+                    {studioDraft.caption || studioDraft.prompt}
+                  </p>
+                  {studioDraft.hasMedia && (
+                    <p className="mt-2 text-xs text-muted-foreground">Media attached</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to="/studio">
+                      Open in Studio <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={discardStudioDraft}
+                    className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                    title="Discard draft"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
