@@ -14,7 +14,7 @@ import {
   type User,
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, googleProvider, isAuthDomainFirstParty } from "./firebase";
 
 /**
@@ -192,16 +192,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionHint(!!firebaseUser);
       if (firebaseUser && db) {
         try {
-          await setDoc(
-            doc(db, "users", firebaseUser.uid),
-            {
-              email: firebaseUser.email,
-              displayName: firebaseUser.displayName,
-              photoURL: firebaseUser.photoURL,
-              lastLoginAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
+          const userRef = doc(db, "users", firebaseUser.uid);
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists() || !userSnap.data()?.credits) {
+            await setDoc(
+              userRef,
+              {
+                email: firebaseUser.email,
+                displayName: firebaseUser.displayName,
+                photoURL: firebaseUser.photoURL,
+                credits: {
+                  iCredits: 50,
+                  vCredits: 100,
+                  trialClaimed: true,
+                },
+                lastLoginAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          } else {
+            await setDoc(
+              userRef,
+              {
+                email: firebaseUser.email,
+                displayName: firebaseUser.displayName,
+                photoURL: firebaseUser.photoURL,
+                lastLoginAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
         } catch (e) {
           console.warn("Failed to update user doc:", e);
         }

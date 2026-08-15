@@ -261,24 +261,36 @@ function resolveHref(href: string | undefined, baseUrl: string): string {
 export function collectLogoCandidates(html: string, baseUrl: string): LogoCandidate[] {
   const found: LogoCandidate[] = [];
   const seen = new Set<string>();
+  const order: Record<LogoCandidate["kind"], number> = {
+    "logo-img": 0, "apple-touch-icon": 1, favicon: 2, social: 3,
+  };
   const add = (href: string | undefined, kind: LogoCandidate["kind"]) => {
     const url = resolveHref(href, baseUrl);
-    if (!url || seen.has(url)) return;
+    if (!url) return;
+    const existing = found.find((c) => c.url === url);
+    if (existing) {
+      if (order[kind] < order[existing.kind]) {
+        existing.kind = kind;
+      }
+      return;
+    }
     seen.add(url);
     found.push({ url, kind });
   };
+
+  for (const link of findTags(html, "link")) {
+    const rel = (link.rel ?? "").toLowerCase();
+    const href = (link.href ?? "").toLowerCase();
+    const isLogo = /logo|brand/i.test(href);
+    if (rel.includes("apple-touch-icon")) add(link.href, isLogo ? "logo-img" : "apple-touch-icon");
+    else if (rel.includes("icon")) add(link.href, isLogo ? "logo-img" : "favicon");
+  }
 
   for (const meta of findTags(html, "meta")) {
     const key = meta.property ?? meta.name ?? "";
     if (["og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
       add(meta.content, "social");
     }
-  }
-
-  for (const link of findTags(html, "link")) {
-    const rel = (link.rel ?? "").toLowerCase();
-    if (rel.includes("apple-touch-icon")) add(link.href, "apple-touch-icon");
-    else if (rel.includes("icon")) add(link.href, "favicon");
   }
 
   // <img> tags that look like a logo. Match on class/id/alt (reliable) or the
@@ -304,7 +316,7 @@ export function collectLogoCandidates(html: string, baseUrl: string): LogoCandid
 /** Best asset to DISPLAY as the brand logo. */
 export function pickDisplayLogo(candidates: LogoCandidate[]): string {
   const order: Record<LogoCandidate["kind"], number> = {
-    "logo-img": 0, "apple-touch-icon": 1, social: 2, favicon: 3,
+    "logo-img": 0, "apple-touch-icon": 1, favicon: 2, social: 3,
   };
   return [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]?.url ?? "";
 }

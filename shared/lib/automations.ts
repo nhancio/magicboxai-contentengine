@@ -27,10 +27,25 @@ import type {
   SocialPlatform,
 } from "../types";
 
+function deepStripUndefined<T>(val: T): T {
+  if (val === null || val === undefined) return val;
+  if (Array.isArray(val)) {
+    return val.map(deepStripUndefined).filter((v) => v !== undefined) as unknown as T;
+  }
+  if (typeof val === "object" && !(val instanceof Date) && !(val instanceof Timestamp)) {
+    const res: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      if (v !== undefined) {
+        res[k] = deepStripUndefined(v);
+      }
+    }
+    return res as T;
+  }
+  return val;
+}
+
 function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([, v]) => v !== undefined)
-  ) as T;
+  return deepStripUndefined(obj);
 }
 
 function toDate(v: unknown): Date | undefined {

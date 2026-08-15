@@ -1,7 +1,13 @@
 import { Link } from "react-router-dom";
 import { Clock, Sparkles } from "lucide-react";
 import { cn } from "@shared/lib/utils";
-import { trialClock, trialStatusCopy, type CreditBalanceLike } from "@/lib/credits";
+import {
+  DEFAULT_TRIAL_I,
+  DEFAULT_TRIAL_V,
+  trialClock,
+  trialStatusCopy,
+  type CreditBalanceLike,
+} from "@/lib/credits";
 
 type Credits = CreditBalanceLike & {
   iCredits?: number;
@@ -20,8 +26,16 @@ type Props = {
 export function CreditsTrialCard({ credits, compact, className, onNavigate }: Props) {
   const clock = trialClock(credits);
   const loading = credits === undefined;
-  const i = loading || credits?.needsTrialClaim ? "…" : (credits?.iCredits ?? "—");
-  const v = loading || credits?.needsTrialClaim ? "…" : (credits?.vCredits ?? "—");
+  const i = loading
+    ? "…"
+    : typeof credits?.iCredits === "number"
+      ? credits.iCredits
+      : (credits?.freeTrial?.i ?? DEFAULT_TRIAL_I);
+  const v = loading
+    ? "…"
+    : typeof credits?.vCredits === "number"
+      ? credits.vCredits
+      : (credits?.freeTrial?.v ?? DEFAULT_TRIAL_V);
   const showTrial = !!clock && !credits?.hasPaidPlan;
   const expired = !!clock?.expired;
 

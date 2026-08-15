@@ -26,7 +26,7 @@ import {
 } from "@shared/components/ui/dialog";
 import { cn } from "@shared/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
-import { trialClock } from "../lib/credits";
+import { DEFAULT_TRIAL_I, DEFAULT_TRIAL_V, trialClock } from "../lib/credits";
 import { captureEvent } from "@shared/lib/analytics";
 import {
   Settings as SettingsIcon,
@@ -530,9 +530,11 @@ export default function Settings() {
   const clock = trialClock(credits);
 
   useEffect(() => {
-    if (!isConvexConfigured || !credits?.needsTrialClaim) return;
-    claimTrial({}).catch(() => undefined);
-  }, [credits?.needsTrialClaim, claimTrial]);
+    if (!isConvexConfigured || !user) return;
+    if (credits?.needsTrialClaim) {
+      claimTrial({}).catch(() => undefined);
+    }
+  }, [isConvexConfigured, user, credits?.needsTrialClaim, claimTrial]);
 
   // Surface the OAuth round-trip result and clean the URL.
   useEffect(() => {
@@ -565,8 +567,17 @@ export default function Settings() {
         .toUpperCase()
     : "U";
 
-  const iCredits = credits?.needsTrialClaim ? "…" : (credits?.iCredits ?? "—");
-  const vCredits = credits?.needsTrialClaim ? "…" : (credits?.vCredits ?? "—");
+  const loadingCredits = isConvexConfigured && credits === undefined;
+  const iCredits = loadingCredits
+    ? "…"
+    : typeof credits?.iCredits === "number"
+      ? credits.iCredits
+      : (credits?.freeTrial?.i ?? DEFAULT_TRIAL_I);
+  const vCredits = loadingCredits
+    ? "…"
+    : typeof credits?.vCredits === "number"
+      ? credits.vCredits
+      : (credits?.freeTrial?.v ?? DEFAULT_TRIAL_V);
   const creditsFrozen = !!clock?.expired && !credits?.hasPaidPlan;
 
   const tabs = [

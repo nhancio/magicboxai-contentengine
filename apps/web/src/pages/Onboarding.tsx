@@ -33,40 +33,99 @@ import {
 } from"../components/carousel/types";
 import WebsitePostCard from"../components/creative/WebsitePostCard";
 import {
- ArrowRight,
- CalendarClock,
- Check,
- CheckCircle2,
- ChevronLeft,
- Facebook,
- Globe2,
- Image as ImageIcon,
- Instagram,
- Layers,
- Link2,
- Linkedin,
- Loader2,
- MessageCircle,
- Send,
- ShieldCheck,
- Sparkles,
- Twitter,
- Youtube,
- Flame,
-} from"lucide-react";
+  ArrowRight,
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Facebook,
+  Flame,
+  Globe2,
+  Image as ImageIcon,
+  Instagram,
+  Layers,
+  Link2,
+  Linkedin,
+  Loader2,
+  MessageCircle,
+  Palette,
+  Pencil,
+  RotateCcw,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Tag,
+  Twitter,
+  Users,
+  Volume2,
+  Youtube,
+} from "lucide-react";
 
 const SCAN_STEPS = [
- "Reading your homepage",
- "Finding logo & strongest imagery",
- "Sampling brand colors",
- "Extracting audience, offer & voice",
- "Preparing content evidence",
+  { title: "Scanning website & homepage", detail: "Reading title, meta tags, and content structure" },
+  { title: "Extracting brand logo & favicon", detail: "Locating high-resolution brand marks" },
+  { title: "Sampling brand color palette", detail: "Finding primary, secondary & accent colors" },
+  { title: "Analyzing audience & brand voice", detail: "Synthesizing tone, positioning & campaign hooks" },
 ];
 
 function normalizeInputUrl(raw: string): string {
- const t = raw.trim();
- if (!t) return "";
- return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+  let t = raw.trim();
+  if (!t) return "";
+  if (!/^https?:\/\//i.test(t)) {
+    t = `https://${t}`;
+  }
+  return t;
+}
+
+function extractDomain(urlStr: string): string {
+  try {
+    const parsed = new URL(urlStr);
+    return parsed.hostname.replace(/^www\./, "");
+  } catch {
+    return urlStr.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] || "";
+  }
+}
+
+function deriveBrandNameFromDomain(domain: string): string {
+  const base = domain.split(".")[0] || domain;
+  if (!base) return "Your Brand";
+  return base.charAt(0).toUpperCase() + base.slice(1);
+}
+
+function createFallbackBrandResult(url: string, manualName?: string): BrandExtractResult {
+  const domain = extractDomain(url);
+  const name = manualName?.trim() || deriveBrandNameFromDomain(domain);
+  const favicon = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=128` : "";
+  return {
+    companyName: name,
+    industry: "Digital & Technology",
+    audience: "Modern consumers and growing businesses",
+    tone: "Professional, authentic, innovative",
+    hashtags: [domain.replace(/[^a-zA-Z0-9]/g, "").slice(0, 15) || "brand", "business", "innovation", "growth"].filter(Boolean),
+    sampleCaptions: [
+      `Welcome to ${name} — helping teams move faster and achieve more.`,
+      `Built for consistency and growth. Discover what's new at ${name}.`,
+    ],
+    logoUrl: favicon,
+    websiteImages: [],
+    brandedImageUrl: "",
+    brandedImageSource: "",
+    colors: {
+      primary: "#18181b",
+      secondary: "#6366f1",
+      accent: "#f59e0b",
+    },
+    fonts: ["Inter", "sans-serif"],
+    coreIdentity: `${name} delivers modern solutions designed for quality and scale.`,
+    productOffering: "Products and services for forward-thinking teams.",
+    uniqueBenefits: "Speed, reliability, and modern user experience.",
+    problemSolution: "Simplifying workflows and driving measurable results.",
+    mission: `Empowering our audience through innovative solutions at ${domain || name}.`,
+    differentiation: "Modern design, intelligent automation, and quality execution.",
+    ownedSpace: name,
+  };
 }
 
 const PLATFORM_META: Record<
@@ -184,6 +243,7 @@ export default function Onboarding() {
  const uploadUrl = useMutation(api.studio.uploadUrl);
  const resolveUpload = useMutation(api.studio.resolveUpload);
  const upsertWebsiteBrand = useMutation(api.brands.upsertFromWebsite);
+ const extractBrandConvex = useAction(api.brands.extractFromWebsite);
 
  const accounts: SocialAccount[] = useMemo(() => {
  if (isConvexConfigured && convexAccounts) {
@@ -213,15 +273,16 @@ export default function Onboarding() {
  }, [accounts]);
  const hasActiveChannel = accounts.some((account) => account.status === "active");
 
- // brand — website fetch only
- const [websiteUrl, setWebsiteUrl] = useState("");
- const [brandPhase, setBrandPhase] = useState<"idle" | "scanning" | "ready" | "saving">("idle");
- const [scanStep, setScanStep] = useState(0);
- const [extracted, setExtracted] = useState<BrandExtractResult | null>(null);
- const [extractedUrl, setExtractedUrl] = useState("");
- const [brandName, setBrandName] = useState("");
- const [toneOfVoice, setToneOfVoice] = useState("");
- const [brandProfileId, setBrandProfileId] = useState<string>("");
+  // brand — website fetch only
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [brandPhase, setBrandPhase] = useState<"idle" | "scanning" | "ready" | "saving">("idle");
+  const [scanStep, setScanStep] = useState(0);
+  const [extracted, setExtracted] = useState<BrandExtractResult | null>(null);
+  const [extractedUrl, setExtractedUrl] = useState("");
+  const [brandName, setBrandName] = useState("");
+  const [toneOfVoice, setToneOfVoice] = useState("");
+  const [isEditingBrand, setIsEditingBrand] = useState(false);
+  const [brandProfileId, setBrandProfileId] = useState<string>("");
 
  // preview — branded samples from fetch (no dependency on failing Firebase callable)
  const [previewPlatform, setPreviewPlatform] = useState<SocialPlatform>("linkedin");
@@ -381,122 +442,201 @@ export default function Onboarding() {
  return () => window.clearInterval(id);
  }, [brandPhase]);
 
+  const updateExtractedField = (field: keyof BrandExtractResult, val: any) => {
+    if (!extracted) return;
+    setExtracted((prev) => (prev ? { ...prev, [field]: val } : prev));
+  };
+
+  const updateColor = (colorKey: "primary" | "secondary" | "accent", hex: string) => {
+    if (!extracted) return;
+    setExtracted((prev) =>
+      prev
+        ? {
+            ...prev,
+            colors: {
+              ...prev.colors,
+              [colorKey]: hex,
+            },
+          }
+        : prev,
+    );
+  };
+
   const handleScanBrand = async () => {
     const url = normalizeInputUrl(websiteUrl);
     if (!url) {
-      toast.error("Enter your website URL first.");
+      toast.error("Please enter your website or domain URL first.");
       return;
     }
-    // If brand details are already scraped and websiteUrl matches, immediately save & advance
-    if (brandPhase === "ready" && extracted && (url === extractedUrl || !extractedUrl)) {
-      await handleSaveBrand();
-      return;
-    }
+    setWebsiteUrl(url);
+
     captureEvent(PRODUCT_EVENTS.onboardingWebsiteFetchStarted, {
       source: "onboarding",
     });
- setBrandPhase("scanning");
- setExtracted(null);
- contentHydratedRef.current = false;
- try {
- const result = await extractBrandFromWebsite({ url });
- if (!result.companyName && !result.logoUrl && !result.colors?.primary) {
- toast.error("Couldn't pull much from that page — try the homepage URL.");
- setBrandPhase("idle");
- return;
- }
- setExtracted(result);
- setExtractedUrl(url);
- setBrandName(result.companyName || new URL(url).hostname);
- setToneOfVoice(result.tone || "");
- setBrandPhase("ready");
- toast.success("Brand details fetched — review and continue.");
- } catch (error) {
- toast.error(error instanceof Error ? error.message : "Couldn't read that site.");
- setBrandPhase("idle");
- }
- };
+    setBrandPhase("scanning");
+    setExtracted(null);
+    setIsEditingBrand(false);
+    contentHydratedRef.current = false;
 
- const handleSaveBrand = async () => {
- if (!user || !extracted) return;
- setBrandPhase("saving");
- setSaving(true);
- try {
- const id = await saveBrandProfile({
- userId: user.uid,
- name: extracted.companyName || new URL(extractedUrl).hostname,
- industry: extracted.industry || "",
- toneOfVoice: extracted.tone || "",
- audience: extracted.audience || "",
- websiteUrl: extractedUrl,
- logoUrl: extracted.logoUrl || undefined,
- colors: {
- primary: extracted.colors.primary || "#111111",
- secondary: extracted.colors.secondary,
- accent: extracted.colors.accent,
- },
- hashtagSets: {
- default: (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean),
- },
- sampleCaptions: extracted.sampleCaptions?.length
- ? extracted.sampleCaptions
- : undefined,
- websiteImages: extracted.websiteImages?.length
- ? extracted.websiteImages
- : undefined,
- brandedImageUrl: extracted.brandedImageUrl || undefined,
- });
- if (isConvexConfigured) {
- try {
- await upsertWebsiteBrand({
- legacyId: id,
- name: extracted.companyName || new URL(extractedUrl).hostname,
- websiteUrl: extractedUrl,
- logoUrl: extracted.logoUrl || undefined,
- colors: {
- primary: extracted.colors.primary || "#111111",
- secondary: extracted.colors.secondary,
- accent: extracted.colors.accent,
- },
- industry: extracted.industry || undefined,
- toneOfVoice: extracted.tone || undefined,
- audience: extracted.audience || undefined,
- hashtagSets: {
- default: (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean),
- },
- sampleCaptions: extracted.sampleCaptions?.length
- ? extracted.sampleCaptions
- : undefined,
- });
- } catch (error) {
- console.warn("[onboarding] Convex brand sync will retry from the saved kit", error);
- }
- }
- setBrandProfileId(id);
- setBrandName(extracted.companyName || new URL(extractedUrl).hostname);
- setToneOfVoice(extracted.tone || "");
- if (db) {
- await setDoc(
- doc(db, "users", user.uid),
- {
- websiteSetupEnabledAt: serverTimestamp(),
- onboardingLastAction: "website_enabled",
- },
- { merge: true },
- );
- }
- captureEvent("brand_kit_completed", { source: "onboarding", has_website: true });
- captureEvent(PRODUCT_EVENTS.onboardingWebsiteEnabled, {
- source: "onboarding",
- });
- setStep(1);
- } catch (error) {
- toast.error(error instanceof Error ? error.message :"Could not save brand");
- setBrandPhase("ready");
- } finally {
- setSaving(false);
- }
- };
+    // Timeout helper to avoid infinite hanging if backend or external site is unresponsive
+    const fetchWithTimeout = async () => {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Extraction timed out after 14s")), 14000)
+      );
+      return Promise.race([extractBrandFromWebsite({ url }), timeoutPromise]);
+    };
+
+    try {
+      const result = await fetchWithTimeout();
+      if (!result.companyName && !result.logoUrl && !result.colors?.primary) {
+        const fallback = createFallbackBrandResult(url);
+        const merged: BrandExtractResult = {
+          ...fallback,
+          ...result,
+          companyName: result.companyName || fallback.companyName,
+          logoUrl: result.logoUrl || fallback.logoUrl,
+          colors: {
+            primary: result.colors?.primary || fallback.colors.primary,
+            secondary: result.colors?.secondary || fallback.colors.secondary,
+            accent: result.colors?.accent || fallback.colors.accent,
+          },
+          industry: result.industry || fallback.industry,
+          audience: result.audience || fallback.audience,
+          tone: result.tone || fallback.tone,
+        };
+        setExtracted(merged);
+        setExtractedUrl(url);
+        setBrandName(merged.companyName);
+        setToneOfVoice(merged.tone || "");
+        setBrandPhase("ready");
+        toast.info("Extracted core brand details — feel free to tweak them below.");
+        return;
+      }
+
+      setExtracted(result);
+      setExtractedUrl(url);
+      setBrandName(result.companyName || deriveBrandNameFromDomain(extractDomain(url)));
+      setToneOfVoice(result.tone || "");
+      setBrandPhase("ready");
+      toast.success("Brand Kit extracted successfully!");
+    } catch (error) {
+      console.warn("[onboarding] Extraction failed or timed out, generating domain fallback:", error);
+      const fallback = createFallbackBrandResult(url);
+      setExtracted(fallback);
+      setExtractedUrl(url);
+      setBrandName(fallback.companyName);
+      setToneOfVoice(fallback.tone || "");
+      setBrandPhase("ready");
+      toast.info("Created brand profile from your domain — you can customize details below.");
+    }
+  };
+
+  const handleManualBrandEntry = (customUrl?: string) => {
+    const rawUrl = customUrl || websiteUrl.trim() || "https://mybrand.com";
+    const url = normalizeInputUrl(rawUrl);
+    setWebsiteUrl(url);
+    const fallback = createFallbackBrandResult(url, brandName || undefined);
+    setExtracted(fallback);
+    setExtractedUrl(url);
+    setBrandName(fallback.companyName);
+    setToneOfVoice(fallback.tone || "");
+    setIsEditingBrand(true);
+    setBrandPhase("ready");
+    toast.info("Enter your brand details below to customize your profile.");
+  };
+
+  const handleRescan = () => {
+    setBrandPhase("idle");
+    setIsEditingBrand(false);
+  };
+
+  const handleSaveBrand = async () => {
+    if (!user || !extracted) return;
+    setBrandPhase("saving");
+    setSaving(true);
+    try {
+      const activeUrl = extractedUrl || normalizeInputUrl(websiteUrl) || "https://mybrand.com";
+      const domain = extractDomain(activeUrl);
+      const finalName = brandName.trim() || extracted.companyName || deriveBrandNameFromDomain(domain);
+      const finalIndustry = extracted.industry || "General";
+      const finalTone = toneOfVoice.trim() || extracted.tone || "Professional, modern, clear";
+      const finalAudience = extracted.audience || "Target customers & industry peers";
+      const finalColors = {
+        primary: extracted.colors?.primary || "#18181b",
+        secondary: extracted.colors?.secondary || "#6366f1",
+        accent: extracted.colors?.accent || "#f59e0b",
+      };
+      const finalLogoUrl = extracted.logoUrl || `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+      const finalHashtags = (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean);
+      const finalSampleCaptions = extracted.sampleCaptions?.length ? extracted.sampleCaptions : undefined;
+
+      const id = await saveBrandProfile({
+        userId: user.uid,
+        name: finalName,
+        industry: finalIndustry,
+        toneOfVoice: finalTone,
+        audience: finalAudience,
+        websiteUrl: activeUrl,
+        logoUrl: finalLogoUrl,
+        colors: finalColors,
+        hashtagSets: {
+          default: finalHashtags,
+        },
+        sampleCaptions: finalSampleCaptions,
+        websiteImages: extracted.websiteImages?.length ? extracted.websiteImages : undefined,
+        brandedImageUrl: extracted.brandedImageUrl || undefined,
+      });
+
+      if (isConvexConfigured) {
+        try {
+          await upsertWebsiteBrand({
+            legacyId: id,
+            name: finalName,
+            websiteUrl: activeUrl,
+            logoUrl: finalLogoUrl,
+            colors: finalColors,
+            industry: finalIndustry,
+            toneOfVoice: finalTone,
+            audience: finalAudience,
+            hashtagSets: {
+              default: finalHashtags,
+            },
+            sampleCaptions: finalSampleCaptions,
+          });
+        } catch (error) {
+          console.warn("[onboarding] Convex brand sync will retry from the saved kit", error);
+        }
+      }
+
+      setBrandProfileId(id);
+      setBrandName(finalName);
+      setToneOfVoice(finalTone);
+
+      if (db) {
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            websiteSetupEnabledAt: serverTimestamp(),
+            onboardingLastAction: "website_enabled",
+          },
+          { merge: true },
+        );
+      }
+
+      captureEvent("brand_kit_completed", { source: "onboarding", has_website: true });
+      captureEvent(PRODUCT_EVENTS.onboardingWebsiteEnabled, {
+        source: "onboarding",
+      });
+
+      toast.success("Brand kit saved! Moving to social channels...");
+      setStep(1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save brand");
+      setBrandPhase("ready");
+    } finally {
+      setSaving(false);
+    }
+  };
 
  const deferOnboarding = async (section: "website" | "social") => {
  try {
@@ -1092,24 +1232,24 @@ export default function Onboarding() {
  Reading your brand…
  </div>
  <ul className="space-y-2">
- {SCAN_STEPS.map((label, i) => (
- <li
- key={label}
- className={cn(
- "flex items-center gap-2 text-sm",
- i <= scanStep ? "text-foreground" : "text-muted-foreground/50"
- )}
- >
- {i < scanStep ? (
- <Check className="h-3.5 w-3.5 text-brand" />
- ) : i === scanStep ? (
- <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
- ) : (
- <span className="h-3.5 w-3.5 rounded-full border border-border" />
- )}
- {label}
- </li>
- ))}
+                {SCAN_STEPS.map((step, i) => (
+                  <li
+                    key={step.title}
+                    className={cn(
+                      "flex items-center gap-2 text-sm",
+                      i <= scanStep ? "text-foreground" : "text-muted-foreground/50"
+                    )}
+                  >
+                    {i < scanStep ? (
+                      <Check className="h-3.5 w-3.5 text-brand" />
+                    ) : i === scanStep ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
+                    ) : (
+                      <span className="h-3.5 w-3.5 rounded-full border border-border" />
+                    )}
+                    <span>{step.title}</span>
+                  </li>
+                ))}
  </ul>
  </div>
  )}
