@@ -191,12 +191,12 @@ receipt/status → paid entitlement, per channel + a failure/retry path.
 | --- | --- | --- |
 | Run production-preview browser smoke suite | 🤖 (local) / CI | 🟡 |
 | Manual end-to-end walkthrough on live consoles with real test accounts | 👤 | 🔴 |
-| Enforce quota/entitlement on the **Convex** publish path before charging | 🤖 | 🔴 |
+| Enforce quota/entitlement on the **Convex** publish path before charging | 🤖 | ✅ complete |
 | Fix Instagram double-post idempotency (persist `creationId` per destination) | 🤖 | ✅ complete |
 | Add `httpRaw()`/`fetchBytes()` to `base.ts`; collapse provider duplication | 🤖 | 🔴 |
 | Implement LinkedIn video via Videos API (currently text+image only) | 🤖 | ✅ complete |
-| Wire Veo generation into Convex (durable polling) | 🤖 | 🔴 |
-| Add Post/Schedule button to VideoCreator UI (bridge `studio.createPost` exists) | 🤖 | 🔴 |
+| Wire Veo generation into Convex (durable polling) | 🤖 | ✅ complete (`media.renderVideo` + Studio/My Video) |
+| Add Post/Schedule button to VideoCreator UI (bridge `studio.createPost` exists) | 🤖 | ✅ complete via Studio / My Video (`/video-creator` redirects to Studio; VideoCreator is not the product path) |
 | Decide + execute Firestore↔Convex publish cutover so only one system publishes | 🤝 | 🔴 |
 | Confirm crons fire on schedule (trends daily, maya hourly, publish 1-min) | 🤖 | 🟡 |
 | Publishing recovery: stuck claims, partial success, idempotency, quota, OAuth expiry, operator replay runbook | 🤖 | 🔴 |

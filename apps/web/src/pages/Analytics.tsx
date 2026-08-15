@@ -194,15 +194,12 @@ export default function Analytics() {
                 {stats.upcoming.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nothing queued right now.</p>
                 ) : (
-                  stats.upcoming.map((p: any) => (
-                    <a
-                      key={p._id}
-                      href={getSocialPostUrl(p)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Open in social platform"
-                      className="flex items-start justify-between gap-3 rounded-lg border border-border bg-secondary/40 px-3 py-2.5 hover:bg-secondary"
-                    >
+                  stats.upcoming.map((p: any) => {
+                    const url = getSocialPostUrl(p);
+                    const className =
+                      "flex items-start justify-between gap-3 rounded-lg border border-border bg-secondary/40 px-3 py-2.5";
+                    const inner = (
+                      <>
                       <div className="min-w-0">
                         <p className="truncate text-sm text-foreground">
                           {(p.content?.caption || p.brief || "Post").slice(0, 80)}
@@ -219,8 +216,25 @@ export default function Analytics() {
                           minute: "2-digit",
                         })}
                       </span>
-                    </a>
-                  ))
+                      </>
+                    );
+                    return url ? (
+                      <a
+                        key={p._id}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="View post"
+                        className={`${className} hover:bg-secondary`}
+                      >
+                        {inner}
+                      </a>
+                    ) : (
+                      <div key={p._id} className={className}>
+                        {inner}
+                      </div>
+                    );
+                  })
                 )}
               </CardContent>
             </Card>
@@ -238,15 +252,12 @@ export default function Analytics() {
                     No published posts yet — try Studio or Maya.
                   </p>
                 ) : (
-                  stats.recentPosted.map((p: any) => (
-                    <a
-                      key={p._id}
-                      href={getSocialPostUrl(p)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Open in social platform"
-                      className="flex items-start justify-between gap-3 rounded-lg border border-border bg-secondary/40 px-3 py-2.5 hover:bg-secondary"
-                    >
+                  stats.recentPosted.map((p: any) => {
+                    const url = getSocialPostUrl(p);
+                    const className =
+                      "flex items-start justify-between gap-3 rounded-lg border border-border bg-secondary/40 px-3 py-2.5";
+                    const inner = (
+                      <>
                       <div className="min-w-0">
                         <p className="truncate text-sm text-foreground">
                           {(p.content?.caption || p.brief || "Post").slice(0, 80)}
@@ -263,8 +274,25 @@ export default function Analytics() {
                           minute: "2-digit",
                         })}
                       </span>
-                    </a>
-                  ))
+                      </>
+                    );
+                    return url ? (
+                      <a
+                        key={p._id}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="View post"
+                        className={`${className} hover:bg-secondary`}
+                      >
+                        {inner}
+                      </a>
+                    ) : (
+                      <div key={p._id} className={className}>
+                        {inner}
+                      </div>
+                    );
+                  })
                 )}
               </CardContent>
             </Card>

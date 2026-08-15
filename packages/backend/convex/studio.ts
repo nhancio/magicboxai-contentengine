@@ -580,33 +580,40 @@ export const createPost = action({
       }
     }
 
-    // Credits: drafts are free. Posts cost 1 i-credit, or N v-credits for video
-    // uploads. Veo-generated clips were already billed at generate time.
+    // Paid entitlement + monthly post quota first. Drafts stay free.
+    // Credits: 1 i-credit, or N v-credits for video uploads. Veo clips were
+    // already billed at generate time.
     if (args.mode !== "draft") {
       await ctx.runMutation(internal.credits.ensure, { userId: uid });
-      if (args.mediaType === "video") {
-        const source = args.mediaSource ?? "upload";
-        const isOwnedVeoMedia =
-          source === "veo" && media?.[0]?.url
-            ? await ctx.runQuery(internal.media.isOwnedCompletedVideo, {
-                userId: uid,
-                url: media[0].url,
-              })
-            : false;
-        if (!isOwnedVeoMedia) {
-          const seconds = Math.max(1, Math.ceil(args.durationSeconds ?? DEFAULT_VEO_SECONDS));
-          await ctx.runMutation(internal.credits.spendV, {
+      await ctx.runMutation(internal.credits.reservePublish, { userId: uid });
+      try {
+        if (args.mediaType === "video") {
+          const source = args.mediaSource ?? "upload";
+          const isOwnedVeoMedia =
+            source === "veo" && media?.[0]?.url
+              ? await ctx.runQuery(internal.media.isOwnedCompletedVideo, {
+                  userId: uid,
+                  url: media[0].url,
+                })
+              : false;
+          if (!isOwnedVeoMedia) {
+            const seconds = Math.max(1, Math.ceil(args.durationSeconds ?? DEFAULT_VEO_SECONDS));
+            await ctx.runMutation(internal.credits.spendV, {
+              userId: uid,
+              amount: seconds,
+              reason: "post_video",
+            });
+          }
+        } else {
+          await ctx.runMutation(internal.credits.spendI, {
             userId: uid,
-            amount: seconds,
-            reason: "post_video",
+            amount: 1,
+            reason: "post_image_or_text",
           });
         }
-      } else {
-        await ctx.runMutation(internal.credits.spendI, {
-          userId: uid,
-          amount: 1,
-          reason: "post_image_or_text",
-        });
+      } catch (error) {
+        await ctx.runMutation(internal.credits.releasePublish, { userId: uid });
+        throw error;
       }
     }
 

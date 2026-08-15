@@ -230,3 +230,15 @@ export const syncBillingClaims = callable<
   Record<string, never>,
   { plan: "free" | "pro" | "max"; status: string; hasPaidPlan: boolean }
 >("syncBillingClaims");
+
+/** Attach a guest-checkout purchase keyed by the signed-in Google email. */
+export const claimGuestEntitlement = callable<
+  Record<string, never>,
+  {
+    outcome: "claimed" | "already_active" | "none";
+    plan: "free" | "pro" | "max";
+    status: string;
+    hasPaidPlan: boolean;
+    email: string;
+  }
+>("claimGuestEntitlement");

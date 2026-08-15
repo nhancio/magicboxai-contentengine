@@ -342,34 +342,48 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-2">
-              {upcoming.map((post) => (
-                <a
-                  key={post.id}
-                  href={getSocialPostUrl(post)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Open in social platform"
-                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-2.5 transition-colors hover:bg-accent sm:p-3"
-                >
-                  <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
-                  <p className="min-w-0 flex-1 truncate text-sm text-foreground">
-                    {post.content?.caption ?? post.brief}
-                  </p>
-                  <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
-                    {post.platforms.slice(0, 3).map((p) => {
-                      const Icon = PLATFORM_ICONS[p];
-                      return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;
-                    })}
-                  </span>
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    {post.scheduledFor.toLocaleString(undefined, {
-                      weekday: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </a>
-              ))}
+              {upcoming.map((post) => {
+                const url = getSocialPostUrl(post);
+                const className =
+                  "flex items-center gap-3 rounded-lg border border-border bg-card p-2.5 transition-colors sm:p-3";
+                const inner = (
+                  <>
+                    <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
+                    <p className="min-w-0 flex-1 truncate text-sm text-foreground">
+                      {post.content?.caption ?? post.brief}
+                    </p>
+                    <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                      {post.platforms.slice(0, 3).map((p) => {
+                        const Icon = PLATFORM_ICONS[p];
+                        return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;
+                      })}
+                    </span>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {post.scheduledFor.toLocaleString(undefined, {
+                        weekday: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </>
+                );
+                return url ? (
+                  <a
+                    key={post.id}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="View post"
+                    className={cn(className, "hover:bg-accent")}
+                  >
+                    {inner}
+                  </a>
+                ) : (
+                  <div key={post.id} className={className}>
+                    {inner}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

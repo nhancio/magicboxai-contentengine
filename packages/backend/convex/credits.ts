@@ -26,6 +26,14 @@ export const FREE_TRIAL_MS = FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000;
 /** Veo clips are typically 8s when duration isn't specified. */
 export const DEFAULT_VEO_SECONDS = 8;
 
+/** Same catalogue Firebase `entitlements.ts` / landing copy enforce. */
+export const PAID_POST_LIMITS = {
+  pro: 60,
+  max: 300,
+} as const;
+
+export type PaidPlan = keyof typeof PAID_POST_LIMITS;
+
 export class InsufficientCreditsError extends Error {
   constructor(
     public readonly kind: "i" | "v",
@@ -50,34 +58,131 @@ export class TrialExpiredError extends Error {
   }
 }
 
+export class PublishingRequiredError extends Error {
+  constructor() {
+    super("Publishing requires a paid plan. Upgrade to Pro or Max to schedule or publish posts.");
+    this.name = "PublishingRequiredError";
+  }
+}
+
+export class MonthlyPostQuotaError extends Error {
+  constructor(plan: PaidPlan, limit: number) {
+    super(
+      `Monthly post limit reached (${limit}/month on ${plan === "pro" ? "Pro" : "Max"}). Upgrade or wait until next month.`,
+    );
+    this.name = "MonthlyPostQuotaError";
+  }
+}
+
 function trialExpiresAt(grantedAt: number): number {
   return grantedAt + FREE_TRIAL_MS;
 }
 
+type BillingIdentity = {
+  magicboxPlan?: unknown;
+  magicboxSubscriptionStatus?: unknown;
+};
+
 /** Firebase signs these claims from the Firestore/Dodo entitlement record. */
+function identityBilling(identity: unknown): BillingIdentity | null {
+  if (!identity || typeof identity !== "object") return null;
+  return identity as BillingIdentity;
+}
+
 function identityHasPaidPlan(identity: unknown): boolean {
-  const claims = identity as
-    | { magicboxPlan?: unknown; magicboxSubscriptionStatus?: unknown }
-    | null
-    | undefined;
+  const claims = identityBilling(identity);
   return (
     (claims?.magicboxPlan === "pro" || claims?.magicboxPlan === "max") &&
     claims?.magicboxSubscriptionStatus === "active"
   );
 }
 
+function identityPaidPlan(identity: unknown): PaidPlan | null {
+  const claims = identityBilling(identity);
+  if (claims?.magicboxSubscriptionStatus !== "active") return null;
+  if (claims.magicboxPlan === "pro" || claims.magicboxPlan === "max") return claims.magicboxPlan;
+  return null;
+}
+
+function utcMonthKey(nowMs: number): string {
+  const d = new Date(nowMs);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 async function hasActivePaidPlan(
-  ctx: MutationCtx | { db: MutationCtx["db"] },
+  ctx: MutationCtx | { db: MutationCtx["db"]; auth?: MutationCtx["auth"] },
   userId: string,
 ): Promise<boolean> {
-  if ("auth" in ctx && identityHasPaidPlan(await ctx.auth.getUserIdentity())) return true;
+  return (await resolvePaidPlan(ctx, userId)) !== null;
+}
+
+/**
+ * Paid publishing entitlement: Firebase JWT claims (signed from Dodo/Firestore)
+ * and/or a Convex subscriptions row mirrored from those claims.
+ */
+async function resolvePaidPlan(
+  ctx: MutationCtx | { db: MutationCtx["db"]; auth?: MutationCtx["auth"] },
+  userId: string,
+  nowMs = Date.now(),
+): Promise<{ plan: PaidPlan; limit: number } | null> {
+  let plan: PaidPlan | null = null;
+  if (ctx.auth) {
+    plan = identityPaidPlan(await ctx.auth.getUserIdentity());
+  }
   const sub = await ctx.db
     .query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .unique();
-  if (!sub) return false;
-  if (sub.plan !== "pro" && sub.plan !== "max") return false;
-  return sub.status === "active" || sub.status === undefined;
+  if (sub && (sub.plan === "pro" || sub.plan === "max") && (sub.status === "active" || sub.status === undefined)) {
+    if (sub.currentPeriodEnd === undefined || sub.currentPeriodEnd > nowMs) {
+      plan = sub.plan;
+    }
+  }
+  if (!plan) return null;
+  return { plan, limit: PAID_POST_LIMITS[plan] };
+}
+
+async function upsertSubscriptionFromIdentity(
+  ctx: MutationCtx,
+  userId: string,
+): Promise<void> {
+  const identity = await ctx.auth.getUserIdentity();
+  const claims = identityBilling(identity);
+  const plan =
+    claims?.magicboxPlan === "pro" || claims?.magicboxPlan === "max" || claims?.magicboxPlan === "free"
+      ? claims.magicboxPlan
+      : undefined;
+  const status =
+    claims?.magicboxSubscriptionStatus === "active" ||
+    claims?.magicboxSubscriptionStatus === "past_due" ||
+    claims?.magicboxSubscriptionStatus === "cancelled" ||
+    claims?.magicboxSubscriptionStatus === "inactive"
+      ? claims.magicboxSubscriptionStatus
+      : undefined;
+  if (!plan && !status) return;
+
+  const existing = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .unique();
+  const now = Date.now();
+  const nextPlan = plan ?? existing?.plan ?? "free";
+  const nextStatus = status ?? existing?.status ?? "inactive";
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      plan: nextPlan,
+      status: nextStatus,
+      updatedAt: now,
+    });
+    return;
+  }
+  await ctx.db.insert("subscriptions", {
+    legacyId: userId,
+    userId,
+    plan: nextPlan,
+    status: nextStatus,
+    updatedAt: now,
+  });
 }
 
 /** True when the user may spend credits right now. */
@@ -260,6 +365,62 @@ export async function refundICredits(
   return credit(ctx, { userId, kind: "i", amount, reason, refId });
 }
 
+export async function assertPublishingEntitlement(
+  ctx: MutationCtx,
+  userId: string,
+): Promise<{ plan: PaidPlan; limit: number }> {
+  await upsertSubscriptionFromIdentity(ctx, userId);
+  const paid = await resolvePaidPlan(ctx, userId);
+  if (!paid) throw new PublishingRequiredError();
+  return paid;
+}
+
+/**
+ * Atomically reserve one calendar-month post. Drafts must not call this.
+ * Mirrors Firebase `createPostWithQuotaReservation`.
+ */
+export async function reserveMonthlyPostQuota(
+  ctx: MutationCtx,
+  userId: string,
+): Promise<{ plan: PaidPlan; used: number; limit: number; remaining: number }> {
+  await ensureTrialBalance(ctx, userId);
+  const paid = await assertPublishingEntitlement(ctx, userId);
+  const row = await getRow(ctx, userId);
+  if (!row) throw new Error("credit balance missing after ensure");
+  const month = utcMonthKey(Date.now());
+  const used = row.usageMonth === month ? row.postsThisMonth ?? 0 : 0;
+  if (used >= paid.limit) {
+    throw new MonthlyPostQuotaError(paid.plan, paid.limit);
+  }
+  const next = used + 1;
+  await ctx.db.patch(row._id, {
+    usageMonth: month,
+    postsThisMonth: next,
+    updatedAt: Date.now(),
+  });
+  return { plan: paid.plan, used: next, limit: paid.limit, remaining: paid.limit - next };
+}
+
+export async function releaseMonthlyPostQuota(ctx: MutationCtx, userId: string): Promise<void> {
+  const row = await getRow(ctx, userId);
+  if (!row) return;
+  const month = utcMonthKey(Date.now());
+  if (row.usageMonth !== month) return;
+  const used = row.postsThisMonth ?? 0;
+  if (used <= 0) return;
+  await ctx.db.patch(row._id, {
+    postsThisMonth: used - 1,
+    updatedAt: Date.now(),
+  });
+}
+
+function publishLimitFrom(identity: unknown, plan: unknown): number {
+  const fromClaims = identityPaidPlan(identity);
+  if (fromClaims) return PAID_POST_LIMITS[fromClaims];
+  if (plan === "pro" || plan === "max") return PAID_POST_LIMITS[plan];
+  return 0;
+}
+
 // ---- public ------------------------------------------------------------
 
 /** Client: current balance (auto-grants free trial once). */
@@ -267,7 +428,8 @@ export const balance = query({
   args: {},
   handler: async (ctx) => {
     const uid = await requireUid(ctx);
-    const identityPaid = identityHasPaidPlan(await ctx.auth.getUserIdentity());
+    const identity = await ctx.auth.getUserIdentity();
+    const identityPaid = identityHasPaidPlan(identity);
     const row = await ctx.db
       .query("creditBalances")
       .withIndex("by_userId", (q) => q.eq("userId", uid))
@@ -280,6 +442,8 @@ export const balance = query({
       !!sub &&
       (sub.plan === "pro" || sub.plan === "max") &&
       (sub.status === "active" || sub.status === undefined);
+    const hasPaidPlan = paid || identityPaid;
+    const publishLimit = publishLimitFrom(identity, sub?.plan);
 
     if (!row) {
       // Queries can't write — client should call `claimTrial` once.
@@ -292,7 +456,10 @@ export const balance = query({
         trialExpiresAt: null as number | null,
         trialDurationDays: FREE_TRIAL_DAYS,
         needsTrialClaim: true,
-        hasPaidPlan: paid || identityPaid,
+        hasPaidPlan,
+        usageMonth: null as string | null,
+        postsThisMonth: 0,
+        publishLimit,
         freeTrial: { i: FREE_TRIAL_I, v: FREE_TRIAL_V, days: FREE_TRIAL_DAYS },
       };
     }
@@ -306,7 +473,10 @@ export const balance = query({
       trialExpiresAt: grantedAt ? trialExpiresAt(grantedAt) : null,
       trialDurationDays: FREE_TRIAL_DAYS,
       needsTrialClaim: false,
-      hasPaidPlan: paid || identityPaid,
+      hasPaidPlan,
+      usageMonth: row.usageMonth ?? null,
+      postsThisMonth: row.postsThisMonth ?? 0,
+      publishLimit,
       freeTrial: { i: FREE_TRIAL_I, v: FREE_TRIAL_V, days: FREE_TRIAL_DAYS },
     };
   },
@@ -318,6 +488,27 @@ export const claimTrial = mutation({
   handler: async (ctx) => {
     const uid = await requireUid(ctx);
     return await ensureTrialBalance(ctx, uid);
+  },
+});
+
+/**
+ * Mirror Firebase billing claims into Convex `subscriptions` so the publish
+ * cron (which has no user JWT) can re-check entitlement.
+ */
+export const syncPlan = mutation({
+  args: {},
+  returns: v.object({
+    hasPaidPlan: v.boolean(),
+    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("max")),
+  }),
+  handler: async (ctx) => {
+    const uid = await requireUid(ctx);
+    await upsertSubscriptionFromIdentity(ctx, uid);
+    const paid = await resolvePaidPlan(ctx, uid);
+    return {
+      hasPaidPlan: paid !== null,
+      plan: paid === null ? ("free" as const) : paid.plan,
+    };
   },
 });
 
@@ -417,4 +608,33 @@ export const refundV = internalMutation({
     refId: v.optional(v.string()),
   },
   handler: async (ctx, args) => credit(ctx, { ...args, kind: "v" }),
+});
+
+export const reservePublish = internalMutation({
+  args: { userId: v.string() },
+  returns: v.object({
+    plan: v.union(v.literal("pro"), v.literal("max")),
+    used: v.number(),
+    limit: v.number(),
+    remaining: v.number(),
+  }),
+  handler: async (ctx, { userId }) => reserveMonthlyPostQuota(ctx, userId),
+});
+
+export const releasePublish = internalMutation({
+  args: { userId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { userId }) => {
+    await releaseMonthlyPostQuota(ctx, userId);
+    return null;
+  },
+});
+
+export const assertPublishEntitlement = internalMutation({
+  args: { userId: v.string() },
+  returns: v.object({
+    plan: v.union(v.literal("pro"), v.literal("max")),
+    limit: v.number(),
+  }),
+  handler: async (ctx, { userId }) => assertPublishingEntitlement(ctx, userId),
 });

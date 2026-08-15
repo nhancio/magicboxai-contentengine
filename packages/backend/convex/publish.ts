@@ -196,6 +196,40 @@ export const runPost = internalAction({
     if (!loaded) return { status: "failed", published: 0, of: 0 };
     const { post, destinations } = loaded;
 
+    try {
+      await ctx.runMutation(internal.credits.assertPublishEntitlement, {
+        userId: post.userId,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Publishing requires a paid plan";
+      const results: DestinationResult[] = destinations.map(
+        (dest: { account: { _id: string; platform: string } }) => {
+        const account: { _id: string; platform: string } = dest.account as {
+          _id: string;
+          platform: string;
+        };
+        return {
+          accountId: account._id,
+          platform: account.platform,
+          status: "failed" as const,
+          error: message,
+        };
+      });
+      if (results.length === 0) {
+        results.push({
+          accountId: "none",
+          platform: post.platforms[0] ?? "instagram",
+          status: "failed",
+          error: message,
+        });
+      }
+      return await ctx.runMutation(internal.publish.finishPost, {
+        postId,
+        results,
+        anyRetriable: false,
+      });
+    }
+
     const results: DestinationResult[] = [];
     let anyRetriable = false;
 

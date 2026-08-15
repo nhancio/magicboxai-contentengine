@@ -213,6 +213,8 @@ export default function Schedule() {
     setPreviewPost(post);
   }
 
+  const previewUrl = previewPost ? getSocialPostUrl(previewPost) : null;
+
   return (
     <div className="mx-auto flex h-[calc(100dvh-5rem)] max-w-6xl flex-col overflow-hidden lg:h-[calc(100dvh-2.5rem)]">
       <div className="mb-4 flex shrink-0 items-center justify-between sm:mb-5">
@@ -353,9 +355,9 @@ export default function Schedule() {
                 content={previewContent}
                 emptyHint="This post has no content to preview yet."
                 footer={
-                  previewPost.status !== "draft" ? (
+                  previewPost.status !== "draft" && previewUrl ? (
                     <a
-                      href={getSocialPostUrl(previewPost)}
+                      href={previewUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-brand transition-colors hover:underline"

@@ -9,12 +9,14 @@
  */
 
 import type * as ai from "../ai.js";
+import type * as automations from "../automations.js";
 import type * as brands from "../brands.js";
 import type * as carousel from "../carousel.js";
 import type * as credits from "../credits.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_automationSchedule from "../lib/automationSchedule.js";
 import type * as lib_bestTime from "../lib/bestTime.js";
 import type * as lib_contentEngine from "../lib/contentEngine.js";
 import type * as lib_gemini from "../lib/gemini.js";
@@ -52,12 +54,14 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   ai: typeof ai;
+  automations: typeof automations;
   brands: typeof brands;
   carousel: typeof carousel;
   credits: typeof credits;
   crons: typeof crons;
   http: typeof http;
   "lib/auth": typeof lib_auth;
+  "lib/automationSchedule": typeof lib_automationSchedule;
   "lib/bestTime": typeof lib_bestTime;
   "lib/contentEngine": typeof lib_contentEngine;
   "lib/gemini": typeof lib_gemini;

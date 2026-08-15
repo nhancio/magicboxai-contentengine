@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, useAction } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
 import type { Post, PostStatus, SocialPlatform } from "@shared/types";
 import { getBrandProfiles, getPosts } from "@shared/lib/automations";
@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger } from "@shared/components/ui/tabs";
 import { LottiePlayer } from "@shared/components/ui/lottie";
 import { cn } from "@shared/lib/utils";
 import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { isConvexConfigured } from "../lib/convex";
 import PreviewModule from "../components/previews/PreviewModule";
 import type { PreviewContent } from "../components/previews/PlatformPreview";
@@ -185,6 +186,9 @@ export default function Library() {
 
   const convexRaw = useQuery(api.posts.list, isConvexConfigured ? { limit: 200 } : "skip");
   const cancelConvex = useMutation(api.posts.cancel);
+  const approveConvex = useMutation(api.posts.approve);
+  const retryConvex = useMutation(api.posts.retry);
+  const rewriteConvex = useAction(api.posts.rewrite);
 
   const refreshLegacy = async () => {
     if (!user) return;
@@ -306,6 +310,22 @@ export default function Library() {
     }
   };
 
+  const actConvex = async (
+    postId: string,
+    fn: () => Promise<unknown>,
+    success: string,
+  ) => {
+    setBusy(postId);
+    try {
+      await fn();
+      toast.success(success);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Action failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const actCancel = async (post: UiPost) => {
     if (post.store === "video") {
       toast.message("Open Studio to manage generated videos");
@@ -314,7 +334,7 @@ export default function Library() {
     setBusy(post.id);
     try {
       if (post.store === "convex") {
-        await cancelConvex({ postId: post.id as any });
+        await cancelConvex({ postId: post.id as Id<"posts"> });
       } else {
         await cancelPost({ postId: post.id });
         await refreshLegacy();
@@ -527,17 +547,27 @@ export default function Library() {
                       className="mt-3 flex items-center gap-2"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {post.store === "firebase" && post.status === "pending_approval" && (
+                      {(post.store === "firebase" || post.store === "convex") &&
+                        post.status === "pending_approval" && (
                         <>
                           <Button
                             size="sm"
                             disabled={busy === post.id}
                             onClick={() =>
-                              actFirebase(
-                                post.id,
-                                approvePost,
-                                "Post approved — publishing at its slot",
-                              )
+                              post.store === "convex"
+                                ? actConvex(
+                                    post.id,
+                                    () =>
+                                      approveConvex({
+                                        postId: post.id as Id<"posts">,
+                                      }),
+                                    "Post approved — publishing at its slot",
+                                  )
+                                : actFirebase(
+                                    post.id,
+                                    approvePost,
+                                    "Post approved — publishing at its slot",
+                                  )
                             }
                             className="bg-emerald-600 hover:bg-emerald-500"
                           >
@@ -553,23 +583,44 @@ export default function Library() {
                             size="sm"
                             disabled={busy === post.id}
                             onClick={() =>
-                              actFirebase(
-                                post.id,
-                                regeneratePostContent,
-                                "Rewritten — take a look",
-                              )
+                              post.store === "convex"
+                                ? actConvex(
+                                    post.id,
+                                    () =>
+                                      rewriteConvex({
+                                        postId: post.id as Id<"posts">,
+                                      }),
+                                    "Rewritten — take a look",
+                                  )
+                                : actFirebase(
+                                    post.id,
+                                    regeneratePostContent,
+                                    "Rewritten — take a look",
+                                  )
                             }
                           >
                             <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Rewrite
                           </Button>
                         </>
                       )}
-                      {post.store === "firebase" && post.status === "failed" && (
+                      {(post.store === "firebase" || post.store === "convex") &&
+                        post.status === "failed" && (
                         <Button
                           variant="outline"
                           size="sm"
                           disabled={busy === post.id}
-                          onClick={() => actFirebase(post.id, retryPost, "Retrying")}
+                          onClick={() =>
+                            post.store === "convex"
+                              ? actConvex(
+                                  post.id,
+                                  () =>
+                                    retryConvex({
+                                      postId: post.id as Id<"posts">,
+                                    }),
+                                  "Retrying",
+                                )
+                              : actFirebase(post.id, retryPost, "Retrying")
+                          }
                         >
                           <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Retry
                         </Button>

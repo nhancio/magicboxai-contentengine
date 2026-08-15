@@ -36,4 +36,6 @@ crons.hourly(
 
 crons.interval("publish due posts", { minutes: 1 }, internal.scheduler.publishTick);
 
+crons.interval("automation tick", { minutes: 5 }, internal.automations.tick);
+
 export default crons;
