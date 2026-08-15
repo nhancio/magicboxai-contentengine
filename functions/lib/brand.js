@@ -237,28 +237,40 @@ function resolveHref(href, baseUrl) {
 // ── Logo extraction ──────────────────────────────────────────────────────────
 /** Every asset on the page that could be the brand mark, tagged by kind. */
 function collectLogoCandidates(html, baseUrl) {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const found = [];
     const seen = new Set();
+    const order = {
+        "logo-img": 0, "apple-touch-icon": 1, favicon: 2, social: 3,
+    };
     const add = (href, kind) => {
         const url = resolveHref(href, baseUrl);
-        if (!url || seen.has(url))
+        if (!url)
             return;
+        const existing = found.find((c) => c.url === url);
+        if (existing) {
+            if (order[kind] < order[existing.kind]) {
+                existing.kind = kind;
+            }
+            return;
+        }
         seen.add(url);
         found.push({ url, kind });
     };
+    for (const link of findTags(html, "link")) {
+        const rel = ((_a = link.rel) !== null && _a !== void 0 ? _a : "").toLowerCase();
+        const href = ((_b = link.href) !== null && _b !== void 0 ? _b : "").toLowerCase();
+        const isLogo = /logo|brand/i.test(href);
+        if (rel.includes("apple-touch-icon"))
+            add(link.href, isLogo ? "logo-img" : "apple-touch-icon");
+        else if (rel.includes("icon"))
+            add(link.href, isLogo ? "logo-img" : "favicon");
+    }
     for (const meta of findTags(html, "meta")) {
-        const key = (_b = (_a = meta.property) !== null && _a !== void 0 ? _a : meta.name) !== null && _b !== void 0 ? _b : "";
+        const key = (_d = (_c = meta.property) !== null && _c !== void 0 ? _c : meta.name) !== null && _d !== void 0 ? _d : "";
         if (["og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
             add(meta.content, "social");
         }
-    }
-    for (const link of findTags(html, "link")) {
-        const rel = ((_c = link.rel) !== null && _c !== void 0 ? _c : "").toLowerCase();
-        if (rel.includes("apple-touch-icon"))
-            add(link.href, "apple-touch-icon");
-        else if (rel.includes("icon"))
-            add(link.href, "favicon");
     }
     // <img> tags that look like a logo. Match on class/id/alt (reliable) or the
     // image *filename* — not the full CDN URL, whose hashes/paths cause false
@@ -268,10 +280,10 @@ function collectLogoCandidates(html, baseUrl) {
         const src = img.src || img["data-src"] || "";
         let filename = "";
         try {
-            filename = (_e = (_d = new URL(src, baseUrl).pathname.split("/").pop()) === null || _d === void 0 ? void 0 : _d.toLowerCase()) !== null && _e !== void 0 ? _e : "";
+            filename = (_f = (_e = new URL(src, baseUrl).pathname.split("/").pop()) === null || _e === void 0 ? void 0 : _e.toLowerCase()) !== null && _f !== void 0 ? _f : "";
         }
-        catch (_h) {
-            filename = (_g = (_f = src.split("/").pop()) === null || _f === void 0 ? void 0 : _f.toLowerCase()) !== null && _g !== void 0 ? _g : "";
+        catch (_j) {
+            filename = (_h = (_g = src.split("/").pop()) === null || _g === void 0 ? void 0 : _g.toLowerCase()) !== null && _h !== void 0 ? _h : "";
         }
         if (/logo|brand/.test(hint) || /logo|brand/.test(filename)) {
             add(src, "logo-img");
@@ -283,7 +295,7 @@ function collectLogoCandidates(html, baseUrl) {
 function pickDisplayLogo(candidates) {
     var _a, _b;
     const order = {
-        "logo-img": 0, "apple-touch-icon": 1, social: 2, favicon: 3,
+        "logo-img": 0, "apple-touch-icon": 1, favicon: 2, social: 3,
     };
     return (_b = (_a = [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]) === null || _a === void 0 ? void 0 : _a.url) !== null && _b !== void 0 ? _b : "";
 }

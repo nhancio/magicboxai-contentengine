@@ -104,11 +104,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [user, syncPlan]);
 
   useEffect(() => {
-    if (!isConvexConfigured || !credits?.needsTrialClaim) return;
-    claimTrial({}).catch(() => {
-      /* trial claim is best-effort on layout load */
-    });
-  }, [credits?.needsTrialClaim, claimTrial]);
+    if (!isConvexConfigured || !user) return;
+    if (credits?.needsTrialClaim) {
+      claimTrial({}).catch(() => {
+        /* trial claim is best-effort on layout load */
+      });
+    }
+  }, [isConvexConfigured, user, credits?.needsTrialClaim, claimTrial]);
 
   // Close drawer on route change (mobile).
   useEffect(() => {

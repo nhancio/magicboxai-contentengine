@@ -12,6 +12,7 @@ import type * as ai from "../ai.js";
 import type * as automations from "../automations.js";
 import type * as brands from "../brands.js";
 import type * as carousel from "../carousel.js";
+import type * as cleanup from "../cleanup.js";
 import type * as credits from "../credits.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   automations: typeof automations;
   brands: typeof brands;
   carousel: typeof carousel;
+  cleanup: typeof cleanup;
   credits: typeof credits;
   crons: typeof crons;
   http: typeof http;

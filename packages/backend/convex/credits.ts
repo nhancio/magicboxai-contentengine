@@ -469,12 +469,13 @@ export const balance = query({
     const canRefreshTrial = await isTrialRefreshAllowed(ctx, uid);
 
     if (!row) {
-      // Queries can't write — client should call `claimTrial` once.
-      // Do not use Date.now() here — client computes remaining days from expiresAt.
+      // Queries can't write — client will call `claimTrial` in the background.
+      // Return the full trial balance (50 i, 100 v) so newly created/reset users immediately
+      // see their allocated credits rather than 0 or dashes.
       return {
-        iCredits: 0,
-        vCredits: 0,
-        trialGranted: false,
+        iCredits: FREE_TRIAL_I,
+        vCredits: FREE_TRIAL_V,
+        trialGranted: true,
         trialGrantedAt: null as number | null,
         trialExpiresAt: null as number | null,
         trialDurationDays: FREE_TRIAL_DAYS,
@@ -490,8 +491,8 @@ export const balance = query({
 
     const grantedAt = row.trialGrantedAt ?? row.updatedAt ?? null;
     return {
-      iCredits: row.iCredits,
-      vCredits: row.vCredits,
+      iCredits: typeof row.iCredits === "number" ? row.iCredits : FREE_TRIAL_I,
+      vCredits: typeof row.vCredits === "number" ? row.vCredits : FREE_TRIAL_V,
       trialGranted: true,
       trialGrantedAt: grantedAt,
       trialExpiresAt: grantedAt ? trialExpiresAt(grantedAt) : null,
@@ -517,6 +518,22 @@ export const claimTrial = mutation({
   }),
   handler: async (ctx) => {
     const uid = await requireUid(ctx);
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity?.email) {
+      const existingUser = await ctx.db
+        .query("users")
+        .withIndex("by_legacyId", (q) => q.eq("legacyId", uid))
+        .unique();
+      if (!existingUser) {
+        await ctx.db.insert("users", {
+          legacyId: uid,
+          email: identity.email,
+          displayName: identity.name,
+          photoURL: identity.pictureUrl,
+          lastLoginAt: Date.now(),
+        });
+      }
+    }
     return await ensureTrialBalance(ctx, uid);
   },
 });

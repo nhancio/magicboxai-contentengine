@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateUGCVideo = exports.generateAvatarVideo = exports.analyzeAvatarVideo = exports.analyzeAvatarPhotos = exports.analyzeImage = exports.generateScript = exports.generateImage = exports.renderRemotionVideo = exports.verifyAdminStatus = exports.setAdminRole = exports.createGuestCheckout = exports.dodoWebhook = exports.createDodoPortal = exports.createDodoCheckout = exports.triggerWelcomeEmail = exports.onUserUpdatedClaimPendingEntitlement = exports.onUserCreatedSendWelcome = exports.generateBrandedPostImage = exports.extractBrandFromWebsite = exports.postingTick = exports.generationTick = exports.automationTick = exports.socialOAuthCallback = exports.disconnectSocialAccount = exports.getSocialConnectUrl = exports.syncBillingClaims = exports.getQuota = exports.regeneratePostContent = exports.cancelPost = exports.retryPost = exports.approvePost = exports.generatePreviewContent = exports.createManualPost = exports.runAutomationNow = exports.setAutomationStatus = exports.updateAutomation = exports.createAutomation = void 0;
+exports.generateUGCVideo = exports.generateAvatarVideo = exports.analyzeAvatarVideo = exports.analyzeAvatarPhotos = exports.analyzeImage = exports.generateScript = exports.generateImage = exports.renderRemotionVideo = exports.verifyAdminStatus = exports.setAdminRole = exports.createGuestCheckout = exports.dodoWebhook = exports.createDodoPortal = exports.createDodoCheckout = exports.triggerWelcomeEmail = exports.claimGuestEntitlement = exports.onUserUpdatedClaimPendingEntitlement = exports.onUserCreatedSendWelcome = exports.generateBrandedPostImage = exports.extractBrandFromWebsite = exports.postingTick = exports.generationTick = exports.automationTick = exports.socialOAuthCallback = exports.disconnectSocialAccount = exports.getSocialConnectUrl = exports.syncBillingClaims = exports.getQuota = exports.regeneratePostContent = exports.cancelPost = exports.retryPost = exports.approvePost = exports.generatePreviewContent = exports.createManualPost = exports.runAutomationNow = exports.setAutomationStatus = exports.updateAutomation = exports.createAutomation = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const genai_1 = require("@google/genai");
@@ -74,6 +74,7 @@ Object.defineProperty(exports, "generateBrandedPostImage", { enumerable: true, g
 var welcome_1 = require("./welcome");
 Object.defineProperty(exports, "onUserCreatedSendWelcome", { enumerable: true, get: function () { return welcome_1.onUserCreatedSendWelcome; } });
 Object.defineProperty(exports, "onUserUpdatedClaimPendingEntitlement", { enumerable: true, get: function () { return welcome_1.onUserUpdatedClaimPendingEntitlement; } });
+Object.defineProperty(exports, "claimGuestEntitlement", { enumerable: true, get: function () { return welcome_1.claimGuestEntitlement; } });
 Object.defineProperty(exports, "triggerWelcomeEmail", { enumerable: true, get: function () { return welcome_1.triggerWelcomeEmail; } });
 var dodo_1 = require("./dodo");
 Object.defineProperty(exports, "createDodoCheckout", { enumerable: true, get: function () { return dodo_1.createDodoCheckout; } });

@@ -1,12 +1,20 @@
 /** Client helpers for MagicBox credit / free-trial UI. */
 
+export const DEFAULT_TRIAL_I = 50;
+export const DEFAULT_TRIAL_V = 100;
+export const DEFAULT_TRIAL_DAYS = 7;
+
 export type CreditBalanceLike = {
+  iCredits?: number;
+  vCredits?: number;
   trialExpiresAt?: number | null;
   trialGrantedAt?: number | null;
   trialDurationDays?: number;
   trialGranted?: boolean;
+  needsTrialClaim?: boolean;
   hasPaidPlan?: boolean;
   canRefreshTrial?: boolean;
+  freeTrial?: { i: number; v: number; days: number };
 };
 
 export type TrialClock = {
@@ -46,10 +54,10 @@ export function trialClock(
   const durationDays = balance.trialDurationDays ?? DEFAULT_DAYS;
   const expiresAt = resolveExpiresAt(balance);
 
-  // Backend hasn't sent timestamps yet (stale deploy) but trial was granted —
+  // Backend hasn't sent timestamps yet (stale deploy or new user before claim mutation writes) —
   // still show a full 7-day window so the UI never looks "broken".
   if (!expiresAt) {
-    if (!balance.trialGranted) return null;
+    if (!balance.trialGranted && !balance.needsTrialClaim) return null;
     return {
       daysLeft: durationDays,
       progress: 1,

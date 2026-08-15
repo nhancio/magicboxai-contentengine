@@ -156,7 +156,23 @@ export const onUserCreatedSendWelcome = onDocumentCreated(
       email?: string;
       displayName?: string;
       welcomeEmailSent?: boolean;
+      credits?: { iCredits?: number; vCredits?: number; trialClaimed?: boolean };
     };
+
+    // Ensure default trial credits are set in Firestore
+    if (!data.credits) {
+      await snap.ref.set(
+        {
+          credits: {
+            iCredits: 50,
+            vCredits: 100,
+            trialClaimed: true,
+            trialGrantedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+    }
 
     const email = data.email?.trim();
     if (!email) {

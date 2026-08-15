@@ -36,7 +36,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.triggerWelcomeEmail = exports.onUserUpdatedClaimPendingEntitlement = exports.onUserCreatedSendWelcome = void 0;
+exports.triggerWelcomeEmail = exports.claimGuestEntitlement = exports.onUserUpdatedClaimPendingEntitlement = exports.onUserCreatedSendWelcome = void 0;
 const firestore_1 = require("firebase-functions/v2/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const logger = __importStar(require("firebase-functions/logger"));
@@ -46,6 +46,23 @@ const core_1 = require("./core");
 if (!admin.apps.length) {
     admin.initializeApp();
 }
+async function applyBillingClaims(uid) {
+    var _a;
+    const snapshot = await core_1.db.collection("subscriptions").doc(uid).get();
+    const data = snapshot.data();
+    const plan = (data === null || data === void 0 ? void 0 : data.plan) === "pro" || (data === null || data === void 0 ? void 0 : data.plan) === "max" ? data.plan : "free";
+    const status = (data === null || data === void 0 ? void 0 : data.status) === "active" || (data === null || data === void 0 ? void 0 : data.status) === "past_due" || (data === null || data === void 0 ? void 0 : data.status) === "cancelled"
+        ? data.status
+        : "inactive";
+    const user = await admin.auth().getUser(uid);
+    const existing = (_a = user.customClaims) !== null && _a !== void 0 ? _a : {};
+    await admin.auth().setCustomUserClaims(uid, Object.assign(Object.assign({}, existing), { magicboxPlan: plan, magicboxSubscriptionStatus: status }));
+    return {
+        plan,
+        status,
+        hasPaidPlan: (plan === "pro" || plan === "max") && status === "active",
+    };
+}
 /**
  * Claim any plan bought before signup via guest checkout, keyed by the
  * (Google-verified) email — so auto-applying it to this account on login is
@@ -53,31 +70,47 @@ if (!admin.apps.length) {
  * that pays as a guest under the same email gets claimed too. Idempotent:
  * once claimed, `pendingEntitlements/{email}.status` flips to "claimed" and
  * this no-ops on subsequent logins.
+ *
+ * Entitlement only attaches when the paying email matches the signed-in
+ * Google email. A mismatch looks like "none" because pending rows are keyed
+ * by the Dodo customer email.
  */
 async function claimPendingEntitlement(uid, email) {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e;
+    const key = email.toLowerCase();
+    const pendingRef = core_1.db.collection("pendingEntitlements").doc(key);
+    const pending = await pendingRef.get();
+    const p = pending.data();
+    const existingSub = await core_1.db.collection("subscriptions").doc(uid).get();
+    const existing = existingSub.data();
+    if (existing && (existing.plan === "pro" || existing.plan === "max") && existing.status === "active") {
+        return { outcome: "already_active", plan: existing.plan };
+    }
+    if ((p === null || p === void 0 ? void 0 : p.status) === "claimed" && p.claimedByUid === uid && (p.plan === "pro" || p.plan === "max")) {
+        return { outcome: "already_active", plan: p.plan };
+    }
+    if (!(p === null || p === void 0 ? void 0 : p.plan) || (p.plan !== "pro" && p.plan !== "max") || (p.status !== "paid" && p.status !== "active")) {
+        return { outcome: "none" };
+    }
+    if ((existing === null || existing === void 0 ? void 0 : existing.status) === "active" && existing.providerSubscriptionId) {
+        logger.warn("[claimPendingEntitlement] skipped: account already has an active subscription", {
+            uid,
+            pendingPlan: p.plan,
+        });
+        return { outcome: "already_active", plan: (existing.plan === "max" ? "max" : "pro") };
+    }
+    await core_1.db.collection("subscriptions").doc(uid).set(Object.assign(Object.assign({ plan: p.plan, billing: (_a = p.billing) !== null && _a !== void 0 ? _a : null, videosUsed: 0, videosLimit: core_1.PLAN_VIDEO_LIMIT[p.plan], status: "active", provider: (_b = p.provider) !== null && _b !== void 0 ? _b : "dodo", providerProductId: (_c = p.providerProductId) !== null && _c !== void 0 ? _c : null, providerSubscriptionId: (_d = p.providerSubscriptionId) !== null && _d !== void 0 ? _d : null, providerCustomerId: (_e = p.providerCustomerId) !== null && _e !== void 0 ? _e : null }, (p.currentPeriodEnd ? { currentPeriodEnd: p.currentPeriodEnd } : {})), { claimedFrom: "guest-checkout", updatedAt: admin.firestore.FieldValue.serverTimestamp() }), { merge: true });
+    await pendingRef.set({
+        status: "claimed",
+        claimedByUid: uid,
+        claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    logger.info("[claimPendingEntitlement] claimed pending entitlement", { uid, plan: p.plan });
+    return { outcome: "claimed", plan: p.plan };
+}
+async function claimPendingEntitlementSafe(uid, email) {
     try {
-        const key = email.toLowerCase();
-        const pendingRef = core_1.db.collection("pendingEntitlements").doc(key);
-        const pending = await pendingRef.get();
-        const p = pending.data();
-        if (!(p === null || p === void 0 ? void 0 : p.plan) || (p.status !== "paid" && p.status !== "active"))
-            return;
-        const existingSub = await core_1.db.collection("subscriptions").doc(uid).get();
-        if (((_a = existingSub.data()) === null || _a === void 0 ? void 0 : _a.status) === "active" && ((_b = existingSub.data()) === null || _b === void 0 ? void 0 : _b.providerSubscriptionId)) {
-            logger.warn("[claimPendingEntitlement] skipped: account already has an active subscription", {
-                uid,
-                pendingPlan: p.plan,
-            });
-            return;
-        }
-        await core_1.db.collection("subscriptions").doc(uid).set(Object.assign(Object.assign({ plan: p.plan, billing: (_c = p.billing) !== null && _c !== void 0 ? _c : null, videosUsed: 0, videosLimit: core_1.PLAN_VIDEO_LIMIT[p.plan], status: "active", provider: (_d = p.provider) !== null && _d !== void 0 ? _d : "dodo", providerProductId: (_e = p.providerProductId) !== null && _e !== void 0 ? _e : null, providerSubscriptionId: (_f = p.providerSubscriptionId) !== null && _f !== void 0 ? _f : null, providerCustomerId: (_g = p.providerCustomerId) !== null && _g !== void 0 ? _g : null }, (p.currentPeriodEnd ? { currentPeriodEnd: p.currentPeriodEnd } : {})), { claimedFrom: "guest-checkout", updatedAt: admin.firestore.FieldValue.serverTimestamp() }), { merge: true });
-        await pendingRef.set({
-            status: "claimed",
-            claimedByUid: uid,
-            claimedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-        logger.info("[claimPendingEntitlement] claimed pending entitlement", { uid, plan: p.plan });
+        await claimPendingEntitlement(uid, email);
     }
     catch (error) {
         logger.error("[claimPendingEntitlement] failed", {
@@ -98,6 +131,17 @@ exports.onUserCreatedSendWelcome = (0, firestore_1.onDocumentCreated)({
     if (!(snap === null || snap === void 0 ? void 0 : snap.exists))
         return;
     const data = snap.data();
+    // Ensure default trial credits are set in Firestore
+    if (!data.credits) {
+        await snap.ref.set({
+            credits: {
+                iCredits: 50,
+                vCredits: 100,
+                trialClaimed: true,
+                trialGrantedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+        }, { merge: true });
+    }
     const email = (_a = data.email) === null || _a === void 0 ? void 0 : _a.trim();
     if (!email) {
         logger.warn("[onUserCreatedSendWelcome] user doc has no email, skipping", {
@@ -105,7 +149,7 @@ exports.onUserCreatedSendWelcome = (0, firestore_1.onDocumentCreated)({
         });
         return;
     }
-    await claimPendingEntitlement(event.params.uid, email);
+    await claimPendingEntitlementSafe(event.params.uid, email);
     if (data.welcomeEmailSent === true) {
         return;
     }
@@ -147,7 +191,39 @@ exports.onUserUpdatedClaimPendingEntitlement = (0, firestore_1.onDocumentUpdated
     const email = (_b = data === null || data === void 0 ? void 0 : data.email) === null || _b === void 0 ? void 0 : _b.trim();
     if (!email)
         return;
-    await claimPendingEntitlement(event.params.uid, email);
+    await claimPendingEntitlementSafe(event.params.uid, email);
+});
+/**
+ * Client-callable claim after guest checkout returns to /pricing?checkout=returned.
+ * Looks up pendingEntitlements by the signed-in Google email, writes subscriptions/{uid},
+ * and refreshes custom claims so Convex can enforce the paid plan. Does not change
+ * the Dodo webhook path that creates the pending row.
+ */
+exports.claimGuestEntitlement = (0, https_1.onCall)(core_1.callableSecurity, async (request) => {
+    var _a;
+    const uid = (0, core_1.requireAuth)(request);
+    const email = typeof ((_a = request.auth) === null || _a === void 0 ? void 0 : _a.token.email) === "string" ? request.auth.token.email.trim() : "";
+    if (!email) {
+        throw new https_1.HttpsError("failed-precondition", "Sign in with a Google account that has an email so we can attach your purchase.");
+    }
+    try {
+        const claim = await claimPendingEntitlement(uid, email);
+        const billing = await applyBillingClaims(uid);
+        return {
+            outcome: claim.outcome,
+            plan: claim.outcome === "none" ? billing.plan : claim.plan,
+            status: billing.status,
+            hasPaidPlan: billing.hasPaidPlan,
+            email: email.toLowerCase(),
+        };
+    }
+    catch (error) {
+        logger.error("[claimGuestEntitlement] failed", {
+            uid,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        throw new https_1.HttpsError("internal", error instanceof Error ? error.message : "Could not attach your purchase.");
+    }
 });
 /**
  * Callable endpoint to trigger or resend a welcome email for any user/email.

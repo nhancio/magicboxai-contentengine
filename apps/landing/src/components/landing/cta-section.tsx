@@ -89,6 +89,8 @@ export function CtaSection() {
                   alt="MagicBox"
                   width={28}
                   height={28}
+                  loading="lazy"
+                  decoding="async"
                   className="h-7 w-7 rounded-lg object-contain"
                 />
                 <span className="font-display text-lg font-semibold tracking-tight text-[#0f172a]">

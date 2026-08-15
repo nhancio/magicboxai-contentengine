@@ -2,6 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="x-dns-prefetch-control" content="on" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -16,17 +22,17 @@
     <meta property="og:description" content="Turn brand briefs into AI videos and UGC content. Review, schedule, and automate marketing distribution across Instagram, LinkedIn, and YouTube." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://magicboxai.in/" />
-    <meta property="og:image" content="https://magicboxai.in/logo-512.png" />
-    <meta property="og:image:width" content="512" />
-    <meta property="og:image:height" content="512" />
-    <meta property="og:image:alt" content="MagicBox logo" />
+    <meta property="og:image" content="https://magicboxai.in/preview.png" />
+    <meta property="og:image:width" content="1920" />
+    <meta property="og:image:height" content="1080" />
+    <meta property="og:image:alt" content="MagicBox AI UGC Factory & Marketing Distribution Platform" />
     <meta property="og:site_name" content="MagicBox" />
     <meta property="og:locale" content="en_IN" />
-    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="MagicBox AI — UGC Factory, AI Video &amp; Content Creation Platform" />
     <meta name="twitter:description" content="Turn brand briefs into AI videos and UGC content. Review, schedule, and automate marketing distribution across Instagram, LinkedIn, and YouTube." />
-    <meta name="twitter:image" content="https://magicboxai.in/logo-512.png" />
-    <meta name="twitter:image:alt" content="MagicBox logo" />
+    <meta name="twitter:image" content="https://magicboxai.in/preview.png" />
+    <meta name="twitter:image:alt" content="MagicBox AI UGC Factory & Marketing Distribution Platform" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -35,11 +41,11 @@
             "@type": "Organization",
             "@id": "https://magicboxai.in/#organization",
             "name": "Nhancio Technologies Private Limited",
-            "alternateName": "MagicBox",
+            "alternateName": ["MagicBox", "MagicBox AI"],
             "legalName": "Nhancio Technologies Private Limited",
             "url": "https://magicboxai.in/",
             "email": "hello@nhancio.com",
-            "description": "Nhancio Technologies Private Limited builds MagicBox, a UGC factory and social publishing workflow that generates brand-aware content, AI videos, and coordinates approval, scheduling, and marketing distribution.",
+            "description": "Nhancio Technologies Private Limited builds MagicBox, an AI UGC factory and automated marketing distribution platform that generates brand-aware content, AI videos, and coordinates human review, scheduling, and multi-channel publishing.",
             "sameAs": [
               "https://twitter.com/magicboxai",
               "https://www.linkedin.com/company/magicboxai",
@@ -73,7 +79,9 @@
             "@type": "WebSite",
             "@id": "https://magicboxai.in/#website",
             "url": "https://magicboxai.in/",
-            "name": "MagicBox",
+            "name": "MagicBox AI",
+            "alternateName": "MagicBox",
+            "description": "MagicBox is an AI UGC factory and automated marketing distribution platform. Create AI videos, UGC content, brand-aware social posts, and distribute to Instagram, LinkedIn, & YouTube.",
             "publisher": { "@id": "https://magicboxai.in/#organization" },
             "inLanguage": "en-IN"
           },
@@ -81,16 +89,19 @@
             "@type": "WebPage",
             "@id": "https://magicboxai.in/#webpage",
             "url": "https://magicboxai.in/",
-            "name": "AI Social Media Workflow for Lean Teams | MagicBox",
-            "description": "MagicBox creates brand-aware social posts and coordinates review, scheduling, and publishing to connected Instagram, LinkedIn, and YouTube accounts.",
+            "name": "MagicBox AI — UGC Factory, AI Video & Content Creation Platform",
+            "description": "MagicBox creates brand-aware social posts and AI videos and coordinates review, scheduling, and publishing to connected Instagram, LinkedIn, and YouTube accounts.",
             "isPartOf": { "@id": "https://magicboxai.in/#website" },
             "about": { "@id": "https://magicboxai.in/#software" },
+            "video": { "@id": "https://magicboxai.in/#video-demo" },
             "primaryImageOfPage": {
               "@type": "ImageObject",
-              "url": "https://magicboxai.in/logo-512.png"
+              "url": "https://magicboxai.in/preview.png",
+              "width": 1920,
+              "height": 1080
             },
             "inLanguage": "en-IN",
-            "dateModified": "2026-07-21",
+            "dateModified": "2026-08-15",
             "breadcrumb": { "@id": "https://magicboxai.in/#breadcrumb" },
             "mainEntity": { "@id": "https://magicboxai.in/#software" }
           },
@@ -107,24 +118,31 @@
               {
                 "@type": "ListItem",
                 "position": 2,
+                "name": "Features",
+                "item": "https://magicboxai.in/#features"
+              },
+              {
+                "@type": "ListItem",
+                "position": 3,
                 "name": "Pricing",
                 "item": "https://magicboxai.in/#pricing"
               },
               {
                 "@type": "ListItem",
-                "position": 3,
+                "position": 4,
                 "name": "FAQ",
                 "item": "https://magicboxai.in/#faq"
               }
             ]
           },
           {
-            "@type": "SoftwareApplication",
+            "@type": ["SoftwareApplication", "WebApplication"],
             "@id": "https://magicboxai.in/#software",
-            "name": "MagicBox",
+            "name": "MagicBox AI",
+            "alternateName": "MagicBox",
             "url": "https://magicboxai.in/",
             "applicationCategory": "BusinessApplication",
-            "applicationSubCategory": "Social media workflow",
+            "applicationSubCategory": "AI Marketing & UGC Video Creation Platform",
             "operatingSystem": "Web",
             "description": "An AI UGC factory and social publishing workflow for creating brand-aware copy, AI videos, and images, reviewing drafts, scheduling, and automated marketing distribution to connected channels.",
             "brand": { "@id": "https://magicboxai.in/#organization" },
@@ -142,10 +160,49 @@
               "priceCurrency": "USD",
               "lowPrice": "0",
               "highPrice": "149",
-              "offerCount": "3"
+              "offerCount": "3",
+              "offers": [
+                {
+                  "@type": "Offer",
+                  "name": "Free",
+                  "price": "0",
+                  "priceCurrency": "USD",
+                  "description": "Draft generation, brand setup, and manual content creation."
+                },
+                {
+                  "@type": "Offer",
+                  "name": "Pro",
+                  "price": "49",
+                  "priceCurrency": "USD",
+                  "description": "Full social publishing, Maya daily AI content deck, approval queues, and 1,000 monthly credits."
+                },
+                {
+                  "@type": "Offer",
+                  "name": "Max",
+                  "price": "149",
+                  "priceCurrency": "USD",
+                  "description": "Higher video volume, unlimited connected social accounts, and 3,500 monthly credits."
+                }
+              ]
             },
             "publisher": { "@id": "https://magicboxai.in/#organization" },
             "provider": { "@id": "https://magicboxai.in/#organization" }
+          },
+          {
+            "@type": "VideoObject",
+            "@id": "https://magicboxai.in/#video-demo",
+            "name": "MagicBox AI Video & UGC Content Creation Demo",
+            "description": "Product walkthrough demonstration showing how MagicBox AI turns brand briefs into AI videos, lip-sync reels, and automated social marketing distribution.",
+            "thumbnailUrl": [
+              "https://magicboxai.in/preview.png",
+              "https://magicboxai.in/logo-512.png"
+            ],
+            "uploadDate": "2026-07-21T08:00:00+00:00",
+            "contentUrl": "https://magicboxai.in/videos/Cute_winking_animated_girl.mp4",
+            "embedUrl": "https://magicboxai.in/",
+            "duration": "PT15S",
+            "inLanguage": "en",
+            "publisher": { "@id": "https://magicboxai.in/#organization" }
           },
           {
             "@type": "HowTo",

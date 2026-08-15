@@ -156,18 +156,23 @@ export function HeroSection() {
 
                 {/* Reel Content Surface */}
                 <div className="relative h-full w-full overflow-hidden bg-black text-white">
+                  {/* Gradient placeholder so video never flashes blank before first frame */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-brand/70 via-fuchsia-500/40 to-indigo-600/60 pointer-events-none" />
+
                   {/* Playing Video element — plays on mobile and desktop */}
                   <video
                     ref={videoRef}
                     src="/videos/Cute_winking_animated_girl.mp4"
-                    poster="/videos/Cute_winking_animated_girl.mp4"
                     className="absolute inset-0 h-full w-full object-cover"
                     muted
                     loop
                     playsInline
                     autoPlay
-                    preload="auto"
-                    aria-label="Instagram Reel preview video"
+                    preload="metadata"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    disablePictureInPicture
+                    disableRemotePlayback
                   />
 
                   {/* Gradient Overlay for Readable Text */}

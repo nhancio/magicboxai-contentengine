@@ -32,6 +32,6 @@ Platform connections depend on each provider's API permissions and app-review st
 ## Primary pages
 
 - [Product, Features, Pricing, & FAQ](https://magicboxai.in/)
-- [Privacy Policy](https://magicboxai.in/privacy.html)
-- [Terms of Service](https://magicboxai.in/terms.html)
+- [Privacy Policy](https://magicboxai.in/privacy)
+- [Terms of Service](https://magicboxai.in/terms)
 

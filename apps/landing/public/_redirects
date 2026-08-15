@@ -1,1 +1,5 @@
-/*    /index.html   200
+/privacy.html    /privacy         301!
+/terms.html      /terms           301!
+/privacy         /privacy.html    200
+/terms           /terms.html      200
+/*               /index.html      200
