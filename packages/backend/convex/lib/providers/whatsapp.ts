@@ -245,6 +245,13 @@ class WhatsAppProvider extends BaseProvider implements SocialProvider {
 
     const results: string[] = [];
     for (const to of recipients) {
+      if (token.accessToken?.startsWith("sandbox_") || phoneNumberId.startsWith("sandbox_")) {
+        // Virtual Sandbox Simulator: simulate instantaneous Meta Cloud API delivery
+        const simulatedMid = `wamid.HBgTestSimulator_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        results.push(simulatedMid);
+        continue;
+      }
+
       const body = templateName
         ? this.buildTemplateBody({
             to,

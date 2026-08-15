@@ -210,6 +210,54 @@ export const disconnect = mutation({
   },
 });
 
+/**
+ * Connect a WhatsApp Sandbox or Meta Test Number directly (WhatsApp V2).
+ * Allows developers and brands to test automations and message previews
+ * without needing to buy/verify a new physical phone number.
+ */
+export const connectWhatsAppTestAccount = mutation({
+  args: {
+    mode: v.union(v.literal("sandbox"), v.literal("meta_test"), v.literal("custom_waba")),
+    phoneNumberId: v.string(),
+    wabaId: v.optional(v.string()),
+    displayPhoneNumber: v.string(),
+    verifiedName: v.string(),
+    accessToken: v.optional(v.string()),
+  },
+  returns: v.object({
+    success: v.boolean(),
+    accountId: v.id("socialAccounts"),
+  }),
+  handler: async (ctx, args): Promise<{ success: boolean; accountId: Id<"socialAccounts"> }> => {
+    const uid = await requireUid(ctx);
+    const cleanNumber = args.displayPhoneNumber.trim() || "+1 555 019 9901";
+    const verifiedName =
+      args.verifiedName.trim() ||
+      (args.mode === "sandbox" ? "WhatsApp Virtual Sandbox" : "Meta Test Number");
+    const phoneNumberId = args.phoneNumberId.trim();
+    const wabaId = args.wabaId?.trim() || "waba_sandbox_default";
+    const token =
+      args.accessToken?.trim() ||
+      (args.mode === "sandbox" ? `sandbox_token_${Date.now()}` : "test_token");
+
+    const profile: ConnectedProfile = {
+      externalId: phoneNumberId,
+      username: cleanNumber,
+      displayName: verifiedName,
+      avatarUrl: "https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg",
+      token: {
+        accessToken: token,
+        phoneNumberId,
+        wabaId,
+        scopes: ["whatsapp_business_management", "whatsapp_business_messaging"],
+      },
+    };
+
+    const ids = await storeAccountsInternal(ctx, uid, "whatsapp", [profile]);
+    return { success: true, accountId: ids[0]! };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Callback internals (used by http.ts)
 // ---------------------------------------------------------------------------
@@ -237,6 +285,76 @@ export const consumeState = internalMutation({
   },
 });
 
+async function storeAccountsInternal(
+  ctx: { db: any },
+  userId: string,
+  provider: string,
+  profiles: ConnectedProfile[],
+): Promise<Id<"socialAccounts">[]> {
+  const now = Date.now();
+  const ids: Id<"socialAccounts">[] = [];
+
+  for (const p of profiles) {
+    const existing = await ctx.db
+      .query("socialAccounts")
+      .withIndex("by_userId", (q: any) => q.eq("userId", userId))
+      .collect();
+    const match = existing.find((a: any) => a.provider === provider && a.externalId === p.externalId);
+
+    let accountId: Id<"socialAccounts">;
+    if (match) {
+      await ctx.db.patch(match._id, {
+        username: p.username,
+        displayName: p.displayName,
+        avatarUrl: p.avatarUrl,
+        status: "active",
+        lastSyncedAt: now,
+      });
+      accountId = match._id;
+    } else {
+      accountId = await ctx.db.insert("socialAccounts", {
+        userId,
+        provider: provider as any,
+        platform: provider as any,
+        externalId: p.externalId,
+        username: p.username,
+        displayName: p.displayName,
+        avatarUrl: p.avatarUrl,
+        status: "active",
+        linkedAt: now,
+        lastSyncedAt: now,
+      });
+    }
+
+    const tokenRow = await ctx.db
+      .query("socialTokens")
+      .withIndex("by_socialAccountId", (q: any) => q.eq("socialAccountId", accountId))
+      .unique();
+
+    const tokenDoc = {
+      userId,
+      socialAccountId: accountId,
+      provider: provider as any,
+      encryptedAccessToken: p.token.accessToken,
+      encryptedRefreshToken: p.token.refreshToken,
+      expiresAt: p.token.expiresAt,
+      igUserId: p.token.igUserId,
+      pageId: p.token.pageId,
+      channelId: p.token.channelId,
+      phoneNumberId: p.token.phoneNumberId,
+      wabaId: p.token.wabaId,
+      scopes: p.token.scopes,
+      updatedAt: now,
+    };
+
+    if (tokenRow) await ctx.db.patch(tokenRow._id, tokenDoc);
+    else await ctx.db.insert("socialTokens", tokenDoc);
+
+    ids.push(accountId);
+  }
+  return ids;
+}
+
 /**
  * Persist connected accounts + their tokens.
  * Re-connecting the same external account UPDATES in place rather than
@@ -245,68 +363,7 @@ export const consumeState = internalMutation({
 export const storeAccounts = internalMutation({
   args: { userId: v.string(), provider: v.string(), profiles: v.array(v.any()) },
   handler: async (ctx, { userId, provider, profiles }) => {
-    const now = Date.now();
-    const ids: Id<"socialAccounts">[] = [];
-
-    for (const p of profiles as ConnectedProfile[]) {
-      const existing = await ctx.db
-        .query("socialAccounts")
-        .withIndex("by_userId", (q) => q.eq("userId", userId))
-        .collect();
-      const match = existing.find((a) => a.provider === provider && a.externalId === p.externalId);
-
-      let accountId: Id<"socialAccounts">;
-      if (match) {
-        await ctx.db.patch(match._id, {
-          username: p.username,
-          displayName: p.displayName,
-          avatarUrl: p.avatarUrl,
-          status: "active",
-          lastSyncedAt: now,
-        });
-        accountId = match._id;
-      } else {
-        accountId = await ctx.db.insert("socialAccounts", {
-          userId,
-          provider: provider as any,
-          platform: provider as any,
-          externalId: p.externalId,
-          username: p.username,
-          displayName: p.displayName,
-          avatarUrl: p.avatarUrl,
-          status: "active",
-          linkedAt: now,
-          lastSyncedAt: now,
-        });
-      }
-
-      const tokenRow = await ctx.db
-        .query("socialTokens")
-        .withIndex("by_socialAccountId", (q) => q.eq("socialAccountId", accountId))
-        .unique();
-
-      const tokenDoc = {
-        userId,
-        socialAccountId: accountId,
-        provider: provider as any,
-        encryptedAccessToken: p.token.accessToken,
-        encryptedRefreshToken: p.token.refreshToken,
-        expiresAt: p.token.expiresAt,
-        igUserId: p.token.igUserId,
-        pageId: p.token.pageId,
-        channelId: p.token.channelId,
-        phoneNumberId: p.token.phoneNumberId,
-        wabaId: p.token.wabaId,
-        scopes: p.token.scopes,
-        updatedAt: now,
-      };
-
-      if (tokenRow) await ctx.db.patch(tokenRow._id, tokenDoc);
-      else await ctx.db.insert("socialTokens", tokenDoc);
-
-      ids.push(accountId);
-    }
-    return ids;
+    return await storeAccountsInternal(ctx, userId, provider, profiles as ConnectedProfile[]);
   },
 });
 

@@ -28,6 +28,7 @@ const Library = lazy(() => import("./pages/Library"));
 const Schedule = lazy(() => import("./pages/Schedule"));
 const MyVideo = lazy(() => import("./pages/MyVideo"));
 const Settings = lazy(() => import("./pages/Settings"));
+const Integrations = lazy(() => import("./pages/Integrations"));
 const Pricing = lazy(() => import("./pages/Pricing"));
 const WarmedUpAccounts = lazy(() => import("./pages/WarmedUpAccounts"));
 const Feedback = lazy(() => import("./pages/Feedback"));
@@ -127,7 +128,7 @@ export default function App() {
                 <Route path="/settings/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
                 <Route path="/settings/connections" element={<Navigate to="/settings?tab=integrations" replace />} />
                 <Route path="/settings/channels" element={<Navigate to="/settings?tab=integrations" replace />} />
-                <Route path="/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
+                <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
                 <Route path="/connections" element={<Navigate to="/settings?tab=integrations" replace />} />
                 <Route path="/channels" element={<Navigate to="/settings?tab=integrations" replace />} />
                 <Route path="/pricing" element={<ProtectedRoute><Pricing /></ProtectedRoute>} />

@@ -32,6 +32,7 @@ import {
   type CarouselPlatform,
 } from "../components/carousel/types";
 import WebsitePostCard from "../components/creative/WebsitePostCard";
+import { WhatsAppV2Modal, isWhatsAppV2Active } from "./Integrations";
 import {
   ArrowRight,
   CalendarClock,
@@ -234,6 +235,7 @@ export default function Onboarding() {
   const [legacyAccounts, setLegacyAccounts] = useState<SocialAccount[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
 
   // Convex queries and mutations
   const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
@@ -497,6 +499,10 @@ export default function Onboarding() {
     }
     if (provider === "x" || provider === "twitter") {
       toast.info("Twitter / X direct posting requires a verified developer app. Instagram, LinkedIn, and YouTube are fully active.", { duration: 5000 });
+      return;
+    }
+    if (provider === "whatsapp" && isWhatsAppV2Active()) {
+      setWhatsAppModalOpen(true);
       return;
     }
     const validProvider = provider as "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp";
@@ -2155,6 +2161,11 @@ export default function Onboarding() {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <WhatsAppV2Modal
+        open={whatsAppModalOpen}
+        onOpenChange={setWhatsAppModalOpen}
+      />
     </div>
   );
 }
