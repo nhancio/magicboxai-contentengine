@@ -37,7 +37,15 @@ export function FooterSection() {
           <div className="grid grid-cols-2 md:grid-cols-6 gap-12 lg:gap-8">
             <div className="col-span-2">
               <a href="/" className="inline-flex items-center gap-2 mb-6">
-                <img src="/logo-128.webp" alt="MagicBox" width={32} height={32} className="h-8 w-8 rounded-lg object-contain" />
+                <img
+                  src="/logo-128.webp"
+                  alt="MagicBox"
+                  width={32}
+                  height={32}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-8 w-8 rounded-lg object-contain"
+                />
                 <span className="text-2xl font-display">MagicBox</span>
               </a>
               <p className="text-muted-foreground leading-relaxed mb-8 max-w-xs">

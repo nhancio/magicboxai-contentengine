@@ -156,6 +156,9 @@ export function HeroSection() {
 
                 {/* Reel Content Surface */}
                 <div className="relative h-full w-full overflow-hidden bg-black text-white">
+                  {/* Gradient placeholder so video never flashes blank before first frame */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-brand/70 via-fuchsia-500/40 to-indigo-600/60 pointer-events-none" />
+
                   {/* Playing Video element — plays on mobile and desktop */}
                   <video
                     ref={videoRef}

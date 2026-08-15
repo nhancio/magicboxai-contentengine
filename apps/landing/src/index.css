@@ -79,35 +79,41 @@
 
   .marquee {
     animation: marquee 30s linear infinite;
+    will-change: transform;
+    transform: translateZ(0);
   }
   .marquee-reverse {
     animation: marquee-reverse 25s linear infinite;
+    will-change: transform;
+    transform: translateZ(0);
   }
   @keyframes marquee {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(-50%, 0, 0); }
   }
   @keyframes marquee-reverse {
-    0% { transform: translateX(-50%); }
-    100% { transform: translateX(0); }
+    0% { transform: translate3d(-50%, 0, 0); }
+    100% { transform: translate3d(0, 0, 0); }
   }
 
   .hover-lift {
     transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    will-change: transform;
   }
   .hover-lift:hover {
-    transform: translateY(-4px);
+    transform: translate3d(0, -4px, 0);
   }
 
   .animate-char-in {
     animation: char-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
     opacity: 0;
     filter: blur(40px);
-    transform: translateY(100%);
+    transform: translate3d(0, 100%, 0);
+    will-change: transform, opacity, filter;
   }
   @keyframes char-in {
-    0% { opacity: 0; filter: blur(40px); transform: translateY(100%); }
-    100% { opacity: 1; filter: blur(0); transform: translateY(0); }
+    0% { opacity: 0; filter: blur(40px); transform: translate3d(0, 100%, 0); }
+    100% { opacity: 1; filter: blur(0); transform: translate3d(0, 0, 0); }
   }
 
   .line-reveal {
@@ -146,8 +152,8 @@
   @keyframes typingReveal { 0% { opacity: 0; transform: translateY(6px); } 100% { opacity: 1; transform: translateY(0); } }
   @keyframes progressBar { 0% { width: 0%; } 100% { width: 100%; } }
   @keyframes phoneFloat {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -8px, 0); }
   }
   @keyframes connectorPulse {
     0%, 100% { opacity: 0.35; }
@@ -156,7 +162,11 @@
   .animate-pulse-slow { animation: pulseSlow 2s ease-in-out infinite; }
   .animate-typing-reveal { animation: typingReveal 0.7s ease-out both; }
   .animate-progress-bar { animation: progressBar linear infinite; }
-  .animate-phone-float { animation: phoneFloat 4.5s ease-in-out infinite; }
+  .animate-phone-float {
+    animation: phoneFloat 4.5s ease-in-out infinite;
+    will-change: transform;
+    transform: translateZ(0);
+  }
   .animate-connector-pulse { animation: connectorPulse 2s ease-in-out infinite; }
 
   @media (prefers-reduced-motion: reduce) {
@@ -198,4 +208,4 @@
   }
 }
 
-  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  @keyframes float { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(0, -8px, 0); } }
