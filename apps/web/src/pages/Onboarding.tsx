@@ -511,10 +511,17 @@ export default function Onboarding() {
       source: "onboarding",
     });
     setConnecting(validProvider);
+
+    // Watchdog: reset connecting state if navigation is delayed or cancelled
+    const watchdog = window.setTimeout(() => {
+      setConnecting(null);
+    }, 10000);
+
     try {
       if (!isConvexConfigured) {
         toast.error("Convex is not configured — set VITE_CONVEX_URL.");
         setConnecting(null);
+        window.clearTimeout(watchdog);
         return;
       }
       const { url, redirectUri } = await connectUrl({
@@ -526,10 +533,12 @@ export default function Onboarding() {
       if (redirectUri.includes("cloudfunctions.net")) {
         toast.error("OAuth misconfigured (Firebase callback). Use Convex.");
         setConnecting(null);
+        window.clearTimeout(watchdog);
         return;
       }
       window.location.href = url;
     } catch (error) {
+      window.clearTimeout(watchdog);
       toast.error(error instanceof Error ? error.message : "Could not start connection");
       setConnecting(null);
     }
