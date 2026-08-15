@@ -1,5 +1,13 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /checkout/
+Disallow: /admin/
+Disallow: /_next/
+Disallow: /static/
+
+User-agent: Googlebot
+Allow: /
 
 User-agent: Google-Extended
 Allow: /
