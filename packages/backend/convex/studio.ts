@@ -25,7 +25,11 @@ const COPY_SCHEMA = {
   properties: {
     hook: { type: "string" },
     caption: { type: "string" },
-    hashtags: { type: "array", items: { type: "string" } },
+    hashtags: {
+      type: "array",
+      items: { type: "string" },
+      description: "3-8 relevant hashtags, each MUST start with #",
+    },
     mediaPrompt: { type: "string" },
     hookFamily: { type: "string" },
     trendUsed: { type: "string" },
@@ -273,7 +277,7 @@ export const generateCopy = action({
         `- caption's first line MUST be the hook, then begin the payoff immediately.\n` +
         `- caption MUST be under ${provider.limits.maxCaptionLength} characters.\n` +
         `- Ready to publish. No placeholders like [insert X].\n` +
-        `- 3-8 relevant hashtags, no spam walls.\n` +
+        `- 3-8 relevant hashtags, each MUST start with '#' (e.g. #DigitalMarketing), no spam walls.\n` +
         `- hookFamily: the selected hook mechanism id.\n` +
         `- trendUsed: the exact trend value above, or an empty string when no trend genuinely fits.\n` +
         `- whyShare: one short sentence naming why a specific reader would pass this on.\n` +
@@ -283,6 +287,12 @@ export const generateCopy = action({
           : `- No media; omit mediaPrompt.\n`),
       schema: COPY_SCHEMA as unknown as Record<string, unknown>,
     });
+
+    if (result.hashtags && Array.isArray(result.hashtags)) {
+      result.hashtags = result.hashtags
+        .map((h) => (h.startsWith("#") ? h : `#${h.replace(/^[#\s]+/, "")}`))
+        .filter(Boolean);
+    }
 
     // Enforce the platform limit rather than trusting the model to obey it.
     if (result.caption.length > provider.limits.maxCaptionLength) {

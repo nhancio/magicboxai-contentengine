@@ -25,7 +25,7 @@ import {
   DialogTrigger,
 } from "@shared/components/ui/dialog";
 import { cn } from "@shared/lib/utils";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { trialClock } from "../lib/credits";
 import { captureEvent } from "@shared/lib/analytics";
 import {
@@ -55,7 +55,6 @@ import {
   Plus,
   Image as ImageIcon,
   Clapperboard,
-  Flame,
 } from "lucide-react";
 
 const PLATFORM_ICON: Record<string, typeof Instagram> = {
@@ -304,7 +303,7 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
     try {
       const { url, redirectUri } = await connectUrl({
         provider,
-        returnTo: "/settings",
+        returnTo: "/settings?tab=integrations",
         returnOrigin: window.location.origin,
         loginHint: user?.email ?? undefined,
       });
@@ -434,31 +433,6 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
             <span className="w-full truncate text-[11px] font-medium">Add</span>
           </button>
         )}
-
-        {/* Buy Warmed-Up Accounts Tile */}
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.")}
-          onKeyDown={(ev) => {
-            if (ev.key === "Enter" || ev.key === " ") {
-              ev.preventDefault();
-              toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.");
-            }
-          }}
-          className="group relative flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-1.5 text-center transition-all hover:border-amber-500 hover:bg-amber-500/10 cursor-pointer"
-          title="Buy pre-warmed aged social accounts with clean reputation (Coming Soon)"
-        >
-          <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-            <Flame className="h-5 w-5" />
-          </div>
-          <span className="w-full truncate text-[10px] font-semibold text-foreground">
-            Buy Accounts
-          </span>
-          <span className="inline-flex items-center rounded-full bg-amber-500/20 px-1.5 py-0.2 font-mono text-[8px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-            Soon
-          </span>
-        </div>
       </div>
 
       {(showConnectPicker || connected.length === 0) && connectable.length > 0 && (
@@ -491,15 +465,6 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
               </Button>
             );
           })}
-          <Button
-            variant="outline"
-            size="sm"
-            className="justify-start border-dashed border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
-            onClick={() => toast.info("Buy warmed up accounts feature coming soon!")}
-          >
-            <Flame className="mr-2 h-4 w-4 text-amber-500" />
-            Buy Warmed Up Accounts — Soon
-          </Button>
         </div>
       )}
 
@@ -515,7 +480,30 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
 export default function Settings() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("account");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const resolveTab = (params: URLSearchParams) => {
+    const raw = (params.get("tab") || params.get("section") || "").toLowerCase();
+    if (raw === "connections" || raw === "channels" || raw === "integrations") return "integrations";
+    if (raw === "credits" || raw === "account" || raw === "preferences" || raw === "notifications") return raw;
+    return "account";
+  };
+
+  const [activeTab, setActiveTab] = useState(() => resolveTab(searchParams));
+
+  useEffect(() => {
+    const target = resolveTab(searchParams);
+    setActiveTab(target);
+  }, [searchParams]);
+
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("tab", tabId);
+      return next;
+    }, { replace: true });
+  };
   
   const [defaultPlatform, setDefaultPlatform] = useState("instagram");
   const [defaultStyle, setDefaultStyle] = useState("professional");
@@ -527,6 +515,8 @@ export default function Settings() {
 
   const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const claimTrial = useMutation(api.credits.claimTrial);
+  const resetTrial = useMutation(api.credits.resetTrial);
+  const [resettingTrial, setResettingTrial] = useState(false);
   const clock = trialClock(credits);
 
   useEffect(() => {
@@ -541,6 +531,7 @@ export default function Settings() {
     if (!social) return;
     if (social === "connected") {
       toast.success(`${params.get("provider") ?? "Channel"} connected`);
+      setActiveTab("integrations");
     } else if (social === "error") {
       const rawReason = params.get("reason");
       let cleanReason = rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
@@ -552,8 +543,9 @@ export default function Settings() {
         cleanReason = "Connection cancelled or access denied by user.";
       }
       toast.error(cleanReason, { duration: 6000 });
+      setActiveTab("integrations");
     }
-    window.history.replaceState({}, "", window.location.pathname);
+    window.history.replaceState({}, "", window.location.pathname + "?tab=integrations");
   }, []);
 
   const initials = user?.displayName
@@ -601,7 +593,7 @@ export default function Settings() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => handleTabChange(tab.id)}
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors whitespace-nowrap",
                     activeTab === tab.id
@@ -779,13 +771,34 @@ export default function Settings() {
                             style={{ width: `${Math.max(4, (clock.expired ? 1 : clock.progress) * 100)}%` }}
                           />
                         </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {clock.expired
-                            ? "Trial credits are frozen"
-                            : clock.endsOnLabel
-                              ? `Ends ${clock.endsOnLabel}`
-                              : ""}
-                        </p>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            {clock.expired
+                              ? "Trial credits are frozen"
+                              : clock.endsOnLabel
+                                ? `Ends ${clock.endsOnLabel}`
+                                : ""}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={resettingTrial}
+                            onClick={async () => {
+                              setResettingTrial(true);
+                              try {
+                                await resetTrial({});
+                                toast.success("Free trial refreshed! 7 days and 50 i-credits / 100 v-credits granted.");
+                              } catch (e) {
+                                toast.error(`Failed to refresh trial: ${String(e)}`);
+                              } finally {
+                                setResettingTrial(false);
+                              }
+                            }}
+                            className="h-7 text-xs border-brand/40 hover:bg-brand/10 hover:text-brand"
+                          >
+                            {resettingTrial ? "Refreshing…" : "Refresh 7-day trial"}
+                          </Button>
+                        </div>
                       </div>
                     )}
 

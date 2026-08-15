@@ -26,8 +26,6 @@ const BrandKit = lazy(() => import("./pages/BrandKit"));
 const Studio = lazy(() => import("./pages/Studio"));
 const Library = lazy(() => import("./pages/Library"));
 const Schedule = lazy(() => import("./pages/Schedule"));
-const Analytics = lazy(() => import("./pages/Analytics"));
-const Avatars = lazy(() => import("./pages/Avatars"));
 const MyVideo = lazy(() => import("./pages/MyVideo"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Pricing = lazy(() => import("./pages/Pricing"));
@@ -114,8 +112,8 @@ export default function App() {
                 <Route path="/brand" element={<ProtectedRoute><BrandKit /></ProtectedRoute>} />
                 <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
                 <Route path="/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
-                <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
-                <Route path="/avatars" element={<ProtectedRoute><Avatars /></ProtectedRoute>} />
+                <Route path="/analytics" element={<Navigate to="/" replace />} />
+                <Route path="/avatars" element={<Navigate to="/" replace />} />
                 <Route path="/my-video" element={<ProtectedRoute><MyVideo /></ProtectedRoute>} />
                 <Route path="/studio" element={<ProtectedRoute><Studio /></ProtectedRoute>} />
                 <Route path="/carousel" element={<Navigate to="/studio?mode=carousel" replace />} />
@@ -123,9 +121,15 @@ export default function App() {
                 <Route path="/video-creator" element={<Navigate to="/studio?mode=video" replace />} />
                 <Route path="/create-video" element={<Navigate to="/studio?mode=video" replace />} />
                 <Route path="/ad-generator" element={<Navigate to="/studio" replace />} />
-                <Route path="/avatar-builder" element={<Navigate to="/avatars?tab=custom" replace />} />
-                <Route path="/avatar-creator" element={<Navigate to="/avatars?tab=create" replace />} />
+                <Route path="/avatar-builder" element={<Navigate to="/" replace />} />
+                <Route path="/avatar-creator" element={<Navigate to="/" replace />} />
                 <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                <Route path="/settings/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
+                <Route path="/settings/connections" element={<Navigate to="/settings?tab=integrations" replace />} />
+                <Route path="/settings/channels" element={<Navigate to="/settings?tab=integrations" replace />} />
+                <Route path="/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
+                <Route path="/connections" element={<Navigate to="/settings?tab=integrations" replace />} />
+                <Route path="/channels" element={<Navigate to="/settings?tab=integrations" replace />} />
                 <Route path="/pricing" element={<ProtectedRoute><Pricing /></ProtectedRoute>} />
                 <Route path="/feedback" element={<ProtectedRoute><Feedback /></ProtectedRoute>} />
                 <Route path="/warmed-up-accounts" element={<ProtectedRoute><WarmedUpAccounts /></ProtectedRoute>} />

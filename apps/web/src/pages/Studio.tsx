@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@shared/lib/utils";
 import Carousel from "./Carousel";
 import PlatformPreview, { type PreviewContent } from "../components/previews/PlatformPreview";
+import CreativeImageLoader from "../components/common/CreativeImageLoader";
 import type { SocialPlatform } from "@shared/types";
 import {
   Sparkles,
@@ -42,7 +43,17 @@ import {
   RefreshCw,
   TrendingUp,
   ShieldCheck,
+  AlertCircle,
+  ArrowRight,
+  LockKeyhole,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@shared/components/ui/dialog";
 
 /**
  * STUDIO — 5-Step Unified Content Creator
@@ -58,27 +69,14 @@ type PostType = "text" | "image" | "carousel" | "reel" | "video" | "post";
 
 type StudioMedia = { type: "image" | "video"; url: string; source: string };
 
-/**
- * Convex surfaces a thrown backend error as a long
- * "[CONVEX A(...)] [Request ID: ...] Uncaught X" string. The trial/credit guards
- * are expected outcomes, not crashes, so show a clean, actionable toast instead
- * of the raw dump. Matches the trial detection Maya already uses.
- */
-function reportGenerationError(prefix: string, e: unknown) {
-  const message = String(e);
-  if (/TrialExpired|free trial has ended|trial.*expired/i.test(message)) {
-    toast.error("Your free trial has ended. Upgrade a plan to keep creating.", {
-      action: { label: "View plans", onClick: () => (window.location.href = "/pricing?plan=pro") },
-    });
-    return;
-  }
-  if (/InsufficientCredits|not enough credits|out of credits/i.test(message)) {
-    toast.error("You're out of credits. Upgrade to keep creating.", {
-      action: { label: "View plans", onClick: () => (window.location.href = "/pricing?plan=pro") },
-    });
-    return;
-  }
-  toast.error(`${prefix}: ${message.slice(0, 140)}`);
+function cleanErrorMessage(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  let cleaned = raw
+    .replace(/(?:\[CONVEX\s+[^\]]+\]\s*)+/g, "")
+    .replace(/(?:Uncaught\s+)?Error:\s*/g, "")
+    .trim();
+  if (!cleaned) cleaned = "Image generation service encountered an error. Please try again.";
+  return cleaned;
 }
 
 const CHANNELS: { id: string; label: string; icon: typeof Instagram }[] = [
@@ -212,7 +210,53 @@ export default function Studio() {
   const [isUploading, setIsUploading] = useState(false);
   const [isRewriting, setIsRewriting] = useState(false);
   const [isRenderingMedia, setIsRenderingMedia] = usePersistentState(key("isRenderingMedia"), false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const [posting, setPosting] = useState<null | "now" | "schedule" | "draft">(null);
+
+  // Big Modal for Free Version / Trial Over
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeModalInfo, setUpgradeModalInfo] = useState<{
+    title: string;
+    description: string;
+    badge: string;
+  }>({
+    title: "Your Free Trial Has Ended",
+    description:
+      "You have reached the limit of free AI creations. Upgrade to MagicBox Pro to continue generating high-converting posts, photorealistic AI visuals, and automated multi-channel campaigns.",
+    badge: "Free Trial Expired",
+  });
+
+  function reportGenerationError(prefix: string, e: unknown): string {
+    const message = cleanErrorMessage(e);
+    if (/TrialExpired|free trial has ended|trial.*expired/i.test(message)) {
+      setUpgradeModalInfo({
+        title: "Your Free Trial Has Ended",
+        description:
+          "You've used all complimentary creative generations on your free trial. Upgrade to MagicBox Pro to keep creating unlimited AI posts, photorealistic images, AI video reels, and scheduling to all your social channels.",
+        badge: "Free Trial Expired",
+      });
+      setUpgradeModalOpen(true);
+      toast.error("Your free trial has ended. Upgrade a plan to keep creating.", {
+        action: { label: "View plans", onClick: () => (window.location.href = "/pricing?plan=pro") },
+      });
+      return "Your free trial has ended. Upgrade a plan to keep creating.";
+    }
+    if (/InsufficientCredits|not enough credits|out of credits/i.test(message)) {
+      setUpgradeModalInfo({
+        title: "You're Out of Credits",
+        description:
+          "You've exhausted your generation credits. Upgrade your subscription or top up credits to keep generating photorealistic AI media, videos, and multi-channel campaigns.",
+        badge: "Credits Depleted",
+      });
+      setUpgradeModalOpen(true);
+      toast.error("You're out of credits. Upgrade to keep creating.", {
+        action: { label: "View plans", onClick: () => (window.location.href = "/pricing?plan=pro") },
+      });
+      return "You're out of credits. Upgrade to keep creating.";
+    }
+    toast.error(`${prefix}: ${message.slice(0, 140)}`);
+    return message;
+  }
 
   // A channel/type in the URL ("create a Reel" from the dashboard) is an explicit
   // intent, so it wins over whatever the restored draft was using.
@@ -360,13 +404,14 @@ export default function Studio() {
     }
   }
 
-  // Step 4: Handle "Create"
-  async function handleCreate() {
+  // Step 4: Handle "Create" or "Regenerate"
+  async function handleCreate(options?: { forceRegenerateMedia?: boolean }) {
     if (postType === "carousel") {
-      toast.info("Generate the carousel from the preview on the right.");
+      toast.info("Generate the carousel from the preview canvas.");
       return;
     }
 
+    const forceNewMedia = options?.forceRegenerateMedia ?? false;
     const templateBrief =
       postType === "video" || postType === "image" ? selectedPreset?.starterPrompt : undefined;
     const effectiveBrief = prompt.trim() || templateBrief;
@@ -376,6 +421,10 @@ export default function Studio() {
     }
 
     setIsCreating(true);
+    setMediaError(null);
+    if (forceNewMedia) {
+      setMedia(null);
+    }
     try {
       // Map post type to preset ID for backend
       let presetId = "talking-head-ugc";
@@ -417,11 +466,15 @@ export default function Studio() {
       })) as CopyResult;
 
       setCaption(copyRes.caption);
-      setHashtags((copyRes.hashtags ?? []).join(" "));
+      const formattedTags = (copyRes.hashtags ?? [])
+        .map((h) => (h.startsWith("#") ? h : `#${h.replace(/^[#\s]+/, "")}`))
+        .filter(Boolean)
+        .join(" ");
+      setHashtags(formattedTags);
 
       // Media is a separate step so a video/image credit failure still leaves
       // the caption on screen instead of looking like the whole create died.
-      if (!media) {
+      if (!media || forceNewMedia) {
         const mediaPrompt = copyRes.mediaPrompt || effectiveBrief;
         try {
           if (postType === "image" && mediaPrompt) {
@@ -431,6 +484,7 @@ export default function Studio() {
               aspectRatio: aspectFor(channel),
             });
             setMedia({ type: "image", url: imgRes.url, source: "imagen" });
+            setMediaError(null);
             setIsRenderingMedia(false);
           } else if ((postType === "video" || postType === "reel") && mediaPrompt) {
             setIsRenderingMedia(true);
@@ -439,22 +493,30 @@ export default function Studio() {
               aspectRatio: aspectFor(channel),
             });
             setVideoJobId(vidRes.jobId as unknown as string);
+            setMediaError(null);
             toast.info("Generating AI Video — this may take 1-2 minutes.");
           }
         } catch (e) {
           setIsRenderingMedia(false);
-          reportGenerationError("Could not generate media", e);
+          const err = reportGenerationError("Could not generate media", e);
+          setMediaError(err);
           return;
         }
       }
 
-      toast.success("Post created! Review and publish below.");
+      toast.success(caption || media ? "Post regenerated with fresh creative!" : "Post created! Review and publish below.");
     } catch (e) {
       setIsRenderingMedia(false);
-      reportGenerationError("Could not create post", e);
+      const err = reportGenerationError("Could not create post", e);
+      setMediaError(err);
     } finally {
       setIsCreating(false);
     }
+  }
+
+  // Regenerate all content (copy, hashtags, and media)
+  async function handleRegenerateAll() {
+    await handleCreate({ forceRegenerateMedia: true });
   }
 
   // Rewrite caption as UGC
@@ -488,6 +550,7 @@ export default function Studio() {
     }
     setIsRenderingMedia(true);
     setMedia(null);
+    setMediaError(null);
     try {
       if (postType === "image") {
         const imgRes = await generateImage({
@@ -495,6 +558,7 @@ export default function Studio() {
           aspectRatio: aspectFor(channel),
         });
         setMedia({ type: "image", url: imgRes.url, source: "imagen" });
+        setMediaError(null);
         setIsRenderingMedia(false);
       } else if (postType === "video" || postType === "reel") {
         const vidRes = await generateVideo({
@@ -502,11 +566,13 @@ export default function Studio() {
           aspectRatio: aspectFor(channel),
         });
         setVideoJobId(vidRes.jobId as unknown as string);
+        setMediaError(null);
         toast.info("Generating new AI Video...");
       }
     } catch (e) {
       setIsRenderingMedia(false);
-      reportGenerationError("Could not generate media", e);
+      const err = reportGenerationError("Could not generate media", e);
+      setMediaError(err);
     }
   }
 
@@ -540,7 +606,8 @@ export default function Studio() {
         hashtags: hashtags
           .split(/\s+/)
           .map((h) => h.trim())
-          .filter(Boolean),
+          .filter(Boolean)
+          .map((h) => (h.startsWith("#") ? h : `#${h.replace(/^[#\s]+/, "")}`)),
         platforms: [channel],
         postFormat: effectiveFormat as any,
         mediaUrl: media?.url,
@@ -590,6 +657,7 @@ export default function Studio() {
       setCaption("");
       setHashtags("");
       setMedia(null);
+      setMediaError(null);
       setPrompt("");
     } catch (e) {
       toast.error(`Publish failed: ${String(e).slice(0, 140)}`);
@@ -606,14 +674,15 @@ export default function Studio() {
     );
   }
 
-  const hasEditPanel = Boolean(caption || media || isRenderingMedia) && postType !== "carousel";
+  const hasEditPanel = Boolean(caption || media || isRenderingMedia || mediaError) && postType !== "carousel";
 
   const previewContent: PreviewContent = {
     caption,
     hashtags: hashtags
       .split(/\s+/)
       .map((h) => h.trim())
-      .filter(Boolean),
+      .filter(Boolean)
+      .map((h) => (h.startsWith("#") ? h : `#${h.replace(/^[#\s]+/, "")}`)),
     imageUrl: media?.type === "image" ? media.url : undefined,
     videoUrl: media?.type === "video" ? media.url : undefined,
     brandName: previewBrandName,
@@ -626,46 +695,75 @@ export default function Studio() {
           accent: primaryBrand.colors.accent,
         }
       : undefined,
+    mediaError,
+    onRetryMedia: () => void handleRegenerateMedia(),
   };
 
   return (
-    <div className="flex w-full flex-col gap-5 animate-fade-in">
-      <header className="border-b border-border/40 pb-4">
-        <span className="eyebrow">Create</span>
-        <h1 className="mt-1 flex items-center gap-2 font-display text-2xl text-foreground md:text-3xl">
-          <Sparkles className="h-6 w-6 text-brand" /> Studio
-        </h1>
+    <div className="flex h-full w-full flex-col overflow-hidden animate-fade-in gap-3">
+      {/* Top Header */}
+      <header className="flex shrink-0 items-center justify-between border-b border-border/40 pb-2">
+        <div>
+          <span className="eyebrow text-[10px]">Create</span>
+          <h1 className="flex items-center gap-2 font-display text-xl sm:text-2xl text-foreground">
+            <Sparkles className="h-5 w-5 text-brand" /> Studio
+          </h1>
+        </div>
+        {primaryBrand && (
+          <div className="flex items-center gap-2 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground shadow-sm">
+            {primaryBrand.logoUrl && (
+              <img src={primaryBrand.logoUrl} alt="" className="h-4 w-4 rounded-full object-contain" />
+            )}
+            <span className="font-medium text-foreground">{primaryBrand.name}</span>
+          </div>
+        )}
       </header>
 
-      <div className="flex w-full min-w-0 flex-col gap-5">
-          {postType === "carousel" ? (
-            <div className="min-w-0 w-full">
-              <Carousel embedded />
-            </div>
-          ) : (
+      {/* Middle Workspace Area (Always fits within viewport at 100% zoom) */}
+      <div className="flex-1 min-h-0 w-full overflow-hidden">
+        {postType === "carousel" ? (
+          <div className="h-full w-full overflow-y-auto pr-1">
+            <Carousel embedded />
+          </div>
+        ) : (
           <div
             className={cn(
-              "grid w-full min-w-0 gap-6",
-              hasEditPanel && "lg:grid-cols-2",
+              "grid h-full w-full min-w-0 gap-4 overflow-hidden",
+              hasEditPanel ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1",
             )}
           >
-
+            {/* Left Edit & Publish Card (Internally scrollable if needed on smaller viewports, page never scrolls) */}
             {hasEditPanel && (
-              <div className="min-w-0 w-full animate-fade-in space-y-5 rounded-2xl border border-border bg-card p-6 shadow-sm">
-                <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                  2. Edit & Publish Options
-                </p>
+              <div className="flex h-full flex-col min-w-0 overflow-y-auto rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-sm space-y-3.5 no-scrollbar">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                    2. Edit & Publish Options
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={isCreating || isRenderingMedia}
+                    onClick={() => void handleRegenerateAll()}
+                    className="h-6 px-2 text-[11px] font-medium text-brand hover:bg-brand/10"
+                    title="Regenerate all content (copy, hashtags & AI media)"
+                  >
+                    <RefreshCw className="mr-1 h-3 w-3" />
+                    Regenerate Post
+                  </Button>
+                </div>
 
-                <div className="space-y-2">
+                {/* Caption */}
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-3">
-                    <Label className="text-sm font-medium">Caption</Label>
+                    <Label className="text-xs font-medium">Caption</Label>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       disabled={isRewriting || !caption.trim()}
                       onClick={() => void handleRewriteUgc()}
-                      className="h-7 shrink-0 px-2 text-xs text-brand"
+                      className="h-6 shrink-0 px-2 text-[11px] text-brand hover:bg-brand/10"
                     >
                       {isRewriting ? (
                         <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -680,42 +778,78 @@ export default function Studio() {
                     value={caption}
                     onChange={(e) => setCaption(e.target.value)}
                     rows={3}
-                    className="min-h-[5.5rem] w-full overflow-hidden text-sm leading-relaxed"
+                    className="min-h-[4.5rem] w-full overflow-hidden text-xs leading-relaxed"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Hashtags</Label>
+                {/* Hashtags */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Hashtags</Label>
                   <Textarea
                     value={hashtags}
                     onChange={(e) => setHashtags(e.target.value)}
+                    onBlur={() => {
+                      if (hashtags.trim()) {
+                        const formatted = hashtags
+                          .split(/\s+/)
+                          .map((h) => h.trim())
+                          .filter(Boolean)
+                          .map((h) => (h.startsWith("#") ? h : `#${h.replace(/^[#\s]+/, "")}`))
+                          .join(" ");
+                        setHashtags(formatted);
+                      }
+                    }}
                     placeholder="#marketing #ai #growth"
                     rows={2}
-                    className="min-h-[2.75rem] w-full overflow-hidden text-sm leading-relaxed"
+                    className="min-h-[2.5rem] w-full overflow-hidden text-xs leading-relaxed"
                   />
                 </div>
 
+                {/* Media Generation Failure banner */}
+                {mediaError && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <div className="flex-1 space-y-1">
+                      <p className="font-semibold">AI Media Generation Failed</p>
+                      <p className="text-destructive/90 leading-relaxed">{mediaError}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRegenerateMedia}
+                      disabled={isRenderingMedia}
+                      className="h-7 shrink-0 text-xs border-destructive/30 hover:bg-destructive/20"
+                    >
+                      <RefreshCw className="mr-1 h-3 w-3" /> Retry
+                    </Button>
+                  </div>
+                )}
+
+                {/* Regenerate AI Media button */}
                 {postType !== "text" && postType !== "post" && (
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex items-center gap-2 pt-0.5">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={handleRegenerateMedia}
                       disabled={isRenderingMedia || (!prompt.trim() && !selectedPreset?.starterPrompt)}
+                      className="h-7 text-xs"
                     >
                       {isRenderingMedia ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
                       ) : (
-                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                        <RefreshCw className="mr-1.5 h-3 w-3" />
                       )}
                       Regenerate AI Media
                     </Button>
                   </div>
                 )}
 
+                {/* No active account alert */}
                 {!connectedAccount && (
-                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber-600 dark:text-amber-400">
                     <Link2 className="h-4 w-4 shrink-0" />
                     <span>
                       No active {channel} account connected. You can publish as draft or{" "}
@@ -726,20 +860,21 @@ export default function Studio() {
                   </div>
                 )}
 
-                <div className="space-y-3 border-t border-border pt-4">
-                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                {/* Publish Options */}
+                <div className="mt-auto space-y-2 border-t border-border pt-3">
+                  <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
                     Publish Options
                   </p>
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <Button
                       onClick={() => void handlePublish("now")}
                       disabled={posting !== null}
-                      className="w-full"
+                      className="w-full h-8 text-xs"
                     >
                       {posting === "now" ? (
-                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <Send className="mr-1.5 h-4 w-4" />
+                        <Send className="mr-1.5 h-3.5 w-3.5" />
                       )}
                       Post Now
                     </Button>
@@ -748,12 +883,12 @@ export default function Studio() {
                       variant="outline"
                       onClick={() => void handlePublish("schedule")}
                       disabled={posting !== null}
-                      className="w-full"
+                      className="w-full h-8 text-xs"
                     >
                       {posting === "schedule" ? (
-                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <CalendarClock className="mr-1.5 h-4 w-4" />
+                        <CalendarClock className="mr-1.5 h-3.5 w-3.5" />
                       )}
                       Post Best Time
                     </Button>
@@ -762,12 +897,12 @@ export default function Studio() {
                       variant="secondary"
                       onClick={() => void handlePublish("draft")}
                       disabled={posting !== null}
-                      className="w-full"
+                      className="w-full h-8 text-xs"
                     >
                       {posting === "draft" ? (
-                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <Save className="mr-1.5 h-4 w-4" />
+                        <Save className="mr-1.5 h-3.5 w-3.5" />
                       )}
                       Save to Draft
                     </Button>
@@ -776,207 +911,310 @@ export default function Studio() {
               </div>
             )}
 
-            <div className="flex min-h-[28rem] min-w-0 w-full items-center justify-center rounded-2xl border-2 border-border/70 bg-secondary/10 p-6 shadow-inner dark:bg-secondary/20">
-                {caption || media || isRenderingMedia ? (
-                  <div className="mx-auto w-full max-w-sm">
-                    {isRenderingMedia && !media ? (
-                      <div className="flex aspect-[9/16] w-full flex-col items-center justify-center rounded-2xl border border-border bg-card p-6 text-center shadow-lg">
-                        <Loader2 className="mb-3 h-8 w-8 animate-spin text-brand" />
-                        <p className="text-sm font-medium text-foreground">Rendering AI Creative...</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Generating high-quality media for {channel}
-                        </p>
-                      </div>
-                    ) : (
+            {/* Right Preview Card */}
+            <div
+              className={cn(
+                "flex h-full min-w-0 w-full items-center justify-center rounded-2xl border border-border/70 bg-secondary/10 p-3 sm:p-4 shadow-inner dark:bg-secondary/20 overflow-hidden",
+              )}
+            >
+              {caption || media || isRenderingMedia || mediaError ? (
+                <div className="mx-auto w-full max-w-sm max-h-full overflow-y-auto no-scrollbar flex items-center justify-center">
+                  {isRenderingMedia && !media ? (
+                    <CreativeImageLoader
+                      aspectRatio="9:16"
+                      title="Rendering AI Creative..."
+                      subtitle={`Generating high-quality media for ${channel}`}
+                      className="w-full max-h-[68vh]"
+                    />
+                  ) : (
+                    <div className="w-full">
                       <PlatformPreview
                         platform={channel as SocialPlatform}
                         content={previewContent}
                       />
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center space-y-4 px-4 text-center">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/10 text-brand shadow-md">
-                      <ImagePlus className="h-8 w-8" />
                     </div>
-                    <div className="max-w-md space-y-1">
-                      <p className="text-lg font-semibold text-foreground">Interactive Preview Canvas</p>
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        Choose a template or write a prompt below to instantly generate high-reach posts and view previews here.
-                      </p>
-                    </div>
-                  </div>
-                )}
-            </div>
-          </div>
-          )}
-
-          <div>
-            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-              <div className="flex flex-wrap items-center gap-2 border-b border-border/40 bg-secondary/10 px-4 py-3 sm:px-5">
-                <p className="mr-1 text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                  Configuration
-                </p>
-                <Select value={channel} onValueChange={setChannel}>
-                  <SelectTrigger className="h-8 w-auto min-w-[120px] gap-2 rounded-full border-border/60 bg-background px-3 text-xs shadow-sm hover:bg-secondary/60">
-                    <SelectValue placeholder="Channel" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CHANNELS.map((ch) => (
-                      <SelectItem key={ch.id} value={ch.id}>
-                        <div className="flex items-center gap-2">
-                          <ch.icon className="h-3.5 w-3.5" />
-                          {ch.label}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={postType} onValueChange={(v) => setPostType(v as PostType)}>
-                  <SelectTrigger className="h-8 w-auto min-w-[120px] gap-2 rounded-full border-border/60 bg-background px-3 text-xs shadow-sm hover:bg-secondary/60">
-                    <SelectValue placeholder="Post Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availablePostTypes.map((pt) => (
-                      <SelectItem key={pt.id} value={pt.id}>
-                        <div className="flex items-center gap-2">
-                          <pt.icon className="h-3.5 w-3.5" />
-                          {pt.label}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={tone} onValueChange={(v) => setTone(v as (typeof TONES)[number])}>
-                  <SelectTrigger className="h-8 w-auto min-w-[100px] gap-2 rounded-full border-border/60 bg-background px-3 text-xs shadow-sm hover:bg-secondary/60">
-                    <SelectValue placeholder="Tone" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TONES.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {creatorPresets && creatorPresets.length > 0 && (
-                  <Select
-                    value={selectedPresetId}
-                    onValueChange={(v) => {
-                      setSelectedPresetId(v);
-                      const preset = creatorPresets.find((p) => p.id === v);
-                      if (preset?.starterPrompt) setPrompt(preset.starterPrompt);
-                    }}
-                  >
-                    <SelectTrigger className="h-8 w-auto min-w-[140px] gap-2 rounded-full border-brand/30 bg-brand/5 px-3 text-xs font-medium text-brand shadow-sm hover:bg-brand/10">
-                      <Wand2 className="h-3 w-3" />
-                      <SelectValue placeholder="Template" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {creatorPresets.map((preset) => (
-                        <SelectItem key={preset.id} value={preset.id}>
-                          <div className="flex flex-col">
-                            <span>{preset.name}</span>
-                            <span className="max-w-[200px] truncate text-[10px] text-muted-foreground">
-                              {preset.category ?? "Creator"}
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-
-              <div className="p-3 sm:p-4">
-                {media && (
-                  <div className="relative mb-3 inline-flex items-center gap-3 self-start rounded-xl border border-border bg-secondary/30 p-2 pr-8">
-                    {media.type === "video" ? (
-                      <video src={media.url} className="h-10 w-10 rounded-lg object-cover" muted />
-                    ) : (
-                      <img src={media.url} alt="" className="h-10 w-10 rounded-lg object-cover" />
-                    )}
-                    <div>
-                      <p className="text-xs font-semibold capitalize text-foreground">{media.type} Attached</p>
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={() => setMedia(null)}
-                      className="absolute right-1 top-1 h-5 w-5 rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-
-                <div className="relative flex items-end gap-2 rounded-2xl border border-border bg-card p-1.5 shadow-sm transition-all focus-within:border-brand/50 focus-within:ring-1 focus-within:ring-brand/50">
-                  <label className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary/80 hover:text-foreground">
-                    {isUploading ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-brand" />
-                    ) : (
-                      <Upload className="h-5 w-5" />
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*,video/*"
-                      className="hidden"
-                      disabled={isUploading}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void handleFileUpload(f);
-                      }}
-                    />
-                  </label>
-
-                  <Textarea
-                    ref={promptRef}
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder={
-                      postType === "video" || postType === "image"
-                        ? selectedPreset?.starterPrompt || "Message Maya to create..."
-                        : "Message Maya to create..."
-                    }
-                    rows={1}
-                    className="min-h-[40px] flex-1 resize-none overflow-hidden border-0 bg-transparent px-1 py-2.5 text-[14px] leading-relaxed text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleCreate();
-                      }
-                    }}
-                  />
-
-                  <Button
-                    onClick={handleCreate}
-                    disabled={
-                      isCreating ||
-                      isRenderingMedia ||
-                      (!prompt.trim() &&
-                        !media &&
-                        !((postType === "video" || postType === "image") && selectedPreset?.starterPrompt))
-                    }
-                    className={cn(
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl p-0 shadow-sm transition-all",
-                      prompt.trim() || media
-                        ? "bg-brand text-brand-foreground hover:bg-brand/90"
-                        : "bg-secondary text-muted-foreground",
-                    )}
-                  >
-                    {isCreating || isRenderingMedia ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <Send className="ml-[-2px] h-5 w-5" />
-                    )}
-                  </Button>
+                  )}
                 </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center space-y-3 px-4 py-8 text-center max-w-md">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand shadow-md">
+                    <ImagePlus className="h-7 w-7" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-base font-semibold text-foreground">Interactive Preview Canvas</p>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      Choose a template or write your idea below to generate high-reach posts and view previews here in real time.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Step 3: Pinned Docked Gemini-Style Input Bar (Always docked at bottom of screen) */}
+      <div className="shrink-0 w-full">
+        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-lg transition-all focus-within:border-brand/50 focus-within:ring-1 focus-within:ring-brand/40">
+          {/* Top pills row for Channel, Post Type, Tone, Template */}
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border/40 bg-secondary/15 px-3 py-1.5 sm:px-4">
+            <Select value={channel} onValueChange={setChannel}>
+              <SelectTrigger className="h-7 w-auto min-w-[105px] gap-1.5 rounded-full border-border/60 bg-background/80 px-2.5 text-xs shadow-none hover:bg-secondary">
+                <SelectValue placeholder="Channel" />
+              </SelectTrigger>
+              <SelectContent>
+                {CHANNELS.map((ch) => (
+                  <SelectItem key={ch.id} value={ch.id}>
+                    <div className="flex items-center gap-2">
+                      <ch.icon className="h-3.5 w-3.5" />
+                      {ch.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={postType} onValueChange={(v) => setPostType(v as PostType)}>
+              <SelectTrigger className="h-7 w-auto min-w-[105px] gap-1.5 rounded-full border-border/60 bg-background/80 px-2.5 text-xs shadow-none hover:bg-secondary">
+                <SelectValue placeholder="Post Type" />
+              </SelectTrigger>
+              <SelectContent>
+                {availablePostTypes.map((pt) => (
+                  <SelectItem key={pt.id} value={pt.id}>
+                    <div className="flex items-center gap-2">
+                      <pt.icon className="h-3.5 w-3.5" />
+                      {pt.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={tone} onValueChange={(v) => setTone(v as (typeof TONES)[number])}>
+              <SelectTrigger className="h-7 w-auto min-w-[90px] gap-1.5 rounded-full border-border/60 bg-background/80 px-2.5 text-xs shadow-none hover:bg-secondary">
+                <SelectValue placeholder="Tone" />
+              </SelectTrigger>
+              <SelectContent>
+                {TONES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {creatorPresets && creatorPresets.length > 0 && (
+              <Select
+                value={selectedPresetId}
+                onValueChange={(v) => {
+                  setSelectedPresetId(v);
+                  const preset = creatorPresets.find((p) => p.id === v);
+                  if (preset?.starterPrompt) setPrompt(preset.starterPrompt);
+                }}
+              >
+                <SelectTrigger className="h-7 w-auto min-w-[125px] gap-1.5 rounded-full border-brand/30 bg-brand/5 px-2.5 text-xs font-medium text-brand shadow-none hover:bg-brand/10">
+                  <Wand2 className="h-3 w-3" />
+                  <SelectValue placeholder="Template" />
+                </SelectTrigger>
+                <SelectContent>
+                  {creatorPresets.map((preset) => (
+                    <SelectItem key={preset.id} value={preset.id}>
+                      <div className="flex flex-col">
+                        <span>{preset.name}</span>
+                        <span className="max-w-[200px] truncate text-[10px] text-muted-foreground">
+                          {preset.category ?? "Creator"}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Prompt row (Gemini-style input) */}
+          <div className="p-2 sm:p-2.5">
+            {media && (
+              <div className="relative mb-2 inline-flex items-center gap-2 self-start rounded-lg border border-border bg-secondary/30 p-1.5 pr-6">
+                {media.type === "video" ? (
+                  <video src={media.url} className="h-7 w-7 rounded object-cover" muted />
+                ) : (
+                  <img src={media.url} alt="" className="h-7 w-7 rounded object-cover" />
+                )}
+                <p className="text-[11px] font-semibold capitalize text-foreground">{media.type} Attached</p>
+                <button
+                  type="button"
+                  onClick={() => setMedia(null)}
+                  className="absolute right-1 top-1 h-4 w-4 rounded-full p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <label
+                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                title="Upload media"
+              >
+                {isUploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-brand" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  className="hidden"
+                  disabled={isUploading}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleFileUpload(f);
+                  }}
+                />
+              </label>
+
+              <Textarea
+                ref={promptRef}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder={
+                  postType === "video" || postType === "image"
+                    ? selectedPreset?.starterPrompt || "Message Maya to create..."
+                    : "Message Maya to create..."
+                }
+                rows={1}
+                className="min-h-[36px] max-h-24 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1 py-2 text-[13px] leading-relaxed text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (caption || media) {
+                      void handleRegenerateAll();
+                    } else {
+                      void handleCreate();
+                    }
+                  }
+                }}
+              />
+
+              {/* Regenerate button (A): visible when content already exists so user can easily regenerate if they don't like it */}
+              {(Boolean(caption) || Boolean(media)) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleRegenerateAll()}
+                  disabled={isCreating || isRenderingMedia}
+                  className="h-9 shrink-0 gap-1.5 rounded-xl border-border bg-secondary/40 px-3 text-xs font-semibold text-foreground shadow-sm hover:bg-secondary hover:text-foreground"
+                  title="Regenerate all content (copy, hashtags & AI media)"
+                >
+                  {isCreating || isRenderingMedia ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5 text-brand" />
+                  )}
+                  <span>Regenerate</span>
+                </Button>
+              )}
+
+              {/* Generate / Update with new prompt */}
+              <Button
+                onClick={() => void handleCreate()}
+                disabled={
+                  isCreating ||
+                  isRenderingMedia ||
+                  (!prompt.trim() &&
+                    !media &&
+                    !((postType === "video" || postType === "image") && selectedPreset?.starterPrompt) &&
+                    !primaryBrand)
+                }
+                className={cn(
+                  "flex h-9 shrink-0 items-center justify-center rounded-xl px-3.5 shadow-sm transition-all text-xs font-semibold gap-1.5",
+                  prompt.trim() || media || selectedPreset
+                    ? "bg-brand text-brand-foreground hover:bg-brand/90"
+                    : "bg-secondary text-muted-foreground",
+                )}
+                title={caption || media ? "Generate with new prompt" : "Generate post"}
+              >
+                {isCreating || isRenderingMedia ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
+                <span>{caption || media ? "Update" : "Generate"}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Big Popup Dialog for Free Version Over / Out of Credits */}
+      <Dialog open={upgradeModalOpen} onOpenChange={setUpgradeModalOpen}>
+        <DialogContent className="max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
+          <DialogHeader className="space-y-3 text-center sm:text-left">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-3 py-1 font-mono text-[11px] font-semibold text-brand uppercase tracking-wider">
+                <LockKeyhole className="h-3.5 w-3.5" />
+                {upgradeModalInfo.badge}
+              </span>
+            </div>
+            <DialogTitle className="font-display text-2xl sm:text-3xl tracking-tight text-foreground">
+              {upgradeModalInfo.title}
+            </DialogTitle>
+            <DialogDescription className="text-sm leading-relaxed text-muted-foreground">
+              {upgradeModalInfo.description}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Feature benefits list */}
+          <div className="my-2 space-y-2 rounded-xl border border-border/60 bg-secondary/20 p-4">
+            <p className="text-xs font-semibold text-foreground uppercase tracking-wider">
+              Unlock with MagicBox Pro:
+            </p>
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                <span>Unlimited AI copy & captions</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                <span>Photorealistic AI image synthesis</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                <span>AI Reel & video generation</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                <span>Multi-channel auto publishing</span>
               </div>
             </div>
           </div>
-      </div>
+
+          {/* Action Buttons */}
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setUpgradeModalOpen(false);
+                window.location.href = "/pricing";
+              }}
+              className="w-full sm:w-auto text-xs"
+            >
+              View All Plans
+            </Button>
+            <Button
+              onClick={() => {
+                setUpgradeModalOpen(false);
+                window.location.href = "/pricing?plan=pro";
+              }}
+              className="w-full sm:w-auto bg-brand text-brand-foreground hover:bg-brand/90 gap-1.5 text-xs font-semibold shadow-md"
+            >
+              <span>Upgrade to Pro</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

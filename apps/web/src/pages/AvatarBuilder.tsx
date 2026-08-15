@@ -23,6 +23,7 @@ import { Sparkles, Loader2, Save, RotateCcw, User, Image } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
+import CreativeImageLoader from "../components/common/CreativeImageLoader";
 
 const SETTING_OPTIONS: Record<keyof AvatarSettings, string[]> = {
  gender: ["Male","Female","Non-binary"],
@@ -327,20 +328,14 @@ export default function AvatarBuilder({ embedded = false }: { embedded?: boolean
  </div>
  )}
 
- {generateState ==="generating" && (
- <div className="w-full h-full bg-card/[0.02] rounded-xl overflow-hidden relative">
- <div className="absolute inset-0 bg-brand" />
- <div className="absolute inset-0 animate-pulse">
- <div className="h-full w-full bg-brand from-transparent via-white/5 to-transparent -skew-x-12 animate-shimmer" />
- </div>
- <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
- <Loader2 className="h-8 w-8 animate-spin text-brand" />
- <p className="text-sm text-muted-foreground">
- Creating your avatar...
- </p>
- </div>
- </div>
- )}
+        {generateState === "generating" && (
+          <CreativeImageLoader
+            aspectRatio="auto"
+            title="Generating AI Avatar..."
+            subtitle="Synthesizing photorealistic features & lighting"
+            className="h-full w-full rounded-xl"
+          />
+        )}
 
  {generateState ==="done" && (
  <div className="w-full h-full rounded-xl overflow-hidden relative bg-secondary">

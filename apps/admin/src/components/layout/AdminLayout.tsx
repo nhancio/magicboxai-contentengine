@@ -5,9 +5,7 @@ import { useAdminAuth } from "../../contexts/AdminAuthContext";
 import {
   LayoutDashboard,
   Users,
-  Image,
   Activity,
-  BarChart3,
   Settings2,
   LogOut,
   ShieldCheck,
@@ -18,9 +16,7 @@ import {
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/users", label: "Users", icon: Users },
-  { to: "/avatars", label: "Avatars", icon: Image },
   { to: "/api-logs", label: "API Logs", icon: Activity },
-  { to: "/product-analytics", label: "Product Analytics", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings2 },
 ];
 

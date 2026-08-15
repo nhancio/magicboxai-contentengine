@@ -485,9 +485,78 @@ export const balance = query({
 /** Idempotent free-trial grant (safe to call from Dashboard on load). */
 export const claimTrial = mutation({
   args: {},
+  returns: v.object({
+    iCredits: v.number(),
+    vCredits: v.number(),
+    trialGranted: v.boolean(),
+  }),
   handler: async (ctx) => {
     const uid = await requireUid(ctx);
     return await ensureTrialBalance(ctx, uid);
+  },
+});
+
+/** Reset free-trial clock & replenish credits for the calling user. */
+export const resetTrial = mutation({
+  args: {},
+  returns: v.object({
+    iCredits: v.number(),
+    vCredits: v.number(),
+    trialGranted: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    const uid = await requireUid(ctx);
+    const existing = await getRow(ctx, uid);
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        trialGrantedAt: now,
+        iCredits: FREE_TRIAL_I,
+        vCredits: FREE_TRIAL_V,
+        updatedAt: now,
+      });
+      await ctx.db.insert("creditLedger", {
+        userId: uid,
+        kind: "i",
+        delta: FREE_TRIAL_I,
+        reason: "trial_reset",
+        balanceAfter: FREE_TRIAL_I,
+        createdAt: now,
+      });
+      await ctx.db.insert("creditLedger", {
+        userId: uid,
+        kind: "v",
+        delta: FREE_TRIAL_V,
+        reason: "trial_reset",
+        balanceAfter: FREE_TRIAL_V,
+        createdAt: now,
+      });
+      return { iCredits: FREE_TRIAL_I, vCredits: FREE_TRIAL_V, trialGranted: true };
+    }
+    return await ensureTrialBalance(ctx, uid);
+  },
+});
+
+/** Admin/maintenance mutation to refresh all trial clocks and replenish balances. */
+export const refreshAllTrials = internalMutation({
+  args: {},
+  returns: v.object({
+    refreshedCount: v.number(),
+  }),
+  handler: async (ctx) => {
+    const balances = await ctx.db.query("creditBalances").collect();
+    const now = Date.now();
+    let count = 0;
+    for (const b of balances) {
+      await ctx.db.patch(b._id, {
+        trialGrantedAt: now,
+        iCredits: Math.max(b.iCredits, FREE_TRIAL_I),
+        vCredits: Math.max(b.vCredits, FREE_TRIAL_V),
+        updatedAt: now,
+      });
+      count++;
+    }
+    return { refreshedCount: count };
   },
 });
 

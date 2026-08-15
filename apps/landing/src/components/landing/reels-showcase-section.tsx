@@ -147,9 +147,6 @@ export function ReelsShowcaseSection() {
   const sectionRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll control refs
-  const resumeAutoScrollAtRef = useRef(0);
-  const isInteractingRef = useRef(false);
   const isMouseDownRef = useRef(false);
   const startXRef = useRef(0);
   const scrollLeftRef = useRef(0);
@@ -165,7 +162,7 @@ export function ReelsShowcaseSection() {
     return () => observer.disconnect();
   }, []);
 
-  // Smooth drift auto-scroll that pauses immediately when user touches or drags
+  // Smooth continuous cyclic auto-scroll that never stops on hover
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el || !isVisible) return;
@@ -178,21 +175,20 @@ export function ReelsShowcaseSection() {
       const elapsed = Math.min(now - previousTime, 64);
       previousTime = now;
 
+      // Never stop on hover; only pause while actively holding mouse down to drag
       const shouldMove =
         !reducedMotion.matches &&
-        !isInteractingRef.current &&
         !isMouseDownRef.current &&
-        document.visibilityState === "visible" &&
-        now >= resumeAutoScrollAtRef.current;
+        document.visibilityState === "visible";
 
       if (shouldMove) {
         const pixelsPerSecond = 35;
         el.scrollLeft += pixelsPerSecond * (elapsed / 1000);
 
-        // Infinite wrap check
-        const maxScroll = el.scrollWidth - el.clientWidth;
-        if (el.scrollLeft >= maxScroll - 10) {
-          el.scrollLeft = 0;
+        // Seamless infinite wrap (cards are duplicated in 2 sets)
+        const halfScroll = el.scrollWidth / 2;
+        if (halfScroll > 0 && el.scrollLeft >= halfScroll) {
+          el.scrollLeft -= halfScroll;
         }
       }
 
@@ -203,14 +199,9 @@ export function ReelsShowcaseSection() {
     return () => window.cancelAnimationFrame(frameId);
   }, [isVisible]);
 
-  const pauseAutoScroll = (milliseconds = 4000) => {
-    resumeAutoScrollAtRef.current = performance.now() + milliseconds;
-  };
-
   const scrollByCards = (direction: 1 | -1) => {
     const el = scrollerRef.current;
     if (!el) return;
-    pauseAutoScroll(6000);
     const first = el.children[0] as HTMLElement | undefined;
     const cardStep = first ? first.getBoundingClientRect().width + 16 : 240;
     el.scrollBy({ left: direction * cardStep, behavior: "smooth" });
@@ -221,10 +212,8 @@ export function ReelsShowcaseSection() {
     const el = scrollerRef.current;
     if (!el) return;
     isMouseDownRef.current = true;
-    isInteractingRef.current = true;
     startXRef.current = e.pageX - el.offsetLeft;
     scrollLeftRef.current = el.scrollLeft;
-    pauseAutoScroll(10000);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -235,13 +224,10 @@ export function ReelsShowcaseSection() {
     const x = e.pageX - el.offsetLeft;
     const walk = (x - startXRef.current) * 1.5; // Scroll speed factor
     el.scrollLeft = scrollLeftRef.current - walk;
-    pauseAutoScroll(10000);
   };
 
   const handleMouseUpOrLeave = () => {
     isMouseDownRef.current = false;
-    isInteractingRef.current = false;
-    pauseAutoScroll(4000);
   };
 
   return (
@@ -294,14 +280,6 @@ export function ReelsShowcaseSection() {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUpOrLeave}
         onMouseLeave={handleMouseUpOrLeave}
-        onTouchStart={() => {
-          isInteractingRef.current = true;
-          pauseAutoScroll(8000);
-        }}
-        onTouchEnd={() => {
-          isInteractingRef.current = false;
-          pauseAutoScroll(5000);
-        }}
         className="no-scrollbar flex gap-4 overflow-x-auto touch-pan-x cursor-grab active:cursor-grabbing px-6 pb-4 lg:px-12 select-none"
       >
         {[0, 1].flatMap((copy) =>

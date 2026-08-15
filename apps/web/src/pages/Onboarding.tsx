@@ -10,7 +10,7 @@ import { useAuth } from"@shared/lib/auth";
 import { api } from"@convex/_generated/api";
 import { isConvexConfigured } from"../lib/convex";
 import type { SocialAccount, SocialPlatform } from"@shared/types";
-import { getSocialAccounts, saveBrandProfile } from"@shared/lib/automations";
+import { getSocialAccounts, saveBrandProfile, getBrandProfiles } from"@shared/lib/automations";
 import {
  extractBrandFromWebsite,
  type BrandExtractResult,
@@ -53,6 +53,7 @@ import {
  Twitter,
  Youtube,
  Flame,
+ RefreshCw,
 } from"lucide-react";
 
 const SCAN_STEPS = [
@@ -161,67 +162,170 @@ const STEPS = [
  { title: "Review & approve", icon: ShieldCheck },
 ];
 
+function brandDocToExtractResult(b: any): BrandExtractResult {
+  return {
+    companyName: b.name || "",
+    industry: b.industry || "",
+    audience: b.audience || "",
+    tone: b.toneOfVoice || "",
+    hashtags: b.hashtagSets?.default?.map((h: string) => (h.startsWith("#") ? h : `#${h}`)) ?? [],
+    sampleCaptions: b.sampleCaptions ?? [],
+    logoUrl: b.logoUrl || "",
+    websiteImages: b.websiteImages ?? [],
+    brandedImageUrl: b.brandedImageUrl || "",
+    brandedImageSource: b.brandedImageSource || (b.brandedImageUrl ? "website" : ""),
+    colors: {
+      primary: b.colors?.primary,
+      secondary: b.colors?.secondary,
+      accent: b.colors?.accent,
+    },
+    fonts: b.fonts ?? [],
+    coreIdentity: b.coreIdentity,
+    productOffering: b.productOffering,
+    uniqueBenefits: b.uniqueBenefits,
+    problemSolution: b.problemSolution,
+    mission: b.mission,
+    differentiation: b.differentiation,
+    ownedSpace: b.ownedSpace,
+    contentAngles: b.contentAngles,
+    toneDos: b.toneDos,
+    toneDonts: b.toneDonts,
+    customerSegments: b.customerSegments,
+    competitors: b.competitors,
+  };
+}
+
+const ONBOARDING_STORAGE = {
+  getWebsiteUrl: (): string => {
+    try {
+      return localStorage.getItem("mb_onboarding_website_url") || "";
+    } catch {
+      return "";
+    }
+  },
+  setWebsiteUrl: (url: string) => {
+    try {
+      if (url) {
+        localStorage.setItem("mb_onboarding_website_url", url);
+      } else {
+        localStorage.removeItem("mb_onboarding_website_url");
+      }
+    } catch {}
+  },
+  getExtracted: (): BrandExtractResult | null => {
+    try {
+      const raw = localStorage.getItem("mb_onboarding_extracted");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  },
+  setExtracted: (data: BrandExtractResult | null, url?: string) => {
+    try {
+      if (data) {
+        localStorage.setItem("mb_onboarding_extracted", JSON.stringify(data));
+        if (url) {
+          localStorage.setItem("mb_onboarding_extracted_url", url);
+          localStorage.setItem("mb_onboarding_website_url", url);
+        }
+      } else {
+        localStorage.removeItem("mb_onboarding_extracted");
+        localStorage.removeItem("mb_onboarding_extracted_url");
+      }
+    } catch {}
+  },
+  getBrandProfileId: (): string => {
+    try {
+      return localStorage.getItem("mb_onboarding_brand_id") || "";
+    } catch {
+      return "";
+    }
+  },
+  setBrandProfileId: (id: string) => {
+    try {
+      if (id) {
+        localStorage.setItem("mb_onboarding_brand_id", id);
+      } else {
+        localStorage.removeItem("mb_onboarding_brand_id");
+      }
+    } catch {}
+  },
+};
+
 export default function Onboarding() {
- const { user } = useAuth();
- const navigate = useNavigate();
- const location = useLocation();
- const [searchParams] = useSearchParams();
- const preset = getPreset(searchParams.get("preset"));
- const channelSetupOnly = location.pathname.endsWith("/channels");
- const [step, setStep] = useState(channelSetupOnly ? 1 : 0);
- const [legacyAccounts, setLegacyAccounts] = useState<SocialAccount[]>([]);
- const [connecting, setConnecting] = useState<
- "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp" | null
- >(null);
- const [saving, setSaving] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const preset = getPreset(searchParams.get("preset"));
+  const channelSetupOnly = location.pathname.endsWith("/channels");
+  const [step, setStep] = useState(channelSetupOnly ? 1 : 0);
+  const [legacyAccounts, setLegacyAccounts] = useState<SocialAccount[]>([]);
+  const [connecting, setConnecting] = useState<
+    "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp" | null
+  >(null);
+  const [saving, setSaving] = useState(false);
 
- // Convex channel path (same engine Studio / Maya / Settings use).
- const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
- const connectUrl = useAction(api.social.connectUrl);
- const createPost = useAction(api.studio.createPost);
- const generateCopy = useAction(api.studio.generateCopy);
- const generateCarousel = useAction(api.carousel.generate);
- const uploadUrl = useMutation(api.studio.uploadUrl);
- const resolveUpload = useMutation(api.studio.resolveUpload);
- const upsertWebsiteBrand = useMutation(api.brands.upsertFromWebsite);
+  // Convex channel path (same engine Studio / Maya / Settings use).
+  const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
+  const convexBrands = useQuery(api.brands.list, isConvexConfigured ? {} : "skip");
+  const connectUrl = useAction(api.social.connectUrl);
+  const createPost = useAction(api.studio.createPost);
+  const generateCopy = useAction(api.studio.generateCopy);
+  const generateCarousel = useAction(api.carousel.generate);
+  const uploadUrl = useMutation(api.studio.uploadUrl);
+  const resolveUpload = useMutation(api.studio.resolveUpload);
+  const upsertWebsiteBrand = useMutation(api.brands.upsertFromWebsite);
 
- const accounts: SocialAccount[] = useMemo(() => {
- if (isConvexConfigured && convexAccounts) {
- return convexAccounts.map((a: any) => ({
- id: a._id,
- userId: a.userId,
- provider: a.provider,
- platform: a.platform,
- externalId: a.externalId,
- username: a.username ?? "",
- displayName: a.displayName ?? a.username ?? "",
- avatarUrl: a.avatarUrl,
- status: a.status,
- linkedAt: new Date(a.linkedAt),
- lastSyncedAt: a.lastSyncedAt ? new Date(a.lastSyncedAt) : undefined,
- }));
- }
- return legacyAccounts;
- }, [convexAccounts, legacyAccounts]);
+  const accounts: SocialAccount[] = useMemo(() => {
+    if (isConvexConfigured && convexAccounts) {
+      return convexAccounts.map((a: any) => ({
+        id: a._id,
+        userId: a.userId,
+        provider: a.provider,
+        platform: a.platform,
+        externalId: a.externalId,
+        username: a.username ?? "",
+        displayName: a.displayName ?? a.username ?? "",
+        avatarUrl: a.avatarUrl,
+        status: a.status,
+        linkedAt: new Date(a.linkedAt),
+        lastSyncedAt: a.lastSyncedAt ? new Date(a.lastSyncedAt) : undefined,
+      }));
+    }
+    return legacyAccounts;
+  }, [convexAccounts, legacyAccounts]);
 
- const connectedByPlatform = useMemo(() => {
- const map = new Map<string, SocialAccount>();
- for (const a of accounts) {
- if (a.status === "active" || a.status === "expired") map.set(a.platform, a);
- }
- return map;
- }, [accounts]);
- const hasActiveChannel = accounts.some((account) => account.status === "active");
+  const connectedByPlatform = useMemo(() => {
+    const map = new Map<string, SocialAccount>();
+    for (const a of accounts) {
+      if (a.status === "active" || a.status === "expired") map.set(a.platform, a);
+    }
+    return map;
+  }, [accounts]);
+  const hasActiveChannel = accounts.some((account) => account.status === "active");
 
- // brand — website fetch only
- const [websiteUrl, setWebsiteUrl] = useState("");
- const [brandPhase, setBrandPhase] = useState<"idle" | "scanning" | "ready" | "saving">("idle");
- const [scanStep, setScanStep] = useState(0);
- const [extracted, setExtracted] = useState<BrandExtractResult | null>(null);
- const [extractedUrl, setExtractedUrl] = useState("");
- const [brandName, setBrandName] = useState("");
- const [toneOfVoice, setToneOfVoice] = useState("");
- const [brandProfileId, setBrandProfileId] = useState<string>("");
+  // brand — website fetch only, initial values hydrated from storage to survive page reload
+  const [websiteUrl, setWebsiteUrl] = useState(() => ONBOARDING_STORAGE.getWebsiteUrl());
+  const [extracted, setExtracted] = useState<BrandExtractResult | null>(() => ONBOARDING_STORAGE.getExtracted());
+  const [extractedUrl, setExtractedUrl] = useState(() => {
+    try {
+      return localStorage.getItem("mb_onboarding_extracted_url") || ONBOARDING_STORAGE.getWebsiteUrl();
+    } catch {
+      return "";
+    }
+  });
+  const [brandPhase, setBrandPhase] = useState<"idle" | "scanning" | "ready" | "saving">(() => (
+    ONBOARDING_STORAGE.getExtracted() ? "ready" : "idle"
+  ));
+  const [scanStep, setScanStep] = useState(0);
+  const [brandName, setBrandName] = useState(() => (
+    ONBOARDING_STORAGE.getExtracted()?.companyName || ""
+  ));
+  const [toneOfVoice, setToneOfVoice] = useState(() => (
+    ONBOARDING_STORAGE.getExtracted()?.tone || ""
+  ));
+  const [brandProfileId, setBrandProfileId] = useState<string>(() => ONBOARDING_STORAGE.getBrandProfileId());
 
  // preview — branded samples from fetch (no dependency on failing Firebase callable)
  const [previewPlatform, setPreviewPlatform] = useState<SocialPlatform>("linkedin");
@@ -265,10 +369,69 @@ export default function Onboarding() {
  [brandName, extracted],
  );
 
- useEffect(() => {
- if (!user || isConvexConfigured) return;
- getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
- }, [user]);
+  useEffect(() => {
+    if (!user || isConvexConfigured) return;
+    getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
+  }, [user]);
+
+  // Hydrate brand profile from backend if local state is missing, or keep in sync
+  useEffect(() => {
+    if (isConvexConfigured && convexBrands && convexBrands.length > 0) {
+      const b = convexBrands[0];
+      const site = b.websiteUrl || "";
+      if (site) {
+        setWebsiteUrl((prev) => {
+          if (!prev) {
+            ONBOARDING_STORAGE.setWebsiteUrl(site);
+            return site;
+          }
+          return prev;
+        });
+        setExtractedUrl((prev) => prev || site);
+        setBrandProfileId((prev) => prev || b._id || b.legacyId || "");
+        setBrandName((prev) => prev || b.name || "");
+        setToneOfVoice((prev) => prev || b.toneOfVoice || "");
+        setExtracted((prev) => {
+          if (!prev) {
+            const reconstructed = brandDocToExtractResult(b);
+            ONBOARDING_STORAGE.setExtracted(reconstructed, site);
+            setBrandPhase("ready");
+            return reconstructed;
+          }
+          return prev;
+        });
+      }
+    } else if (!isConvexConfigured && user) {
+      getBrandProfiles(user.uid).then((list) => {
+        if (list && list.length > 0) {
+          const b = list[0];
+          const site = b.websiteUrl || "";
+          if (site) {
+            setWebsiteUrl((prev) => {
+              if (!prev) {
+                ONBOARDING_STORAGE.setWebsiteUrl(site);
+                return site;
+              }
+              return prev;
+            });
+            setExtractedUrl((prev) => prev || site);
+            setBrandProfileId((prev) => prev || b.id || "");
+            setBrandName((prev) => prev || b.name || "");
+            setToneOfVoice((prev) => prev || b.toneOfVoice || "");
+            setExtracted((prev) => {
+              if (!prev) {
+                const reconstructed = brandDocToExtractResult(b);
+                ONBOARDING_STORAGE.setExtracted(reconstructed, site);
+                setBrandPhase("ready");
+                return reconstructed;
+              }
+              return prev;
+            });
+          }
+        }
+      }).catch(() => {});
+    }
+  }, [convexBrands, user]);
 
  useEffect(() => {
  captureEvent(PRODUCT_EVENTS.onboardingStarted, {
@@ -387,116 +550,117 @@ export default function Onboarding() {
       toast.error("Enter your website URL first.");
       return;
     }
-    // If brand details are already scraped and websiteUrl matches, immediately save & advance
-    if (brandPhase === "ready" && extracted && (url === extractedUrl || !extractedUrl)) {
-      await handleSaveBrand();
-      return;
-    }
     captureEvent(PRODUCT_EVENTS.onboardingWebsiteFetchStarted, {
       source: "onboarding",
     });
- setBrandPhase("scanning");
- setExtracted(null);
- contentHydratedRef.current = false;
- try {
- const result = await extractBrandFromWebsite({ url });
- if (!result.companyName && !result.logoUrl && !result.colors?.primary) {
- toast.error("Couldn't pull much from that page — try the homepage URL.");
- setBrandPhase("idle");
- return;
- }
- setExtracted(result);
- setExtractedUrl(url);
- setBrandName(result.companyName || new URL(url).hostname);
- setToneOfVoice(result.tone || "");
- setBrandPhase("ready");
- toast.success("Brand details fetched — review and continue.");
- } catch (error) {
- toast.error(error instanceof Error ? error.message : "Couldn't read that site.");
- setBrandPhase("idle");
- }
- };
+    setBrandPhase("scanning");
+    setExtracted(null);
+    ONBOARDING_STORAGE.setExtracted(null);
+    contentHydratedRef.current = false;
+    try {
+      const result = await extractBrandFromWebsite({ url });
+      if (!result.companyName && !result.logoUrl && !result.colors?.primary) {
+        toast.error("Couldn't pull much from that page — try the homepage URL.");
+        setBrandPhase("idle");
+        return;
+      }
+      setExtracted(result);
+      setExtractedUrl(url);
+      setBrandName(result.companyName || new URL(url).hostname);
+      setToneOfVoice(result.tone || "");
+      setBrandPhase("ready");
+      ONBOARDING_STORAGE.setExtracted(result, url);
+      ONBOARDING_STORAGE.setWebsiteUrl(url);
+      toast.success("Brand details fetched — review and continue.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn't read that site.");
+      setBrandPhase("idle");
+    }
+  };
 
- const handleSaveBrand = async () => {
- if (!user || !extracted) return;
- setBrandPhase("saving");
- setSaving(true);
- try {
- const id = await saveBrandProfile({
- userId: user.uid,
- name: extracted.companyName || new URL(extractedUrl).hostname,
- industry: extracted.industry || "",
- toneOfVoice: extracted.tone || "",
- audience: extracted.audience || "",
- websiteUrl: extractedUrl,
- logoUrl: extracted.logoUrl || undefined,
- colors: {
- primary: extracted.colors.primary || "#111111",
- secondary: extracted.colors.secondary,
- accent: extracted.colors.accent,
- },
- hashtagSets: {
- default: (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean),
- },
- sampleCaptions: extracted.sampleCaptions?.length
- ? extracted.sampleCaptions
- : undefined,
- websiteImages: extracted.websiteImages?.length
- ? extracted.websiteImages
- : undefined,
- brandedImageUrl: extracted.brandedImageUrl || undefined,
- });
- if (isConvexConfigured) {
- try {
- await upsertWebsiteBrand({
- legacyId: id,
- name: extracted.companyName || new URL(extractedUrl).hostname,
- websiteUrl: extractedUrl,
- logoUrl: extracted.logoUrl || undefined,
- colors: {
- primary: extracted.colors.primary || "#111111",
- secondary: extracted.colors.secondary,
- accent: extracted.colors.accent,
- },
- industry: extracted.industry || undefined,
- toneOfVoice: extracted.tone || undefined,
- audience: extracted.audience || undefined,
- hashtagSets: {
- default: (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean),
- },
- sampleCaptions: extracted.sampleCaptions?.length
- ? extracted.sampleCaptions
- : undefined,
- });
- } catch (error) {
- console.warn("[onboarding] Convex brand sync will retry from the saved kit", error);
- }
- }
- setBrandProfileId(id);
- setBrandName(extracted.companyName || new URL(extractedUrl).hostname);
- setToneOfVoice(extracted.tone || "");
- if (db) {
- await setDoc(
- doc(db, "users", user.uid),
- {
- websiteSetupEnabledAt: serverTimestamp(),
- onboardingLastAction: "website_enabled",
- },
- { merge: true },
- );
- }
- captureEvent("brand_kit_completed", { source: "onboarding", has_website: true });
- captureEvent(PRODUCT_EVENTS.onboardingWebsiteEnabled, {
- source: "onboarding",
- });
- setStep(1);
- } catch (error) {
- toast.error(error instanceof Error ? error.message :"Could not save brand");
- setBrandPhase("ready");
- } finally {
- setSaving(false);
- }
- };
+  const handleSaveBrand = async () => {
+    if (!user || !extracted) return;
+    setBrandPhase("saving");
+    setSaving(true);
+    try {
+      const id = await saveBrandProfile({
+        userId: user.uid,
+        name: extracted.companyName || new URL(extractedUrl).hostname,
+        industry: extracted.industry || "",
+        toneOfVoice: extracted.tone || "",
+        audience: extracted.audience || "",
+        websiteUrl: extractedUrl,
+        logoUrl: extracted.logoUrl || undefined,
+        colors: {
+          primary: extracted.colors.primary || "#111111",
+          secondary: extracted.colors.secondary,
+          accent: extracted.colors.accent,
+        },
+        hashtagSets: {
+          default: (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean),
+        },
+        sampleCaptions: extracted.sampleCaptions?.length
+          ? extracted.sampleCaptions
+          : undefined,
+        websiteImages: extracted.websiteImages?.length
+          ? extracted.websiteImages
+          : undefined,
+        brandedImageUrl: extracted.brandedImageUrl || undefined,
+      });
+      if (isConvexConfigured) {
+        try {
+          await upsertWebsiteBrand({
+            legacyId: id,
+            name: extracted.companyName || new URL(extractedUrl).hostname,
+            websiteUrl: extractedUrl,
+            logoUrl: extracted.logoUrl || undefined,
+            colors: {
+              primary: extracted.colors.primary || "#111111",
+              secondary: extracted.colors.secondary,
+              accent: extracted.colors.accent,
+            },
+            industry: extracted.industry || undefined,
+            toneOfVoice: extracted.tone || undefined,
+            audience: extracted.audience || undefined,
+            hashtagSets: {
+              default: (extracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean),
+            },
+            sampleCaptions: extracted.sampleCaptions?.length
+              ? extracted.sampleCaptions
+              : undefined,
+          });
+        } catch (error) {
+          console.warn("[onboarding] Convex brand sync will retry from the saved kit", error);
+        }
+      }
+      setBrandProfileId(id);
+      setBrandName(extracted.companyName || new URL(extractedUrl).hostname);
+      setToneOfVoice(extracted.tone || "");
+      ONBOARDING_STORAGE.setBrandProfileId(id);
+      ONBOARDING_STORAGE.setExtracted(extracted, extractedUrl);
+      ONBOARDING_STORAGE.setWebsiteUrl(extractedUrl || websiteUrl);
+      if (db) {
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            websiteSetupEnabledAt: serverTimestamp(),
+            onboardingLastAction: "website_enabled",
+          },
+          { merge: true },
+        );
+      }
+      captureEvent("brand_kit_completed", { source: "onboarding", has_website: true });
+      captureEvent(PRODUCT_EVENTS.onboardingWebsiteEnabled, {
+        source: "onboarding",
+      });
+      setStep(1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save brand");
+      setBrandPhase("ready");
+    } finally {
+      setSaving(false);
+    }
+  };
 
  const deferOnboarding = async (section: "website" | "social") => {
  try {
@@ -1039,25 +1203,28 @@ export default function Onboarding() {
  <div className="flex flex-col gap-3 sm:flex-row">
  <div className="relative flex-1">
  <Globe2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
- <Input
- value={websiteUrl}
- onChange={(e) => {
- setWebsiteUrl(e.target.value);
- if (brandPhase === "ready") {
- setBrandPhase("idle");
- setExtracted(null);
- }
- }}
- onKeyDown={(e) => {
- if (e.key === "Enter") {
- e.preventDefault();
- void handleScanBrand();
- }
- }}
- placeholder="https://yourbrand.com"
- disabled={brandPhase === "scanning" || brandPhase === "saving"}
- className="h-12 bg-card border-border pl-10"
- />
+                <Input
+                  value={websiteUrl}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setWebsiteUrl(next);
+                    ONBOARDING_STORAGE.setWebsiteUrl(next);
+                    if (brandPhase === "ready" && next.trim() !== extractedUrl.trim()) {
+                      setBrandPhase("idle");
+                      setExtracted(null);
+                      ONBOARDING_STORAGE.setExtracted(null);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleScanBrand();
+                    }
+                  }}
+                  placeholder="https://yourbrand.com"
+                  disabled={brandPhase === "scanning" || brandPhase === "saving"}
+                  className="h-12 bg-card border-border pl-10"
+                />
  </div>
 <Button
   type="button"
@@ -1067,19 +1234,20 @@ export default function Onboarding() {
     brandPhase === "saving" ||
     !websiteUrl.trim()
   }
+  variant={brandPhase === "ready" && extracted ? "outline" : "default"}
   className="h-12 shrink-0 px-6"
 >
   {brandPhase === "scanning" ? (
     <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
   ) : brandPhase === "ready" && extracted ? (
-    <Check className="mr-1.5 h-4 w-4" />
+    <RefreshCw className="mr-1.5 h-4 w-4" />
   ) : (
     <Sparkles className="mr-1.5 h-4 w-4" />
   )}
   {brandPhase === "scanning"
     ? "Building…"
     : brandPhase === "ready" && extracted
-    ? "Save brand & continue"
+    ? "Rescan"
     : "Connect"}
 </Button>
  </div>
@@ -1218,227 +1386,227 @@ export default function Onboarding() {
  !previewCollapsed && "pb-[min(52vh,440px)] lg:pb-4",
  )}
  >
- <div className="glass-card overflow-hidden">
- <div className="border-b border-border bg-secondary/35 p-6">
- <div className="flex flex-wrap items-start justify-between gap-3">
- <div>
- <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-brand">
- <ShieldCheck className="h-3.5 w-3.5" />
- Approval workspace
- </div>
- <h2 className="font-display text-3xl">{STEPS[2].title}</h2>
- <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
- MagicBox used the website&apos;s strongest imagery, logo, palette, audience, and
- voice. Review the hook and finished creative before granting permission to post.
- </p>
- </div>
- {(extracted?.logoUrl || brandName) && (
- <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 shadow-sm">
- {extracted?.logoUrl ? (
- <img
- src={extracted.logoUrl}
- alt=""
- className="h-7 w-7 rounded-full object-contain"
- />
- ) : null}
- <span className="text-xs font-semibold">{brandName || "Your brand"}</span>
- </div>
- )}
- </div>
- <div className="mt-5 grid gap-2 sm:grid-cols-3">
- {[
- ["Website grounded", "Copy follows the supplied site"],
- ["Logo locked", "Brand mark stays consistent"],
- ["Permission first", "No automatic publishing"],
- ].map(([label, detail]) => (
- <div key={label} className="rounded-lg border border-border bg-card px-3 py-2.5">
- <div className="flex items-center gap-1.5 text-xs font-semibold">
- <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
- {label}
- </div>
- <p className="mt-0.5 text-[11px] text-muted-foreground">{detail}</p>
- </div>
- ))}
- </div>
- </div>
+            <div className="glass-card overflow-hidden">
+              <div className="border-b border-border bg-secondary/35 p-4 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-brand">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      Approval workspace
+                    </div>
+                    <h2 className="font-display text-2xl sm:text-3xl">{STEPS[2].title}</h2>
+                    <p className="mt-1 max-w-2xl text-xs sm:text-sm leading-relaxed text-muted-foreground">
+                      MagicBox used the website&apos;s strongest imagery, logo, palette, audience, and
+                      voice. Review the hook and finished creative before granting permission to post.
+                    </p>
+                  </div>
+                  {(extracted?.logoUrl || brandName) && (
+                    <div className="flex items-center gap-2 rounded-full border border-border bg-card px-2.5 py-1 shadow-sm">
+                      {extracted?.logoUrl ? (
+                        <img
+                          src={extracted.logoUrl}
+                          alt=""
+                          className="h-6 w-6 rounded-full object-contain"
+                        />
+                      ) : null}
+                      <span className="text-xs font-semibold">{brandName || "Your brand"}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {[
+                    ["Website grounded", "Copy follows the supplied site"],
+                    ["Logo locked", "Brand mark stays consistent"],
+                    ["Permission first", "No automatic publishing"],
+                  ].map(([label, detail]) => (
+                    <div key={label} className="rounded-lg border border-border bg-card px-2.5 py-1.5">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                        {label}
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">{detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
- <div className="space-y-5 p-6">
- <div className="grid grid-cols-2 gap-2 rounded-xl bg-secondary p-1.5">
- <button
- type="button"
- onClick={() => setCreativeMode("image")}
- className={cn(
- "flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-all",
- creativeMode === "image"
- ? "bg-card text-foreground shadow-sm ring-1 ring-border"
- : "text-muted-foreground hover:text-foreground",
- )}
- >
- <ImageIcon className="h-4 w-4" />
- Image post
- </button>
- <button
- type="button"
- onClick={() => setCreativeMode("carousel")}
- className={cn(
- "flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-all",
- creativeMode === "carousel"
- ? "bg-card text-foreground shadow-sm ring-1 ring-border"
- : "text-muted-foreground hover:text-foreground",
- )}
- >
- <Layers className="h-4 w-4" />
- Carousel {carouselPack ? `· ${carouselPack.slides.length} slides` : ""}
- </button>
- </div>
+              <div className="space-y-3.5 p-4 sm:p-5">
+                <div className="grid grid-cols-2 gap-2 rounded-xl bg-secondary p-1">
+                  <button
+                    type="button"
+                    onClick={() => setCreativeMode("image")}
+                    className={cn(
+                      "flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs sm:text-sm font-semibold transition-all",
+                      creativeMode === "image"
+                        ? "bg-card text-foreground shadow-sm ring-1 ring-border"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                    Image post
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreativeMode("carousel")}
+                    className={cn(
+                      "flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs sm:text-sm font-semibold transition-all",
+                      creativeMode === "carousel"
+                        ? "bg-card text-foreground shadow-sm ring-1 ring-border"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <Layers className="h-4 w-4" />
+                    Carousel {carouselPack ? `· ${carouselPack.slides.length} slides` : ""}
+                  </button>
+                </div>
 
- {creativeMode === "image" && samples.length > 1 && (
- <div className="flex flex-wrap gap-2">
- {samples.map((sample, index) => (
- <button
- key={sample.id}
- type="button"
- onClick={() => setActiveSampleId(sample.id)}
- className={cn(
- "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
- activeSampleId === sample.id
- ? "border-foreground bg-foreground text-background"
- : "border-border text-muted-foreground hover:bg-secondary",
- )}
- >
- Hook {index + 1}
- </button>
- ))}
- </div>
- )}
+                {creativeMode === "image" && samples.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {samples.map((sample, index) => (
+                      <button
+                        key={sample.id}
+                        type="button"
+                        onClick={() => setActiveSampleId(sample.id)}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors",
+                          activeSampleId === sample.id
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border text-muted-foreground hover:bg-secondary",
+                        )}
+                      >
+                        Hook {index + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
- {creativeMode === "carousel" && carouselPack && (
- <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-2">
- {carouselPack.slides.map((slide, index) => (
- <button
- key={`${slide.title}-${index}`}
- type="button"
- onClick={() => setActiveCarouselSlide(index)}
- className={cn(
- "snap-start rounded-lg border px-3 py-2 text-left transition-colors",
- activeCarouselSlide === index
- ? "border-foreground bg-foreground text-background"
- : "border-border bg-card text-muted-foreground hover:bg-secondary",
- )}
- >
- <span className="font-mono text-[9px] uppercase tracking-widest">
- {index + 1}/{carouselPack.slides.length}
- </span>
- <span className="mt-0.5 block max-w-36 truncate text-xs font-semibold">
- {slide.title}
- </span>
- </button>
- ))}
- </div>
- )}
+                {creativeMode === "carousel" && carouselPack && (
+                  <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-1.5">
+                    {carouselPack.slides.map((slide, index) => (
+                      <button
+                        key={`${slide.title}-${index}`}
+                        type="button"
+                        onClick={() => setActiveCarouselSlide(index)}
+                        className={cn(
+                          "snap-start rounded-lg border px-2.5 py-1.5 text-left transition-colors",
+                          activeCarouselSlide === index
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border bg-card text-muted-foreground hover:bg-secondary",
+                        )}
+                      >
+                        <span className="font-mono text-[9px] uppercase tracking-widest">
+                          {index + 1}/{carouselPack.slides.length}
+                        </span>
+                        <span className="mt-0.5 block max-w-36 truncate text-xs font-semibold">
+                          {slide.title}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
 
- {(generating || carouselGenerating) && (
- <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
- <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
- {generating && carouselGenerating
- ? "Writing the strongest hooks and building the carousel…"
- : carouselGenerating
- ? "Building the carousel…"
- : "Polishing the image-post copy…"}
- </div>
- )}
+                {(generating || carouselGenerating) && (
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
+                    {generating && carouselGenerating
+                      ? "Writing the strongest hooks and building the carousel…"
+                      : carouselGenerating
+                        ? "Building the carousel…"
+                        : "Polishing the image-post copy…"}
+                  </div>
+                )}
 
- {activeCaption ? (
- <div className="rounded-xl border border-border bg-card p-4">
- <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
- {creativeMode === "carousel" ? "Carousel caption" : "Post copy"}
- </div>
- <h3 className="mt-2 font-display text-xl leading-tight">{activeHook}</h3>
- <p className="mt-2 line-clamp-5 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
- {activeCaption}
- </p>
- <div className="mt-3 flex flex-wrap gap-1.5">
- {activeHashtags.slice(0, 6).map((tag) => (
- <span key={tag} className="rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">
- #{tag.replace(/^#/, "")}
- </span>
- ))}
- </div>
- {(activeTrend || activeShareReason) ? (
- <div className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
- {activeTrend ? (
- <p><span className="font-semibold text-foreground">Trend signal:</span> {activeTrend}</p>
- ) : null}
- {activeShareReason ? (
- <p className="mt-1">
- <span className="font-semibold text-foreground">
- {creativeMode === "carousel" ? "Why it earns a save:" : "Why it earns a share:"}
- </span>{" "}
- {activeShareReason}
- </p>
- ) : null}
- </div>
- ) : null}
- </div>
- ) : !generating && !carouselGenerating ? (
- <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
- Go back and enter a website to unlock branded campaign drafts.
- </div>
- ) : null}
+                {activeCaption ? (
+                  <div className="rounded-xl border border-border bg-card p-3.5">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                      {creativeMode === "carousel" ? "Carousel caption" : "Post copy"}
+                    </div>
+                    <h3 className="mt-1.5 font-display text-lg leading-tight">{activeHook}</h3>
+                    <p className="mt-1.5 line-clamp-4 whitespace-pre-line text-xs sm:text-sm leading-relaxed text-muted-foreground">
+                      {activeCaption}
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap gap-1">
+                      {activeHashtags.slice(0, 6).map((tag) => (
+                        <span key={tag} className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
+                          #{tag.replace(/^#/, "")}
+                        </span>
+                      ))}
+                    </div>
+                    {(activeTrend || activeShareReason) ? (
+                      <div className="mt-2.5 border-t border-border pt-2 text-xs text-muted-foreground">
+                        {activeTrend ? (
+                          <p><span className="font-semibold text-foreground">Trend signal:</span> {activeTrend}</p>
+                        ) : null}
+                        {activeShareReason ? (
+                          <p className="mt-0.5">
+                            <span className="font-semibold text-foreground">
+                              {creativeMode === "carousel" ? "Why it earns a save:" : "Why it earns a share:"}
+                            </span>{" "}
+                            {activeShareReason}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : !generating && !carouselGenerating ? (
+                  <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-border text-xs text-muted-foreground">
+                    Go back and enter a website to unlock branded campaign drafts.
+                  </div>
+                ) : null}
 
- {creativeMode === "carousel" && !["instagram", "linkedin"].includes(previewPlatform) && (
- <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800">
- Multi-image publishing is currently available for Instagram and LinkedIn.
- Switch the preview platform to approve this carousel.
- </div>
- )}
+                {creativeMode === "carousel" && !["instagram", "linkedin"].includes(previewPlatform) && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800">
+                    Multi-image publishing is currently available for Instagram and LinkedIn.
+                    Switch the preview platform to approve this carousel.
+                  </div>
+                )}
 
- <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-foreground/15 bg-secondary/60 p-4">
- <input
- type="checkbox"
- checked={clientApproved}
- onChange={(event) => setClientApproved(event.target.checked)}
- className="mt-0.5 h-4 w-4 accent-black"
- />
- <span>
- <span className="block text-sm font-semibold text-foreground">
- I approve this copy and creative for {PLATFORM_META[previewPlatform].label}
- </span>
- <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
- MagicBox will only post the version visible in the preview. Editing the hook,
- format, or platform clears this permission and asks again.
- </span>
- </span>
- </label>
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-foreground/15 bg-secondary/60 p-3">
+                  <input
+                    type="checkbox"
+                    checked={clientApproved}
+                    onChange={(event) => setClientApproved(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-black"
+                  />
+                  <span>
+                    <span className="block text-xs sm:text-sm font-semibold text-foreground">
+                      I approve this copy and creative for {PLATFORM_META[previewPlatform].label}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+                      MagicBox will only post the version visible in the preview. Editing the hook,
+                      format, or platform clears this permission and asks again.
+                    </span>
+                  </span>
+                </label>
 
-        {activeAccountForPreview ? (
-          <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2">
-            <Button
-              onClick={() => void handleQuickPost("now")}
-              disabled={posting || !clientApproved || !activeCaption}
-              className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm"
-            >
-              {posting ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <Send className="mr-1.5 h-4 w-4 shrink-0" />}
-              <span className="truncate">Approve & post now</span>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => void handleQuickPost("schedule")}
-              disabled={posting || !clientApproved || !activeCaption}
-              className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm"
-            >
-              {posting ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <CalendarClock className="mr-1.5 h-4 w-4 shrink-0" />}
-              <span className="truncate">Approve for next best time</span>
-            </Button>
-          </div>
-        ) : (
-          <Button variant="outline" onClick={() => setStep(1)} className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm">
-            <span className="truncate">Connect {PLATFORM_META[previewPlatform].label} to post after approval</span>
-            <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
-          </Button>
-        )}
- </div>
- </div>
+                {activeAccountForPreview ? (
+                  <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2">
+                    <Button
+                      onClick={() => void handleQuickPost("now")}
+                      disabled={posting || !clientApproved || !activeCaption}
+                      className="w-full h-auto py-2.5 px-3.5 text-xs sm:text-sm"
+                    >
+                      {posting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 shrink-0 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5 shrink-0" />}
+                      <span className="truncate">Approve & post now</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => void handleQuickPost("schedule")}
+                      disabled={posting || !clientApproved || !activeCaption}
+                      className="w-full h-auto py-2.5 px-3.5 text-xs sm:text-sm"
+                    >
+                      {posting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 shrink-0 animate-spin" /> : <CalendarClock className="mr-1.5 h-3.5 w-3.5 shrink-0" />}
+                      <span className="truncate">Approve for next best time</span>
+                    </Button>
+                  </div>
+                ) : (
+                  <Button variant="outline" onClick={() => setStep(1)} className="w-full h-auto py-2.5 px-3.5 text-xs sm:text-sm">
+                    <span className="truncate">Connect {PLATFORM_META[previewPlatform].label} to post after approval</span>
+                    <ArrowRight className="ml-1.5 h-3.5 w-3.5 shrink-0" />
+                  </Button>
+                )}
+              </div>
+            </div>
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
           <Button

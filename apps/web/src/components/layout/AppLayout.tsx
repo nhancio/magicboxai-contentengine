@@ -14,7 +14,6 @@ import { CreditsTrialCard } from "@/components/CreditsTrialCard";
 import { useMayaActivation } from "@/hooks/useMayaActivation";
 import { trialClock } from "@/lib/credits";
 import {
-  BarChart3,
   Bot,
   CalendarDays,
   CreditCard,
@@ -29,7 +28,6 @@ import {
   Palette,
   Settings,
   Sparkles,
-  User,
   Video,
   X,
 } from "lucide-react";
@@ -40,11 +38,10 @@ const NAV_SECTIONS = [
     items: [
       { label: "Maya", path: "/maya", icon: Sparkles },
       { label: "Dashboard", path: "/", icon: LayoutDashboard },
-      { label: "Calendar", path: "/calendar", icon: CalendarDays },
       { label: "Studio", path: "/studio", icon: Film },
-      { label: "Library", path: "/posts", icon: FolderOpen },
-      { label: "Analytics", path: "/analytics", icon: BarChart3 },
       { label: "Automations", path: "/automations", icon: Bot },
+      { label: "Calendar", path: "/calendar", icon: CalendarDays },
+      { label: "Library", path: "/posts", icon: FolderOpen },
       { label: "Brand Kit", path: "/brand", icon: Palette },
       { label: "Warmed-Up Accounts", path: "/warmed-up-accounts", icon: Flame, badge: "NEW" },
     ],
@@ -52,7 +49,6 @@ const NAV_SECTIONS = [
   {
     heading: "AI Video",
     items: [
-      { label: "Avatar", path: "/avatars", icon: User },
       { label: "My Video", path: "/my-video", icon: Video },
     ],
   },
@@ -354,6 +350,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           className={cn(
             "mx-auto w-full max-w-[1600px] px-3 py-3 sm:px-5 sm:py-4 md:px-8 lg:py-5",
             isCalendarRoute && "overflow-hidden",
+            location.pathname === "/studio" && "h-[calc(100dvh-3.5rem)] lg:h-dvh flex flex-col py-2 px-3 sm:px-6 overflow-hidden max-w-none",
           )}
         >
           {children}
