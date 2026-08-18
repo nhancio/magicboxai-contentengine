@@ -28,7 +28,7 @@ import type {
   SocialPlatform,
 } from "../types";
 
-function deepStripUndefined<T>(val: T): T {
+export function deepStripUndefined<T>(val: T): T {
   if (val === null || val === undefined) return val;
   if (Array.isArray(val)) {
     return val.map(deepStripUndefined).filter((v) => v !== undefined) as unknown as T;
@@ -45,7 +45,7 @@ function deepStripUndefined<T>(val: T): T {
   return val;
 }
 
-function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
+export function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
   return deepStripUndefined(obj);
 }
 

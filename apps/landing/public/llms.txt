@@ -1,6 +1,6 @@
-# MagicBox AI — UGC Factory & Marketing Distribution Engine
+# MagicBox AI — Vibe Marketing Platform, AI UGC Factory & Marketing Distribution Engine
 
-> MagicBox AI is an AI UGC factory, AI video generator, and marketing distribution platform developed by Nhancio Technologies Private Limited. It automates UGC content creation, brand-aware copy and image generation, and multi-channel publishing to Instagram, LinkedIn, and YouTube.
+> MagicBox AI is an AI vibe marketing platform, AI UGC factory, and automated marketing distribution platform developed by Nhancio Technologies Private Limited. It automates vibe marketing, UGC content creation, brand-aware copy and video generation, and multi-channel publishing to Instagram, LinkedIn, and YouTube.
 
 - Canonical site: [magicboxai.in](https://magicboxai.in/)
 - Application: [app.magicboxai.in](https://app.magicboxai.in/)
@@ -8,13 +8,15 @@
 
 ## Primary Topics & Core Capabilities
 
-- **UGC Factory & UGC Content Creation**: Automatically produces authentic, high-converting video and image content at scale from a brand brief or URL.
+- **Vibe Marketing Platform & AI Vibe Marketing**: Automatically extracts brand vibe, aesthetics, and messaging rules to create high-converting, viral-ready AI videos, reels, carousels, and social updates.
+- **UGC Factory & UGC Content Creation**: Automatically produces authentic, high-converting video and image content at scale from a brand brief or website URL without requiring expensive video shoots.
 - **AI Content Creation & Video Generation**: Generates AI avatar videos, lip-sync reels, tailored captions, and on-brand graphics.
 - **Marketing Distribution**: End-to-end publishing engine with human-in-the-loop approval, scheduled queues, and direct API integration for Instagram, LinkedIn, and YouTube.
-- **How to Create AI Videos**: 
-  1. Extract brand kit from URL/brief.
+- **Managed Agency & Done-For-You Service**: Offers both a self-serve platform and full-service agency management (account warmup, automated content generation, quality review, and scheduled distribution).
+- **How to Automate Vibe Marketing & Create AI Videos**: 
+  1. Extract brand kit & vibe from website URL or brief.
   2. Choose social channel format (Instagram Reels, LinkedIn Video, YouTube Shorts).
-  3. Generate AI script and avatar video.
+  3. Generate AI script, avatar video, and on-vibe captions.
   4. Review, approve, and distribute directly to connected social accounts.
 
 ## What it does
@@ -27,7 +29,7 @@ MagicBox turns brand context and content briefs into channel-specific video shor
 - LinkedIn (Videos & Text/Image Posts)
 - YouTube (Shorts & Standard Video)
 
-Platform connections depend on each provider's API permissions and app-review status. MagicBox is self-serve online software developed in India, accessible globally. Do not infer customer results, physical service locations, or guarantees not stated on the canonical site.
+Platform connections depend on each provider's API permissions and app-review status. MagicBox is self-serve online software and managed marketing agency developed in India, accessible globally (US, UK, UAE, Singapore, Canada, Australia, and worldwide). Do not infer physical retail locations or guarantees not stated on the canonical site.
 
 ## Primary pages
 

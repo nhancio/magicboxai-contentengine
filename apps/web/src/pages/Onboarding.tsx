@@ -4,13 +4,17 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { getPreset } from "@/lib/presets";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc, collection } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@shared/lib/auth";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
 import type { SocialAccount, SocialPlatform, BrandProfile } from "@shared/types";
+<<<<<<< HEAD
 import { getBrandProfiles, getSocialAccounts, saveBrandProfile, saveSocialAccount } from "@shared/lib/automations";
+=======
+import { getBrandProfiles, getSocialAccounts, saveBrandProfile, stripUndefined } from "@shared/lib/automations";
+>>>>>>> origin/main
 import {
   extractBrandFromWebsite,
   type BrandExtractResult,
@@ -32,6 +36,7 @@ import {
   type CarouselPlatform,
 } from "../components/carousel/types";
 import WebsitePostCard from "../components/creative/WebsitePostCard";
+import { WhatsAppV2Modal, isWhatsAppV2Active } from "./Integrations";
 import {
   ArrowRight,
   CalendarClock,
@@ -250,6 +255,7 @@ export default function Onboarding() {
   const [legacyAccounts, setLegacyAccounts] = useState<SocialAccount[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
 
   // Convex queries and mutations
   const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
@@ -576,16 +582,27 @@ export default function Onboarding() {
       toast.info("Twitter / X direct posting requires a verified developer app. Instagram, LinkedIn, and YouTube are fully active.", { duration: 5000 });
       return;
     }
+    if (provider === "whatsapp" && isWhatsAppV2Active()) {
+      setWhatsAppModalOpen(true);
+      return;
+    }
     const validProvider = provider as "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp";
     captureEvent(PRODUCT_EVENTS.channelConnectStarted, {
       channel: validProvider,
       source: "onboarding",
     });
     setConnecting(validProvider);
+
+    // Watchdog: reset connecting state if navigation is delayed or cancelled
+    const watchdog = window.setTimeout(() => {
+      setConnecting(null);
+    }, 10000);
+
     try {
       if (!isConvexConfigured) {
         toast.error("Convex is not configured — set VITE_CONVEX_URL.");
         setConnecting(null);
+        window.clearTimeout(watchdog);
         return;
       }
       const { url, redirectUri } = await connectUrl({
@@ -597,10 +614,12 @@ export default function Onboarding() {
       if (redirectUri.includes("cloudfunctions.net")) {
         toast.error("OAuth misconfigured (Firebase callback). Use Convex.");
         setConnecting(null);
+        window.clearTimeout(watchdog);
         return;
       }
       window.location.href = url;
     } catch (error) {
+      window.clearTimeout(watchdog);
       toast.error(error instanceof Error ? error.message : "Could not start connection");
       setConnecting(null);
     }
@@ -613,6 +632,18 @@ export default function Onboarding() {
       setScanStep((s) => (s < SCAN_STEPS.length - 1 ? s + 1 : s));
     }, 1400);
     return () => window.clearInterval(id);
+  }, [brandPhase]);
+
+  // Safety watchdog: never leave user stranded on saving state
+  useEffect(() => {
+    if (brandPhase !== "saving") return;
+    const timer = window.setTimeout(() => {
+      console.warn("[onboarding] Saving brand profile taking too long, auto-advancing to channels");
+      setBrandPhase("ready");
+      setStep(1);
+      setSaving(false);
+    }, 2000);
+    return () => window.clearTimeout(timer);
   }, [brandPhase]);
 
   const updateExtractedField = (field: keyof BrandExtractResult, val: any) => {
@@ -741,89 +772,106 @@ export default function Onboarding() {
       return;
     }
     setSaving(true);
-    setBrandPhase("saving");
-    try {
-      const activeUrl = extractedUrl || normalizeInputUrl(websiteUrl) || "https://mybrand.com";
-      const domain = extractDomain(activeUrl);
-      const currentExtracted = extracted || createFallbackBrandResult(activeUrl, brandName || undefined);
-      const finalName = brandName.trim() || currentExtracted.companyName || deriveBrandNameFromDomain(domain);
-      const finalIndustry = currentExtracted.industry || "General";
-      const finalTone = toneOfVoice.trim() || currentExtracted.tone || "Professional, modern, clear";
-      const finalAudience = currentExtracted.audience || "Target customers & industry peers";
-      const finalColors = {
-        primary: currentExtracted.colors?.primary || "#18181b",
-        secondary: currentExtracted.colors?.secondary || "#6366f1",
-        accent: currentExtracted.colors?.accent || "#f59e0b",
-      };
-      const finalLogoUrl = currentExtracted.logoUrl || `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-      const finalHashtags = (currentExtracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean);
-      const finalSampleCaptions = currentExtracted.sampleCaptions?.length ? currentExtracted.sampleCaptions : undefined;
 
-      const id = await saveBrandProfile({
-        userId: user.uid,
-        name: finalName,
-        industry: finalIndustry,
-        toneOfVoice: finalTone,
-        audience: finalAudience,
-        websiteUrl: activeUrl,
-        logoUrl: finalLogoUrl,
-        colors: finalColors,
-        hashtagSets: {
-          default: finalHashtags,
-        },
-        sampleCaptions: finalSampleCaptions,
-        websiteImages: currentExtracted.websiteImages?.length ? currentExtracted.websiteImages : undefined,
-        brandedImageUrl: currentExtracted.brandedImageUrl || undefined,
-      });
+    const activeUrl = extractedUrl || normalizeInputUrl(websiteUrl) || "https://mybrand.com";
+    const domain = extractDomain(activeUrl);
+    const currentExtracted = extracted || createFallbackBrandResult(activeUrl, brandName || undefined);
+    const finalName = brandName.trim() || currentExtracted.companyName || deriveBrandNameFromDomain(domain);
+    const finalIndustry = currentExtracted.industry || "General";
+    const finalTone = toneOfVoice.trim() || currentExtracted.tone || "Professional, modern, clear";
+    const finalAudience = currentExtracted.audience || "Target customers & industry peers";
+    const finalColors = {
+      primary: currentExtracted.colors?.primary || "#18181b",
+      secondary: currentExtracted.colors?.secondary || "#6366f1",
+      accent: currentExtracted.colors?.accent || "#f59e0b",
+    };
+    const finalLogoUrl = currentExtracted.logoUrl || `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+    const finalHashtags = (currentExtracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean);
+    const finalSampleCaptions = currentExtracted.sampleCaptions?.length ? currentExtracted.sampleCaptions : undefined;
 
-      if (isConvexConfigured) {
-        try {
-          await upsertWebsiteBrand({
-            legacyId: id,
+    // Instant deterministic ID so UI is never blocked on sequential round-trips
+    const id = brandProfileId || (db ? doc(collection(db, "brandProfiles")).id : `brand_${Date.now()}`);
+
+    // Update local state and advance immediately to channels
+    setBrandProfileId(id);
+    setBrandName(finalName);
+    setToneOfVoice(finalTone);
+    setExtracted(currentExtracted);
+    setBrandPhase("ready");
+    setStep(1);
+
+    captureEvent("brand_kit_completed", { source: "onboarding", has_website: true });
+    captureEvent(PRODUCT_EVENTS.onboardingWebsiteEnabled, {
+      source: "onboarding",
+    });
+
+    toast.success("Brand kit saved! Moving to social channels...");
+
+    // Persist in background with timeout safety
+    const timeoutPromise = (ms = 4000) =>
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms));
+
+    const firestorePromise = db
+      ? setDoc(
+          doc(db, "brandProfiles", id),
+          stripUndefined({
+            userId: user.uid,
             name: finalName,
-            websiteUrl: activeUrl,
-            logoUrl: finalLogoUrl,
-            colors: finalColors,
             industry: finalIndustry,
             toneOfVoice: finalTone,
             audience: finalAudience,
+            websiteUrl: activeUrl,
+            logoUrl: finalLogoUrl,
+            colors: finalColors,
             hashtagSets: {
               default: finalHashtags,
             },
             sampleCaptions: finalSampleCaptions,
-          });
-        } catch (error) {
-          console.warn("[onboarding] Convex brand sync will retry from the saved kit", error);
-        }
-      }
+            websiteImages: currentExtracted.websiteImages?.length ? currentExtracted.websiteImages : undefined,
+            brandedImageUrl: currentExtracted.brandedImageUrl || undefined,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+          { merge: true },
+        )
+      : Promise.resolve();
 
-      setBrandProfileId(id);
-      setBrandName(finalName);
-      setToneOfVoice(finalTone);
-      setExtracted(currentExtracted);
+    const convexPromise = isConvexConfigured
+      ? upsertWebsiteBrand({
+          legacyId: id,
+          name: finalName,
+          websiteUrl: activeUrl,
+          logoUrl: finalLogoUrl,
+          colors: finalColors,
+          industry: finalIndustry,
+          toneOfVoice: finalTone,
+          audience: finalAudience,
+          hashtagSets: {
+            default: finalHashtags,
+          },
+          sampleCaptions: finalSampleCaptions,
+        })
+      : Promise.resolve();
 
-      if (db) {
-        await setDoc(
+    const userDocPromise = db
+      ? setDoc(
           doc(db, "users", user.uid),
           {
             websiteSetupEnabledAt: serverTimestamp(),
             onboardingLastAction: "website_enabled",
           },
           { merge: true },
-        );
-      }
+        )
+      : Promise.resolve();
 
-      captureEvent("brand_kit_completed", { source: "onboarding", has_website: true });
-      captureEvent(PRODUCT_EVENTS.onboardingWebsiteEnabled, {
-        source: "onboarding",
-      });
-
-      toast.success("Brand kit saved! Moving to social channels...");
-      setBrandPhase("ready");
-      setStep(1);
+    try {
+      await Promise.allSettled([
+        Promise.race([firestorePromise, timeoutPromise(4000)]),
+        Promise.race([convexPromise, timeoutPromise(4000)]),
+        Promise.race([userDocPromise, timeoutPromise(4000)]),
+      ]);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save brand");
-      setBrandPhase("ready");
+      console.warn("[onboarding] Background brand save warning:", error);
     } finally {
       setSaving(false);
     }
@@ -1385,6 +1433,19 @@ export default function Onboarding() {
                       <p className="text-sm text-muted-foreground">
                         Syncing your logo, colors, and positioning to your MagicBox workspace.
                       </p>
+                    </div>
+                    <div className="pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setBrandPhase("ready");
+                          setStep(1);
+                        }}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Continue to Channels →
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -2272,6 +2333,11 @@ export default function Onboarding() {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <WhatsAppV2Modal
+        open={whatsAppModalOpen}
+        onOpenChange={setWhatsAppModalOpen}
+      />
     </div>
   );
 }

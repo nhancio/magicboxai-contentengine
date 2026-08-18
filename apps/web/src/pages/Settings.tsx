@@ -28,6 +28,7 @@ import { cn } from "@shared/lib/utils";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { DEFAULT_TRIAL_I, DEFAULT_TRIAL_V, trialClock } from "../lib/credits";
 import { captureEvent } from "@shared/lib/analytics";
+import { WhatsAppV2Modal, isWhatsAppV2Active } from "./Integrations";
 import {
   Settings as SettingsIcon,
   User,
@@ -275,6 +276,7 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [showConnectPicker, setShowConnectPicker] = useState(false);
+  const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
   // Live Meta + Google channels. Deferred (twitter/reddit) stay in catalogue but
   // only surface if we intentionally add them here later.
   const launchPlatforms = new Set([
@@ -299,6 +301,11 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
     });
 
   async function handleConnect(provider: string) {
+    if (provider === "whatsapp" && isWhatsAppV2Active()) {
+      setShowConnectPicker(false);
+      setWhatsAppModalOpen(true);
+      return;
+    }
     setBusy(provider);
     try {
       const { url, redirectUri } = await connectUrl({
@@ -473,6 +480,11 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
           Tap + to connect Instagram, LinkedIn, YouTube, Facebook, or WhatsApp.
         </p>
       )}
+
+      <WhatsAppV2Modal
+        open={whatsAppModalOpen}
+        onOpenChange={setWhatsAppModalOpen}
+      />
     </div>
   );
 }
@@ -555,7 +567,11 @@ export default function Settings() {
       } else if (rawReason?.includes("403") || rawReason?.includes("NotEnoughScopesError")) {
         cleanReason = "Permission or API quota error. Please ensure the required YouTube/OAuth API permissions are enabled in your developer console.";
       }
+<<<<<<< HEAD
       toast.error(cleanReason, { duration: 7000 });
+=======
+      toast.error(cleanReason, { duration: 6000 });
+>>>>>>> origin/main
       setActiveTab("integrations");
     }
     window.history.replaceState({}, "", window.location.pathname + "?tab=integrations");
