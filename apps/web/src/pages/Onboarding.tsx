@@ -10,11 +10,7 @@ import { useAuth } from "@shared/lib/auth";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
 import type { SocialAccount, SocialPlatform, BrandProfile } from "@shared/types";
-<<<<<<< HEAD
-import { getBrandProfiles, getSocialAccounts, saveBrandProfile, saveSocialAccount } from "@shared/lib/automations";
-=======
-import { getBrandProfiles, getSocialAccounts, saveBrandProfile, stripUndefined } from "@shared/lib/automations";
->>>>>>> origin/main
+import { getBrandProfiles, getSocialAccounts, saveBrandProfile, saveSocialAccount, stripUndefined } from "@shared/lib/automations";
 import {
   extractBrandFromWebsite,
   type BrandExtractResult,

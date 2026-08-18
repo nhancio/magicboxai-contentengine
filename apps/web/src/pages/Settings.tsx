@@ -567,11 +567,7 @@ export default function Settings() {
       } else if (rawReason?.includes("403") || rawReason?.includes("NotEnoughScopesError")) {
         cleanReason = "Permission or API quota error. Please ensure the required YouTube/OAuth API permissions are enabled in your developer console.";
       }
-<<<<<<< HEAD
       toast.error(cleanReason, { duration: 7000 });
-=======
-      toast.error(cleanReason, { duration: 6000 });
->>>>>>> origin/main
       setActiveTab("integrations");
     }
     window.history.replaceState({}, "", window.location.pathname + "?tab=integrations");

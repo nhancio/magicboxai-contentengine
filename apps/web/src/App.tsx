@@ -129,11 +129,7 @@ export default function App() {
                 <Route path="/settings/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
                 <Route path="/settings/connections" element={<Navigate to="/settings?tab=integrations" replace />} />
                 <Route path="/settings/channels" element={<Navigate to="/settings?tab=integrations" replace />} />
-<<<<<<< HEAD
-                <Route path="/integrations" element={<Navigate to="/settings?tab=integrations" replace />} />
-=======
                 <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
->>>>>>> origin/main
                 <Route path="/connections" element={<Navigate to="/settings?tab=integrations" replace />} />
                 <Route path="/channels" element={<Navigate to="/settings?tab=integrations" replace />} />
                 <Route path="/pricing" element={<ProtectedRoute><Pricing /></ProtectedRoute>} />
