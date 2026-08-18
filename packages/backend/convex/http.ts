@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal, api } from "./_generated/api";
+import { decodeOAuthState, safeReturnOrigin, safeReturnTo } from "./social";
 
 /**
  * Public HTTP surface. Lives on the `.convex.site` domain.
@@ -37,35 +38,48 @@ http.route({
     const state = url.searchParams.get("state");
     const oauthError = url.searchParams.get("error");
 
-    // Burn the one-time nonce early so we know the intended origin for errors too.
+    const decoded = state ? decodeOAuthState(state) : null;
     const claim = state
-      ? await ctx.runMutation(internal.social.consumeState, { nonce: state })
+      ? await ctx.runMutation(api.social.consumeState, { state })
       : null;
-    const base = claim?.returnOrigin || DEFAULT_APP_BASE();
 
-    const fail = (reason: string, returnTo = "/settings") =>
-      redirect(`${base}${returnTo}?social=error&reason=${encodeURIComponent(reason)}`);
+    const base =
+      safeReturnOrigin(claim?.returnOrigin ?? decoded?.o) || DEFAULT_APP_BASE();
+    const returnTo =
+      safeReturnTo(claim?.returnTo ?? decoded?.r) || "/settings";
+
+    const fail = (reason: string, targetReturnTo = returnTo) =>
+      redirect(`${base}${targetReturnTo}?social=error&reason=${encodeURIComponent(reason)}`);
 
     // User denied consent (or the provider rejected the request).
-    if (oauthError) return fail(oauthError);
-    if (!code || !state) return fail("missing_code_or_state");
-    if (!claim) return fail("invalid_or_expired_state");
+    if (oauthError) return fail(oauthError, returnTo);
+    if (!code || !state) return fail("missing_code_or_state", returnTo);
+    if (!claim || !claim.ok) {
+      return fail(claim?.error ?? "invalid_or_expired_state", returnTo);
+    }
+
+    const provider = claim.provider ?? decoded?.p;
+    const userId = claim.userId ?? decoded?.u;
+    const codeVerifier = claim.codeVerifier ?? decoded?.cv;
+
+    if (!provider || !userId) {
+      return fail("missing_provider_or_user", returnTo);
+    }
 
     try {
       await ctx.runAction(api.social.completeConnect, {
-        provider: claim.provider,
+        provider,
         code,
-        userId: claim.userId,
-        codeVerifier: claim.codeVerifier,
+        userId,
+        codeVerifier,
       });
     } catch (e) {
       console.error("[oauth] connect failed", e);
-      return fail(String(e).slice(0, 120), claim.returnTo ?? "/settings");
+      return fail(String(e).slice(0, 120), returnTo);
     }
 
-    const returnTo = claim.returnTo ?? "/settings";
     return redirect(
-      `${base}${returnTo}?social=connected&provider=${encodeURIComponent(claim.provider)}`,
+      `${base}${returnTo}?social=connected&provider=${encodeURIComponent(provider)}`,
     );
   }),
 });

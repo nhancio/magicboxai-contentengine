@@ -29,7 +29,7 @@ service cloud.firestore {
           'onboardingComplete', 'onboardingDeferred', 'onboardingLastAction',
           'websiteSetupSkippedAt', 'websiteSetupEnabledAt',
           'socialSetupAttempted', 'socialSetupPresentedAt',
-          'socialSetupSkippedAt', 'onboardingCompletedAt'
+          'socialSetupSkippedAt', 'socialSetupEnabledAt', 'onboardingCompletedAt'
         ])
         && request.resource.data.email == request.auth.token.email;
       allow update: if request.auth != null && request.auth.uid == userId
@@ -38,7 +38,7 @@ service cloud.firestore {
           'onboardingComplete', 'onboardingDeferred', 'onboardingLastAction',
           'websiteSetupSkippedAt', 'websiteSetupEnabledAt',
           'socialSetupAttempted', 'socialSetupPresentedAt',
-          'socialSetupSkippedAt', 'onboardingCompletedAt'
+          'socialSetupSkippedAt', 'socialSetupEnabledAt', 'onboardingCompletedAt'
         ]);
     }
 
@@ -95,10 +95,13 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Social accounts (written by the OAuth callback; users read their own).
-    // Connect/disconnect happens through callables, so no client write here.
+    // Social accounts
     match /socialAccounts/{id} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
     // OAuth access tokens — server-only. No client access under any condition.

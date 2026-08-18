@@ -11,6 +11,7 @@ import {
   limit,
   serverTimestamp,
   updateDoc,
+  setDoc,
   onSnapshot,
   Timestamp,
   type Unsubscribe,
@@ -72,6 +73,37 @@ export async function getSocialAccounts(userId: string): Promise<SocialAccount[]
       } as SocialAccount;
     })
     .filter((a) => a.status !== "disconnected");
+}
+
+export async function saveSocialAccount(
+  data: Omit<SocialAccount, "id" | "linkedAt"> & { id?: string; linkedAt?: Date | number }
+): Promise<string> {
+  if (!db) return "";
+  const id = data.id || `${data.userId}_${data.platform}_${data.externalId || data.username || "account"}`;
+  const linkedAtVal =
+    data.linkedAt instanceof Date
+      ? Timestamp.fromDate(data.linkedAt)
+      : typeof data.linkedAt === "number"
+      ? Timestamp.fromMillis(data.linkedAt)
+      : serverTimestamp();
+
+  await setDoc(
+    doc(db, "socialAccounts", id),
+    stripUndefined({
+      userId: data.userId,
+      provider: data.provider,
+      platform: data.platform,
+      externalId: data.externalId,
+      username: data.username,
+      displayName: data.displayName || data.username,
+      avatarUrl: data.avatarUrl ?? "",
+      status: data.status,
+      linkedAt: linkedAtVal,
+      lastSyncedAt: serverTimestamp(),
+    }),
+    { merge: true }
+  );
+  return id;
 }
 
 // --- Brand Profiles ---
