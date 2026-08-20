@@ -10,7 +10,7 @@ import { useAuth } from "@shared/lib/auth";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
 import type { SocialAccount, SocialPlatform, BrandProfile } from "@shared/types";
-import { getBrandProfiles, getSocialAccounts, saveBrandProfile, stripUndefined } from "@shared/lib/automations";
+import { getBrandProfiles, getSocialAccounts, saveBrandProfile, saveSocialAccount, stripUndefined } from "@shared/lib/automations";
 import {
   extractBrandFromWebsite,
   type BrandExtractResult,
@@ -231,7 +231,23 @@ export default function Onboarding() {
   const [searchParams] = useSearchParams();
   const preset = getPreset(searchParams.get("preset"));
   const channelSetupOnly = location.pathname.endsWith("/channels");
-  const [step, setStep] = useState(channelSetupOnly ? 1 : 0);
+
+  const getInitialStep = () => {
+    if (channelSetupOnly) return 1;
+    try {
+      const saved = sessionStorage.getItem("magicbox_onboarding_step");
+      if (saved === "1" || saved === "2") return parseInt(saved, 10);
+    } catch {}
+    return 0;
+  };
+  const [step, setStepState] = useState<number>(getInitialStep);
+  const setStep = (s: number) => {
+    setStepState(s);
+    try {
+      sessionStorage.setItem("magicbox_onboarding_step", String(s));
+    } catch {}
+  };
+
   const [legacyAccounts, setLegacyAccounts] = useState<SocialAccount[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -240,6 +256,7 @@ export default function Onboarding() {
   // Convex queries and mutations
   const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
   const convexBrands = useQuery(api.brands.list, isConvexConfigured ? {} : "skip");
+  const syncAccount = useMutation(api.social.syncAccount);
   const connectUrl = useAction(api.social.connectUrl);
   const createPost = useAction(api.studio.createPost);
   const generateCopy = useAction(api.studio.generateCopy);
@@ -250,22 +267,24 @@ export default function Onboarding() {
   const extractBrandConvex = useAction(api.brands.extractFromWebsite);
 
   const accounts: SocialAccount[] = useMemo(() => {
-    if (isConvexConfigured && convexAccounts) {
-      return convexAccounts.map((a: any) => ({
-        id: a._id,
-        userId: a.userId,
-        provider: a.provider,
-        platform: a.platform,
-        externalId: a.externalId,
-        username: a.username ?? "",
-        displayName: a.displayName ?? a.username ?? "",
-        avatarUrl: a.avatarUrl,
-        status: a.status,
-        linkedAt: new Date(a.linkedAt),
-        lastSyncedAt: a.lastSyncedAt ? new Date(a.lastSyncedAt) : undefined,
-      }));
-    }
-    return legacyAccounts;
+    const fromConvex: SocialAccount[] = (convexAccounts ?? []).map((a: any) => ({
+      id: a._id,
+      userId: a.userId,
+      provider: a.provider,
+      platform: a.platform,
+      externalId: a.externalId,
+      username: a.username ?? "",
+      displayName: a.displayName ?? a.username ?? "",
+      avatarUrl: a.avatarUrl,
+      status: a.status,
+      linkedAt: new Date(a.linkedAt),
+      lastSyncedAt: a.lastSyncedAt ? new Date(a.lastSyncedAt) : undefined,
+    }));
+    const convexPlatforms = new Set(fromConvex.map((c) => c.platform));
+    const fromLegacy = (legacyAccounts ?? []).filter(
+      (a) => !convexPlatforms.has(a.platform) && a.status !== "disconnected",
+    );
+    return [...fromConvex, ...fromLegacy];
   }, [convexAccounts, legacyAccounts]);
 
   const connectedByPlatform = useMemo(() => {
@@ -422,9 +441,49 @@ export default function Onboarding() {
   }, [user, brandProfileId]);
 
   useEffect(() => {
-    if (!user || isConvexConfigured) return;
+    if (!user) return;
     getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
   }, [user]);
+
+  // Dual-write: ensure Convex-connected channels are mirrored in Firestore
+  useEffect(() => {
+    if (!user || !convexAccounts || convexAccounts.length === 0) return;
+    for (const acc of convexAccounts) {
+      if (acc.status === "active" || acc.status === "expired") {
+        void saveSocialAccount({
+          userId: user.uid,
+          provider: acc.provider,
+          platform: acc.platform,
+          externalId: acc.externalId,
+          username: acc.username ?? "",
+          displayName: acc.displayName ?? acc.username ?? "",
+          avatarUrl: acc.avatarUrl,
+          status: acc.status,
+          linkedAt: acc.linkedAt,
+        }).catch(() => {});
+      }
+    }
+  }, [user, convexAccounts]);
+
+  // Dual-write: ensure legacy Firestore channels are synced into Convex
+  useEffect(() => {
+    if (!user || !isConvexConfigured || legacyAccounts.length === 0) return;
+    const convexPlatforms = new Set((convexAccounts ?? []).map((a: any) => a.platform));
+    for (const acc of legacyAccounts) {
+      if (!convexPlatforms.has(acc.platform) && acc.status !== "disconnected") {
+        void syncAccount({
+          legacyId: acc.id,
+          provider: acc.provider,
+          platform: acc.platform,
+          externalId: acc.externalId,
+          username: acc.username,
+          displayName: acc.displayName,
+          avatarUrl: acc.avatarUrl,
+          status: acc.status,
+        }).catch(() => {});
+      }
+    }
+  }, [user, isConvexConfigured, legacyAccounts, convexAccounts, syncAccount]);
 
   useEffect(() => {
     captureEvent(PRODUCT_EVENTS.onboardingStarted, {
@@ -465,25 +524,43 @@ export default function Onboarding() {
     const social = params.get("social");
     if (!social) return;
     if (social === "connected") {
+      const provider = params.get("provider") ?? "unknown";
       captureEvent(PRODUCT_EVENTS.channelConnected, {
-        channel: params.get("provider") ?? "unknown",
+        channel: provider,
         source: "onboarding",
       });
-      toast.success(`${params.get("provider") ?? "Channel"} connected`);
-      if (user && !isConvexConfigured) {
+      toast.success(`${provider.charAt(0).toUpperCase() + provider.slice(1)} connected successfully!`);
+      if (user) {
         getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
+        if (db) {
+          void setDoc(
+            doc(db, "users", user.uid),
+            {
+              socialSetupAttempted: true,
+              socialSetupEnabledAt: serverTimestamp(),
+              onboardingLastAction: "channel_connected",
+            },
+            { merge: true },
+          ).catch((error) => {
+            console.warn("[onboarding] Could not record channel connection on user", error);
+          });
+        }
       }
     } else if (social === "error") {
       const rawReason = params.get("reason");
       let cleanReason = rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
-      if (rawReason?.includes("no_facebook_pages")) {
+      if (rawReason?.includes("no_youtube_channel")) {
+        cleanReason = "YouTube connection failed: This Google account does not have a YouTube channel. Please visit youtube.com to create a channel on this account, or select a Google account that has a channel.";
+      } else if (rawReason?.includes("no_facebook_pages")) {
         cleanReason = "Facebook connection failed: You must own or manage at least one Facebook Page under your account.";
       } else if (rawReason?.includes("feature_unavailable") || rawReason?.includes("unavailable") || rawReason?.includes("Facebook Login")) {
         cleanReason = "Facebook Login unavailable: Your Meta App is in Development mode. Add test users in Meta Dashboard or complete App Review.";
       } else if (rawReason?.includes("access_denied")) {
         cleanReason = "Connection cancelled or access denied by user.";
+      } else if (rawReason?.includes("403") || rawReason?.includes("NotEnoughScopesError")) {
+        cleanReason = "Permission or API quota error. Please ensure the required YouTube/OAuth API permissions are enabled in your developer console.";
       }
-      toast.error(cleanReason, { duration: 6000 });
+      toast.error(cleanReason, { duration: 7000 });
     }
     params.delete("social");
     params.delete("provider");
@@ -796,7 +873,44 @@ export default function Onboarding() {
     }
   };
 
+  const handleContinueToReview = async () => {
+    if (user && db) {
+      void setDoc(
+        doc(db, "users", user.uid),
+        {
+          socialSetupAttempted: true,
+          socialSetupEnabledAt: serverTimestamp(),
+          onboardingLastAction: "social_enabled",
+        },
+        { merge: true },
+      ).catch((error) => {
+        console.warn("[onboarding] Could not record social setup enabled", error);
+      });
+    }
+    if (user) {
+      for (const acc of accounts) {
+        if (acc.status === "active") {
+          void saveSocialAccount({
+            userId: user.uid,
+            provider: acc.provider,
+            platform: acc.platform,
+            externalId: acc.externalId,
+            username: acc.username,
+            displayName: acc.displayName,
+            avatarUrl: acc.avatarUrl,
+            status: acc.status,
+            linkedAt: acc.linkedAt,
+          }).catch(() => {});
+        }
+      }
+    }
+    setStep(2);
+  };
+
   const deferOnboarding = async (section: "website" | "social") => {
+    try {
+      sessionStorage.removeItem("magicbox_onboarding_step");
+    } catch {}
     try {
       if (user && db) {
         await setDoc(
@@ -1056,6 +1170,9 @@ export default function Onboarding() {
       setStep(0);
       return;
     }
+    try {
+      sessionStorage.removeItem("magicbox_onboarding_step");
+    } catch {}
     await setDoc(
       doc(db, "users", user.uid),
       {
@@ -1782,7 +1899,7 @@ export default function Onboarding() {
                     Skip for now
                   </Button>
                   <Button
-                    onClick={() => setStep(2)}
+                    onClick={() => void handleContinueToReview()}
                     className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm bg-brand hover:bg-brand/90 text-brand-foreground font-semibold"
                   >
                     <span className="truncate">

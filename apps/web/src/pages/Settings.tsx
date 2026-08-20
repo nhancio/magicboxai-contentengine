@@ -556,14 +556,18 @@ export default function Settings() {
     } else if (social === "error") {
       const rawReason = params.get("reason");
       let cleanReason = rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
-      if (rawReason?.includes("no_facebook_pages")) {
+      if (rawReason?.includes("no_youtube_channel")) {
+        cleanReason = "YouTube connection failed: This Google account does not have a YouTube channel. Please visit youtube.com to create a channel on this account, or select a Google account that has a channel.";
+      } else if (rawReason?.includes("no_facebook_pages")) {
         cleanReason = "Facebook connection failed: You must own or manage at least one Facebook Page under your account.";
       } else if (rawReason?.includes("feature_unavailable") || rawReason?.includes("unavailable") || rawReason?.includes("Facebook Login")) {
         cleanReason = "Facebook Login unavailable: Your Meta App is in Development mode or updating details in Meta Developer Console. Add test users under Roles in Meta Dashboard or complete App Review.";
       } else if (rawReason?.includes("access_denied")) {
         cleanReason = "Connection cancelled or access denied by user.";
+      } else if (rawReason?.includes("403") || rawReason?.includes("NotEnoughScopesError")) {
+        cleanReason = "Permission or API quota error. Please ensure the required YouTube/OAuth API permissions are enabled in your developer console.";
       }
-      toast.error(cleanReason, { duration: 6000 });
+      toast.error(cleanReason, { duration: 7000 });
       setActiveTab("integrations");
     }
     window.history.replaceState({}, "", window.location.pathname + "?tab=integrations");

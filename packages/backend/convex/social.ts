@@ -22,10 +22,14 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 
 function callbackUrl(): string {
   // Convex injects CONVEX_SITE_URL; the OAuth callback is an httpAction on the
-  // .convex.site domain (see http.ts). Overridable for custom domains.
-  const base = process.env.OAUTH_CALLBACK_BASE ?? process.env.CONVEX_SITE_URL;
-  if (!base) throw new Error("CONVEX_SITE_URL unavailable; cannot build OAuth redirect URI");
-  return `${base}/oauth/callback`;
+  // .convex.site domain (see http.ts). Meta strictly requires HTTPS.
+  if (process.env.OAUTH_CALLBACK_BASE && process.env.OAUTH_CALLBACK_BASE.startsWith("https://")) {
+    return `${process.env.OAUTH_CALLBACK_BASE}/oauth/callback`;
+  }
+  if (process.env.CONVEX_SITE_URL && process.env.CONVEX_SITE_URL.startsWith("https://")) {
+    return `${process.env.CONVEX_SITE_URL}/oauth/callback`;
+  }
+  return "https://beloved-lyrebird-288.convex.site/oauth/callback";
 }
 
 function appBaseUrl(): string {
@@ -39,12 +43,19 @@ const ALLOWED_RETURN_ORIGINS = new Set([
   "http://127.0.0.1:8174",
 ]);
 
-function safeReturnOrigin(raw?: string): string | undefined {
+export function safeReturnOrigin(raw?: string): string | undefined {
   if (!raw) return undefined;
   try {
     const u = new URL(raw);
     const origin = u.origin;
-    return ALLOWED_RETURN_ORIGINS.has(origin) ? origin : undefined;
+    if (
+      origin === "https://app.magicboxai.in" ||
+      origin === "https://magicboxai.in" ||
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+    ) {
+      return origin;
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -54,6 +65,41 @@ function base64Url(bytes: Uint8Array): string {
   let s = "";
   for (const b of bytes) s += String.fromCharCode(b);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export interface OAuthStatePayload {
+  n: string;
+  u: string;
+  p: string;
+  r?: string;
+  o?: string;
+  cv?: string;
+  rd?: string;
+  exp: number;
+}
+
+export function encodeOAuthState(payload: OAuthStatePayload): string {
+  const json = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(json);
+  return base64Url(bytes);
+}
+
+export function decodeOAuthState(raw: string): OAuthStatePayload | null {
+  try {
+    const normalized = raw.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = normalized.padEnd(
+      normalized.length + ((4 - (normalized.length % 4)) % 4),
+      "=",
+    );
+    const binary = atob(pad);
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    const json = new TextDecoder().decode(bytes);
+    const parsed = JSON.parse(json);
+    if (parsed && typeof parsed.n === "string" && typeof parsed.u === "string") {
+      return parsed as OAuthStatePayload;
+    }
+  } catch {}
+  return null;
 }
 
 function randomToken(len = 32): string {
@@ -68,9 +114,9 @@ async function pkceChallenge(verifier: string): Promise<string> {
 }
 
 /** Same-app relative paths only — never an absolute URL. */
-function safeReturnTo(raw?: string): string | undefined {
+export function safeReturnTo(raw?: string): string | undefined {
   if (!raw) return undefined;
-  return /^\/[A-Za-z0-9/_-]*$/.test(raw) ? raw : undefined;
+  return /^\/[A-Za-z0-9/_.-]*$/.test(raw) ? raw : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,12 +202,29 @@ export const connectUrl = action({
 
     const nonce = randomToken();
     const codeVerifier = provider.usesPkce ? randomToken(64) : undefined;
-    const redirectUri = callbackUrl();
+    const returnOrigin = safeReturnOrigin(args.returnOrigin);
+    const returnTo = safeReturnTo(args.returnTo);
+    const exp = Date.now() + STATE_TTL_MS;
 
-    // Hard guard: never hand Google a Firebase callback from the Convex path.
+    // Meta providers (Instagram, Facebook, WhatsApp) strictly require public HTTPS redirect URIs.
+    // When running locally on http://, route through the Convex HTTPS callback, which will 302
+    // redirect back to returnOrigin after processing.
+    const isLocalHttp = returnOrigin && returnOrigin.startsWith("http://");
+    const isMetaProvider =
+      provider.id === "instagram" || provider.id === "facebook" || provider.id === "whatsapp";
+
+    let redirectUri: string;
+    if (isLocalHttp && isMetaProvider) {
+      redirectUri = callbackUrl();
+    } else {
+      const base = returnOrigin || process.env.APP_BASE_URL || "https://app.magicboxai.in";
+      redirectUri = `${base}/oauth/callback`;
+    }
+
+    // Hard guard: never hand Google or Meta a Firebase callback from the Convex path.
     if (redirectUri.includes("cloudfunctions.net")) {
       throw new Error(
-        "Misconfigured OAuth callback (cloudfunctions). Expected *.convex.site/oauth/callback.",
+        "Misconfigured OAuth callback (cloudfunctions). Expected frontend or Convex /oauth/callback.",
       );
     }
 
@@ -169,15 +232,26 @@ export const connectUrl = action({
       nonce,
       userId: uid,
       provider: provider.id,
-      returnTo: safeReturnTo(args.returnTo),
-      returnOrigin: safeReturnOrigin(args.returnOrigin),
+      returnTo,
+      returnOrigin,
       codeVerifier,
+    });
+
+    const stateToken = encodeOAuthState({
+      n: nonce,
+      u: uid,
+      p: provider.id,
+      r: returnTo,
+      o: returnOrigin,
+      cv: codeVerifier,
+      rd: redirectUri,
+      exp,
     });
 
     const url = provider.buildAuthUrl({
       clientId,
       redirectUri,
-      state: nonce,
+      state: stateToken,
       codeChallenge: codeVerifier ? await pkceChallenge(codeVerifier) : undefined,
       loginHint: args.loginHint,
     });
@@ -262,25 +336,68 @@ export const connectWhatsAppTestAccount = mutation({
 // Callback internals (used by http.ts)
 // ---------------------------------------------------------------------------
 
-/** Burn the nonce. Returns null if unknown, expired, or already used (replay). */
-export const consumeState = internalMutation({
-  args: { nonce: v.string() },
-  handler: async (ctx, { nonce }) => {
+/** Burn the nonce. Returns error status if unknown, expired, or already used (replay). */
+export const consumeState = mutation({
+  args: { state: v.string() },
+  handler: async (ctx, { state }) => {
+    const decoded = decodeOAuthState(state);
+    const nonce = decoded?.n ?? state;
+
     const row = await ctx.db
       .query("oauthStates")
       .withIndex("by_nonce", (q) => q.eq("nonce", nonce))
       .unique();
-    if (!row) return null;
-    if (row.usedAt) return null;
-    if (row.expiresAt < Date.now()) return null;
+
+    if (!row) {
+      if (decoded && decoded.exp > Date.now()) {
+        return {
+          ok: true as const,
+          userId: decoded.u,
+          provider: decoded.p,
+          returnTo: decoded.r,
+          returnOrigin: decoded.o,
+          codeVerifier: decoded.cv,
+          redirectUri: decoded.rd,
+        };
+      }
+      return {
+        ok: false as const,
+        error: "invalid_or_expired_state",
+        returnTo: decoded?.r,
+        returnOrigin: decoded?.o,
+        redirectUri: decoded?.rd,
+      };
+    }
+
+    if (row.usedAt) {
+      return {
+        ok: false as const,
+        error: "state_already_used",
+        returnTo: row.returnTo ?? decoded?.r,
+        returnOrigin: row.returnOrigin ?? decoded?.o,
+        redirectUri: decoded?.rd,
+      };
+    }
+
+    if (row.expiresAt < Date.now()) {
+      return {
+        ok: false as const,
+        error: "state_expired",
+        returnTo: row.returnTo ?? decoded?.r,
+        returnOrigin: row.returnOrigin ?? decoded?.o,
+        redirectUri: decoded?.rd,
+      };
+    }
 
     await ctx.db.patch(row._id, { usedAt: Date.now() });
     return {
+      ok: true as const,
       userId: row.userId,
       provider: row.provider,
-      returnTo: row.returnTo,
-      returnOrigin: row.returnOrigin,
-      codeVerifier: row.codeVerifier,
+      returnTo: row.returnTo ?? decoded?.r,
+      returnOrigin: row.returnOrigin ?? decoded?.o,
+      codeVerifier: row.codeVerifier ?? decoded?.cv,
+      redirectUri: decoded?.rd,
     };
   },
 });
@@ -374,6 +491,8 @@ export const completeConnect = action({
     code: v.string(),
     userId: v.string(),
     codeVerifier: v.optional(v.string()),
+    returnOrigin: v.optional(v.string()),
+    redirectUri: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{ connected: number }> => {
     const provider = getProvider(args.provider);
@@ -383,11 +502,17 @@ export const completeConnect = action({
       throw new Error(`${provider.displayName} OAuth credentials are not configured`);
     }
 
+    const redirectUri =
+      args.redirectUri ||
+      (args.returnOrigin ? `${args.returnOrigin}/oauth/callback` : null) ||
+      (process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/oauth/callback` : null) ||
+      callbackUrl();
+
     const profiles = await provider.exchangeCode({
       code: args.code,
       clientId,
       clientSecret,
-      redirectUri: callbackUrl(),
+      redirectUri,
       codeVerifier: args.codeVerifier,
     });
 

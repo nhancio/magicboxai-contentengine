@@ -33,6 +33,7 @@ const Pricing = lazy(() => import("./pages/Pricing"));
 const WarmedUpAccounts = lazy(() => import("./pages/WarmedUpAccounts"));
 const Feedback = lazy(() => import("./pages/Feedback"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const OAuthCallback = lazy(() => import("./pages/OAuthCallback"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   return (
@@ -134,6 +135,7 @@ export default function App() {
                 <Route path="/pricing" element={<ProtectedRoute><Pricing /></ProtectedRoute>} />
                 <Route path="/feedback" element={<ProtectedRoute><Feedback /></ProtectedRoute>} />
                 <Route path="/warmed-up-accounts" element={<ProtectedRoute><WarmedUpAccounts /></ProtectedRoute>} />
+                <Route path="/oauth/callback" element={<OAuthCallback />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

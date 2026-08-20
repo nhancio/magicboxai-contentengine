@@ -287,17 +287,19 @@ export default function Automations() {
           ))}
         </div>
       ) : automations.length === 0 ? (
-        <div className="glass-card flex flex-col items-center gap-4 py-16 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-brand/10">
-            <Bot className="h-7 w-7 text-brand" />
+        <div className="glass-card flex flex-col items-center justify-between gap-4 p-6 sm:flex-row sm:text-left text-center">
+          <div className="flex items-center gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand/10">
+              <Bot className="h-5 w-5 text-brand" />
+            </div>
+            <div>
+              <h2 className="font-display text-lg text-foreground">Set up your first automation</h2>
+              <p className="mt-0.5 max-w-md text-xs sm:text-sm text-muted-foreground">
+                Give it a brief once — it writes, designs, and posts fresh content across your channels on schedule.
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-display text-2xl text-foreground">Set up your first automation</h2>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-              Give it a brief once — it posts fresh content to your channels every day without you.
-            </p>
-          </div>
-          <Button asChild>
+          <Button asChild className="shrink-0">
             <Link to="/automations/new">
               <Plus className="mr-1.5 h-4 w-4" /> Create automation
             </Link>

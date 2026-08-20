@@ -54,17 +54,13 @@ class YouTubeProvider extends BaseProvider implements SocialProvider {
       state: input.state,
       response_type: "code",
       scope: this.scopes.join(" "),
-      // Offline refresh tokens for scheduled YouTube uploads.
       access_type: "offline",
-      // Keep previously granted scopes if the user already connected once.
-      include_granted_scopes: "true",
-      // Force the consent screen so Google issues a refresh_token on first
-      // YouTube connect. Account picker is skipped via login_hint when the
-      // user is already signed into MagicBox with the same Google email.
       prompt: "consent",
     });
-    if (input.loginHint?.trim()) {
-      params.set("login_hint", input.loginHint.trim());
+    // Add login_hint if passed down (helps route straight to the user's account)
+    // but avoid forcing it if not provided.
+    if (input.loginHint) {
+      params.append("login_hint", input.loginHint);
     }
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   }
@@ -91,20 +87,28 @@ class YouTubeProvider extends BaseProvider implements SocialProvider {
     );
 
     // A Google account is not a YouTube account: signing in with a bare Gmail that
-    // has never created a channel returns 200 with an EMPTY items array. Terminal —
-    // the user must create a channel, so retrying or reconnecting cannot help.
+    // has never created a channel returns 200 with an EMPTY items array.
     const channel = channels.items?.[0];
     if (!channel) {
       throw new BadBodyError("no_youtube_channel: this Google account has no YouTube channel");
     }
 
     const snippet = channel.snippet ?? {};
+    const title = snippet.title ?? "YouTube Channel";
+    const customUrl = snippet.customUrl;
+    const username = customUrl ? (customUrl.startsWith("@") ? customUrl : `@${customUrl}`) : title;
+    const avatarUrl =
+      snippet.thumbnails?.default?.url ??
+      snippet.thumbnails?.medium?.url ??
+      snippet.thumbnails?.high?.url ??
+      "";
+
     return [
       {
         externalId: channel.id,
-        username: snippet.customUrl ?? snippet.title,
-        displayName: snippet.title,
-        avatarUrl: snippet.thumbnails?.default?.url,
+        username,
+        displayName: title,
+        avatarUrl,
         token: {
           accessToken,
           refreshToken: token.refresh_token,
