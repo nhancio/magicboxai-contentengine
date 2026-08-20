@@ -18,13 +18,19 @@ Facebook Pages and WhatsApp share `META_APP_ID` / `META_APP_SECRET` (Facebook Lo
 - `convex/publish.ts` + `scheduler.ts` — publish engine + 1-minute drain cron.
 - UI: Settings + Onboarding call `api.social.connectUrl` / `api.social.accounts`.
 
-### OAuth redirect URI (register this exact URL)
+### OAuth redirect URIs (register these exact URLs in developer consoles)
 
+**For Local Development:**
 ```
-https://beloved-lyrebird-288.convex.site/oauth/callback
+http://localhost:8174/oauth/callback
+http://127.0.0.1:8174/oauth/callback
 ```
 
-(Prod: `https://<your-prod-deployment>.convex.site/oauth/callback`)
+**For Production:**
+```
+https://app.magicboxai.in/oauth/callback
+https://magicboxai.in/oauth/callback
+```
 
 ### Secrets to set on Convex
 
@@ -142,17 +148,22 @@ rejected on new Meta apps.
    - `instagram_business_basic`
    - `instagram_business_content_publish`
    (Messaging permissions are optional; not required for Connect/publish.)
-4. **Set up Instagram business login** → add OAuth redirect URI:
-   `https://beloved-lyrebird-288.convex.site/oauth/callback`
+4. **Set up Instagram business login** → add OAuth redirect URIs:
+   - `http://localhost:8174/oauth/callback` (for local development)
+   - `http://127.0.0.1:8174/oauth/callback`
+   - `https://app.magicboxai.in/oauth/callback` (for production)
 5. Copy **Instagram app ID** + **Instagram app secret** from that page →
    ```bash
    npx convex env set META_IG_APP_ID <instagram-app-id>
    npx convex env set META_IG_APP_SECRET <instagram-app-secret>
    ```
    Do **not** reuse `META_APP_ID` here — that is the Facebook App ID (Pages + WhatsApp).
-6. End users need an Instagram **Business or Creator** account (Page link
-   not required for this login type).
-7. App Review / Advanced Access before live customer publish.
+6. **Add Instagram Tester (during Development Mode)**:
+   - In Meta App Dashboard → **App Roles** → **Roles** (or **Instagram Testers**):
+   - Add your Instagram account as an **Instagram Tester**.
+   - Open [instagram.com](https://www.instagram.com) → Settings → Apps and Websites → **Tester Invites** → click **Accept**.
+7. End users need an Instagram **Business or Creator** account (Professional account).
+8. App Review / Advanced Access before live customer publish.
 
 ## WhatsApp (Meta) — same app as Facebook Pages
 

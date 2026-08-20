@@ -64,9 +64,9 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
     const params = new URLSearchParams({
       client_id: i.clientId,
       redirect_uri: i.redirectUri,
-      state: i.state,
       response_type: "code",
       scope: this.scopes.join(","),
+      state: i.state,
     });
     // Meta Business Login requires www.instagram.com (not api.instagram.com).
     return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
@@ -207,15 +207,19 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
     name?: string;
     profile_picture_url?: string;
   }> {
-    const fields = "user_id,username,name,profile_picture_url";
+    const fields = "id,user_id,username,name,profile_picture_url";
     const attempts: string[] = [
-      `${GRAPH_TOKEN}/me?${new URLSearchParams({ fields, access_token: accessToken })}`,
       `${GRAPH}/me?${new URLSearchParams({ fields, access_token: accessToken })}`,
+      `${GRAPH_TOKEN}/me?${new URLSearchParams({ fields, access_token: accessToken })}`,
     ];
     if (scopedUserId) {
       attempts.push(
+        `${GRAPH}/${scopedUserId}?${new URLSearchParams({
+          fields: "id,username,name,profile_picture_url",
+          access_token: accessToken,
+        })}`,
         `${GRAPH_TOKEN}/${scopedUserId}?${new URLSearchParams({
-          fields: "username,name,profile_picture_url",
+          fields: "id,username,name,profile_picture_url",
           access_token: accessToken,
         })}`,
       );
@@ -223,13 +227,16 @@ class InstagramProvider extends BaseProvider implements SocialProvider {
 
     for (const url of attempts) {
       try {
-        const me = await this.http(url, { method: "GET", retries: 0 });
-        return {
-          user_id: me.user_id ? String(me.user_id) : scopedUserId || undefined,
-          username: me.username,
-          name: me.name,
-          profile_picture_url: me.profile_picture_url,
-        };
+        const raw = await this.http(url, { method: "GET", retries: 0 });
+        const me = raw.data?.[0] ?? raw;
+        if (me && (me.user_id || me.id || me.username)) {
+          return {
+            user_id: me.user_id ? String(me.user_id) : me.id ? String(me.id) : scopedUserId || undefined,
+            username: me.username,
+            name: me.name,
+            profile_picture_url: me.profile_picture_url,
+          };
+        }
       } catch {
         /* try next */
       }

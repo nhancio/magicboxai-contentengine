@@ -94,6 +94,7 @@ export default function OAuthCallback() {
           userId,
           codeVerifier,
           returnOrigin: window.location.origin,
+          redirectUri: claim.redirectUri,
         });
       } catch (e: any) {
         console.error("[oauth] connect failed", e);

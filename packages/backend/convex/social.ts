@@ -22,12 +22,14 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 
 function callbackUrl(): string {
   // Convex injects CONVEX_SITE_URL; the OAuth callback is an httpAction on the
-  // .convex.site domain (see http.ts). Overridable for custom domains.
-  const base =
-    process.env.OAUTH_CALLBACK_BASE ??
-    process.env.CONVEX_SITE_URL ??
-    "https://beloved-lyrebird-288.convex.site";
-  return `${base}/oauth/callback`;
+  // .convex.site domain (see http.ts). Meta strictly requires HTTPS.
+  if (process.env.OAUTH_CALLBACK_BASE && process.env.OAUTH_CALLBACK_BASE.startsWith("https://")) {
+    return `${process.env.OAUTH_CALLBACK_BASE}/oauth/callback`;
+  }
+  if (process.env.CONVEX_SITE_URL && process.env.CONVEX_SITE_URL.startsWith("https://")) {
+    return `${process.env.CONVEX_SITE_URL}/oauth/callback`;
+  }
+  return "https://beloved-lyrebird-288.convex.site/oauth/callback";
 }
 
 function appBaseUrl(): string {
@@ -72,6 +74,7 @@ export interface OAuthStatePayload {
   r?: string;
   o?: string;
   cv?: string;
+  rd?: string;
   exp: number;
 }
 
@@ -203,17 +206,25 @@ export const connectUrl = action({
     const returnTo = safeReturnTo(args.returnTo);
     const exp = Date.now() + STATE_TTL_MS;
 
-    const base = returnOrigin || process.env.APP_BASE_URL || "https://app.magicboxai.in";
-    
-    // Instead of using the Convex HTTP route, we bounce the OAuth callback directly
-    // back to the frontend's /oauth/callback route. This guarantees that local development
-    // callbacks always hit localhost and completely skips any cross-environment mismatch.
-    const redirectUri = `${base}/oauth/callback`;
+    // Meta providers (Instagram, Facebook, WhatsApp) strictly require public HTTPS redirect URIs.
+    // When running locally on http://, route through the Convex HTTPS callback, which will 302
+    // redirect back to returnOrigin after processing.
+    const isLocalHttp = returnOrigin && returnOrigin.startsWith("http://");
+    const isMetaProvider =
+      provider.id === "instagram" || provider.id === "facebook" || provider.id === "whatsapp";
 
-    // Hard guard: never hand Google a Firebase callback from the Convex path.
+    let redirectUri: string;
+    if (isLocalHttp && isMetaProvider) {
+      redirectUri = callbackUrl();
+    } else {
+      const base = returnOrigin || process.env.APP_BASE_URL || "https://app.magicboxai.in";
+      redirectUri = `${base}/oauth/callback`;
+    }
+
+    // Hard guard: never hand Google or Meta a Firebase callback from the Convex path.
     if (redirectUri.includes("cloudfunctions.net")) {
       throw new Error(
-        "Misconfigured OAuth callback (cloudfunctions). Expected frontend /oauth/callback.",
+        "Misconfigured OAuth callback (cloudfunctions). Expected frontend or Convex /oauth/callback.",
       );
     }
 
@@ -233,6 +244,7 @@ export const connectUrl = action({
       r: returnTo,
       o: returnOrigin,
       cv: codeVerifier,
+      rd: redirectUri,
       exp,
     });
 
@@ -345,6 +357,7 @@ export const consumeState = mutation({
           returnTo: decoded.r,
           returnOrigin: decoded.o,
           codeVerifier: decoded.cv,
+          redirectUri: decoded.rd,
         };
       }
       return {
@@ -352,6 +365,7 @@ export const consumeState = mutation({
         error: "invalid_or_expired_state",
         returnTo: decoded?.r,
         returnOrigin: decoded?.o,
+        redirectUri: decoded?.rd,
       };
     }
 
@@ -361,6 +375,7 @@ export const consumeState = mutation({
         error: "state_already_used",
         returnTo: row.returnTo ?? decoded?.r,
         returnOrigin: row.returnOrigin ?? decoded?.o,
+        redirectUri: decoded?.rd,
       };
     }
 
@@ -370,6 +385,7 @@ export const consumeState = mutation({
         error: "state_expired",
         returnTo: row.returnTo ?? decoded?.r,
         returnOrigin: row.returnOrigin ?? decoded?.o,
+        redirectUri: decoded?.rd,
       };
     }
 
@@ -381,6 +397,7 @@ export const consumeState = mutation({
       returnTo: row.returnTo ?? decoded?.r,
       returnOrigin: row.returnOrigin ?? decoded?.o,
       codeVerifier: row.codeVerifier ?? decoded?.cv,
+      redirectUri: decoded?.rd,
     };
   },
 });
@@ -475,6 +492,7 @@ export const completeConnect = action({
     userId: v.string(),
     codeVerifier: v.optional(v.string()),
     returnOrigin: v.optional(v.string()),
+    redirectUri: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{ connected: number }> => {
     const provider = getProvider(args.provider);
@@ -484,8 +502,11 @@ export const completeConnect = action({
       throw new Error(`${provider.displayName} OAuth credentials are not configured`);
     }
 
-    const base = args.returnOrigin || process.env.APP_BASE_URL || "https://app.magicboxai.in";
-    const redirectUri = `${base}/oauth/callback`;
+    const redirectUri =
+      args.redirectUri ||
+      (args.returnOrigin ? `${args.returnOrigin}/oauth/callback` : null) ||
+      (process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/oauth/callback` : null) ||
+      callbackUrl();
 
     const profiles = await provider.exchangeCode({
       code: args.code,

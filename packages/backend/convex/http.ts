@@ -72,6 +72,8 @@ http.route({
         code,
         userId,
         codeVerifier,
+        returnOrigin: claim?.returnOrigin ?? decoded?.o,
+        redirectUri: claim?.redirectUri ?? decoded?.rd,
       });
     } catch (e) {
       console.error("[oauth] connect failed", e);
