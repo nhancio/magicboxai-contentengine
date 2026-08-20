@@ -103,14 +103,17 @@ export type SocialPlatform =
   | "linkedin"
   | "youtube"
   | "facebook"
-  | "whatsapp";
-/** Providers we connect directly via OAuth. Twitter/X is intentionally deferred. */
+  | "whatsapp"
+  | "reddit";
+/** Mirrors Convex socialProvider; twitter/reddit stay deferred at connect-time. */
 export type SocialProvider =
   | "instagram"
   | "linkedin"
   | "youtube"
   | "facebook"
-  | "whatsapp";
+  | "whatsapp"
+  | "twitter"
+  | "reddit";
 
 export interface SocialAccount {
   id: string;

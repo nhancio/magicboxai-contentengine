@@ -62,6 +62,7 @@ const PLATFORM_META: Record<
  youtube: { label:"YouTube", icon: Youtube, tint:"from-red-500 to-rose-500" },
  facebook: { label:"Facebook", icon: Globe2, tint:"from-blue-600 to-blue-400" },
  whatsapp: { label:"WhatsApp", icon: MessageCircle, tint:"from-emerald-500 to-green-400" },
+ reddit: { label:"Reddit", icon: MessageCircle, tint:"from-orange-500 to-amber-500" },
 };
 
 const PRESETS = [

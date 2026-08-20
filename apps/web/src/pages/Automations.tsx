@@ -51,6 +51,7 @@ const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
   youtube: Youtube,
   facebook: Globe2,
   whatsapp: MessageCircle,
+  reddit: MessageCircle,
 };
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

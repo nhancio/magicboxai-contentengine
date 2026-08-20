@@ -284,6 +284,83 @@ export const disconnect = mutation({
   },
 });
 
+const syncPlatform = v.union(
+  v.literal("instagram"),
+  v.literal("facebook"),
+  v.literal("twitter"),
+  v.literal("linkedin"),
+  v.literal("youtube"),
+  v.literal("reddit"),
+  v.literal("whatsapp"),
+);
+
+/**
+ * Dual-write helper: upsert a socialAccounts row from a legacy Firestore account.
+ * Metadata only — OAuth tokens stay in Firestore until the user reconnects.
+ */
+export const syncAccount = mutation({
+  args: {
+    legacyId: v.string(),
+    provider: syncPlatform,
+    platform: syncPlatform,
+    externalId: v.string(),
+    username: v.string(),
+    displayName: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("disconnected"),
+      v.literal("expired"),
+    ),
+  },
+  returns: v.id("socialAccounts"),
+  handler: async (ctx, args) => {
+    const uid = await requireUid(ctx);
+    const now = Date.now();
+
+    const byLegacy = await ctx.db
+      .query("socialAccounts")
+      .withIndex("by_legacyId", (q) => q.eq("legacyId", args.legacyId))
+      .unique();
+
+    const existing =
+      byLegacy ??
+      (
+        await ctx.db
+          .query("socialAccounts")
+          .withIndex("by_userId", (q) => q.eq("userId", uid))
+          .collect()
+      ).find(
+        (a) =>
+          a.platform === args.platform && a.externalId === args.externalId,
+      );
+
+    const doc = {
+      legacyId: args.legacyId,
+      userId: uid,
+      provider: args.provider,
+      platform: args.platform,
+      externalId: args.externalId,
+      username: args.username,
+      displayName: args.displayName,
+      avatarUrl: args.avatarUrl,
+      status: args.status,
+      lastSyncedAt: now,
+    };
+
+    if (existing) {
+      if (existing.userId !== uid) throw new Error("Account not found");
+      await ctx.db.patch(existing._id, doc);
+      return existing._id;
+    }
+
+    return await ctx.db.insert("socialAccounts", {
+      ...doc,
+      linkedAt: now,
+    });
+  },
+});
+
 /**
  * Connect a WhatsApp Sandbox or Meta Test Number directly (WhatsApp V2).
  * Allows developers and brands to test automations and message previews
