@@ -10,7 +10,7 @@ import { useAuth } from "@shared/lib/auth";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
 import type { SocialAccount, SocialPlatform, SocialProvider, BrandProfile } from "@shared/types";
-import { getBrandProfiles, getSocialAccounts, saveBrandProfile, saveSocialAccount, stripUndefined } from "@shared/lib/automations";
+import { deleteSocialAccount, getBrandProfiles, getSocialAccounts, saveBrandProfile, saveSocialAccount, stripUndefined } from "@shared/lib/automations";
 import {
   extractBrandFromWebsite,
   type BrandExtractResult,
@@ -266,24 +266,26 @@ export default function Onboarding() {
   const extractBrandConvex = useAction(api.brands.extractFromWebsite);
 
   const accounts: SocialAccount[] = useMemo(() => {
-    const fromConvex: SocialAccount[] = (convexAccounts ?? []).map((a: any) => ({
-      id: a._id,
-      userId: a.userId,
-      provider: a.provider,
-      platform: a.platform,
-      externalId: a.externalId,
-      username: a.username ?? "",
-      displayName: a.displayName ?? a.username ?? "",
-      avatarUrl: a.avatarUrl,
-      status: a.status,
-      linkedAt: new Date(a.linkedAt),
-      lastSyncedAt: a.lastSyncedAt ? new Date(a.lastSyncedAt) : undefined,
-    }));
-    const convexPlatforms = new Set(fromConvex.map((c) => c.platform));
-    const fromLegacy = (legacyAccounts ?? []).filter(
-      (a) => !convexPlatforms.has(a.platform) && a.status !== "disconnected",
+    if (isConvexConfigured) {
+      return (convexAccounts ?? [])
+        .filter((a: any) => a.status === "active" || a.status === "expired")
+        .map((a: any) => ({
+          id: a._id,
+          userId: a.userId,
+          provider: a.provider,
+          platform: a.platform,
+          externalId: a.externalId,
+          username: a.username ?? "",
+          displayName: a.displayName ?? a.username ?? "",
+          avatarUrl: a.avatarUrl,
+          status: a.status,
+          linkedAt: new Date(a.linkedAt),
+          lastSyncedAt: a.lastSyncedAt ? new Date(a.lastSyncedAt) : undefined,
+        }));
+    }
+    return (legacyAccounts ?? []).filter(
+      (a) => a.status !== "disconnected",
     );
-    return [...fromConvex, ...fromLegacy];
   }, [convexAccounts, legacyAccounts]);
 
   const connectedByPlatform = useMemo(() => {
@@ -445,9 +447,15 @@ export default function Onboarding() {
     getSocialAccounts(user.uid).then(setLegacyAccounts).catch(() => {});
   }, [user]);
 
-  // Dual-write: ensure Convex-connected channels are mirrored in Firestore
+  // Dual-sync: keep Firestore in sync with Convex-connected channels
   useEffect(() => {
-    if (!user || !convexAccounts || convexAccounts.length === 0) return;
+    if (!user || !isConvexConfigured || convexAccounts === undefined) return;
+    const currentPlatforms = new Set(
+      convexAccounts
+        .filter((a: any) => a.status === "active" || a.status === "expired")
+        .map((a: any) => a.platform),
+    );
+
     for (const acc of convexAccounts) {
       if (acc.status === "active" || acc.status === "expired") {
         void saveSocialAccount({
@@ -463,7 +471,14 @@ export default function Onboarding() {
         }).catch(() => {});
       }
     }
-  }, [user, convexAccounts]);
+
+    // Remove any stale legacy accounts no longer present in Convex
+    for (const leg of legacyAccounts) {
+      if (!currentPlatforms.has(leg.platform)) {
+        void deleteSocialAccount(leg.id);
+      }
+    }
+  }, [user, convexAccounts, legacyAccounts]);
 
   useEffect(() => {
     captureEvent(PRODUCT_EVENTS.onboardingStarted, {
@@ -531,6 +546,8 @@ export default function Onboarding() {
       let cleanReason = rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
       if (rawReason?.includes("no_youtube_channel")) {
         cleanReason = "YouTube connection failed: This Google account does not have a YouTube channel. Please visit youtube.com to create a channel on this account, or select a Google account that has a channel.";
+      } else if (rawReason?.includes("invalid_google_client_secret") || rawReason?.includes("invalid_client") || rawReason?.includes("client secret is invalid")) {
+        cleanReason = "YouTube connection failed: The configured Google OAuth Client Secret is invalid. Please ensure GOOGLE_OAUTH_CLIENT_SECRET in your backend environment matches your Google Cloud Console OAuth 2.0 Client credentials.";
       } else if (rawReason?.includes("no_facebook_pages")) {
         cleanReason = "Facebook connection failed: You must own or manage at least one Facebook Page under your account.";
       } else if (rawReason?.includes("feature_unavailable") || rawReason?.includes("unavailable") || rawReason?.includes("Facebook Login")) {

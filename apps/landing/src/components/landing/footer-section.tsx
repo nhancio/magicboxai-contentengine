@@ -8,6 +8,7 @@ const footerLinks = {
     { name: "How it works", href: "#how-it-works" },
     { name: "Features", href: "#features" },
     { name: "Pricing", href: "#pricing" },
+    { name: "Changelog", href: "/changelog" },
   ],
   "Use cases": [
     { name: "Founders", href: "#use-cases" },
@@ -17,6 +18,7 @@ const footerLinks = {
   ],
   Company: [
     { name: "FAQ", href: "#faq" },
+    { name: "Changelog", href: "/changelog" },
     { name: "Contact", href: "mailto:hello@nhancio.com" },
   ],
   Legal: [

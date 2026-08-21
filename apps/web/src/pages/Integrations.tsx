@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
+import { deleteSocialAccount, deleteSocialAccountsForPlatform } from "@shared/lib/automations";
 import { Button } from "@shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@shared/components/ui/card";
 import { Label } from "@shared/components/ui/label";
@@ -716,12 +717,18 @@ export default function Integrations() {
     }
   };
 
-  const handleDisconnect = async (accountId: string) => {
+  const handleDisconnect = async (accountId: string, platform?: string) => {
     if (!accountId || disconnectingId) return;
     setDisconnectingId(accountId);
     try {
       await disconnect({ accountId: accountId as any });
-      toast.success("Channel disconnected");
+      if (user?.uid) {
+        if (platform) {
+          await deleteSocialAccountsForPlatform(user.uid, platform).catch(() => {});
+        }
+        await deleteSocialAccount(accountId).catch(() => {});
+      }
+      toast.success("Channel disconnected and sessions logged out");
     } catch (e: any) {
       toast.error(e?.message || "Could not disconnect channel");
     } finally {
@@ -797,7 +804,7 @@ export default function Integrations() {
                   size="sm"
                   variant="ghost"
                   disabled={isBusyDisc}
-                  onClick={() => handleDisconnect(account._id)}
+                  onClick={() => handleDisconnect(account._id, account.platform)}
                   className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
                   title="Disconnect Channel"
                 >

@@ -66,17 +66,26 @@ class YouTubeProvider extends BaseProvider implements SocialProvider {
   }
 
   async exchangeCode(input: ExchangeInput): Promise<ConnectedProfile[]> {
-    const token = await this.http("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code: input.code,
-        redirect_uri: input.redirectUri,
-        client_id: input.clientId,
-        client_secret: input.clientSecret,
-      }).toString(),
-    });
+    let token: any;
+    try {
+      token = await this.http("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code: input.code,
+          redirect_uri: input.redirectUri,
+          client_id: input.clientId,
+          client_secret: input.clientSecret,
+        }).toString(),
+      });
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg.includes("invalid_client") || msg.includes("client secret is invalid")) {
+        throw new BadBodyError("invalid_google_client_secret: The configured GOOGLE_OAUTH_CLIENT_SECRET is invalid. Please ensure it matches the OAuth 2.0 Client Secret from your Google Cloud Console project.");
+      }
+      throw err;
+    }
 
     const accessToken: string | undefined = token.access_token;
     if (!accessToken) throw new BadBodyError("Google returned no access_token");
@@ -281,6 +290,21 @@ class YouTubeProvider extends BaseProvider implements SocialProvider {
     }
 
     return new Uint8Array(await res.arrayBuffer());
+  }
+
+  async revoke(token: ProviderToken): Promise<void> {
+    const t = token.refreshToken || token.accessToken;
+    if (!t) return;
+    try {
+      await this.http("https://oauth2.googleapis.com/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token: t }).toString(),
+        retries: 1,
+      });
+    } catch (err) {
+      console.warn("[youtube] revoke token error (ignored)", err);
+    }
   }
 }
 

@@ -392,6 +392,21 @@ class WhatsAppProvider extends BaseProvider implements SocialProvider {
       },
     };
   }
+
+  async revoke(token: ProviderToken): Promise<void> {
+    if (!token.accessToken || token.accessToken.startsWith("sandbox_") || token.accessToken.startsWith("test_")) return;
+    try {
+      await this.http(
+        `${GRAPH}/me/permissions?${new URLSearchParams({ access_token: token.accessToken }).toString()}`,
+        {
+          method: "DELETE",
+          retries: 1,
+        },
+      );
+    } catch (err) {
+      console.warn("[whatsapp] revoke session error (ignored)", err);
+    }
+  }
 }
 
 export const whatsapp = new WhatsAppProvider();

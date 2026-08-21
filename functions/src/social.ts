@@ -294,6 +294,43 @@ export const disconnectSocialAccount = onCall(
     }
 
     const accountId = snap.id;
+    const tokenDoc = await db.collection("socialTokens").doc(accountId).get().catch(() => null);
+    if (tokenDoc?.exists) {
+      const t = tokenDoc.data();
+      const provider = t?.provider || snap.data()?.provider || snap.data()?.platform;
+      const accessToken = t?.accessToken;
+      const refreshToken = t?.refreshToken;
+      try {
+        if (provider === "youtube" && (refreshToken || accessToken)) {
+          await fetch("https://oauth2.googleapis.com/revoke", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ token: refreshToken || accessToken }).toString(),
+          }).catch(() => {});
+        } else if ((provider === "instagram" || provider === "facebook" || provider === "whatsapp") && accessToken) {
+          await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(accessToken)}`, {
+            method: "DELETE",
+          }).catch(() => {});
+        } else if (provider === "linkedin" && accessToken) {
+          const clientId = linkedinClientId.value();
+          const clientSecret = linkedinClientSecret.value();
+          if (clientId && clientSecret) {
+            await fetch("https://www.linkedin.com/oauth/v2/revoke", {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                client_id: clientId,
+                client_secret: clientSecret,
+                token: accessToken,
+                token_type_hint: "access_token",
+              }).toString(),
+            }).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.warn("Error revoking social token:", err);
+      }
+    }
     await db.collection("socialTokens").doc(accountId).delete().catch(() => {});
     // Soft-mark first so a partial failure still hides the channel in the UI.
     await ref.set({ status: "disconnected" }, { merge: true }).catch(() => {});

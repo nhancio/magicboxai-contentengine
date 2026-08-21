@@ -192,6 +192,21 @@ class FacebookProvider extends BaseProvider implements SocialProvider {
       permalink: `https://facebook.com/${externalId}`,
     };
   }
+
+  async revoke(token: ProviderToken): Promise<void> {
+    if (!token.accessToken) return;
+    try {
+      await this.http(
+        `${GRAPH}/me/permissions?${new URLSearchParams({ access_token: token.accessToken }).toString()}`,
+        {
+          method: "DELETE",
+          retries: 1,
+        },
+      );
+    } catch (err) {
+      console.warn("[facebook] revoke session error (ignored)", err);
+    }
+  }
 }
 
 export const facebook = new FacebookProvider();

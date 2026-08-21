@@ -17,6 +17,7 @@ import {
   Bot,
   CalendarDays,
   CreditCard,
+  FileText,
   Film,
   Flame,
   FolderOpen,
@@ -57,6 +58,7 @@ const NAV_SECTIONS = [
 const BOTTOM_NAV = [
   { label: "Pricing", path: "/pricing", icon: CreditCard },
   { label: "Feedback", path: "/feedback", icon: MessageSquare },
+  { label: "Changelog", path: "/changelog", icon: FileText },
   { label: "Settings", path: "/settings", icon: Settings },
 ] as const;
 
@@ -166,8 +168,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         />
         <div className="min-w-0">
           <div className="truncate text-sm font-display text-foreground">Magic Box</div>
-          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-            AI
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+              AI
+            </span>
+            <span className="rounded bg-brand/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-brand border border-brand/20">
+              v1.0
+            </span>
           </div>
         </div>
         <button

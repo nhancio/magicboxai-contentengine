@@ -20,11 +20,13 @@
   ],
   "redirects": [
     { "source": "/privacy.html", "destination": "/privacy", "permanent": true },
-    { "source": "/terms.html", "destination": "/terms", "permanent": true }
+    { "source": "/terms.html", "destination": "/terms", "permanent": true },
+    { "source": "/changelog.html", "destination": "/changelog", "permanent": true }
   ],
   "rewrites": [
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/terms", "destination": "/terms.html" },
-    { "source": "/((?!api/|privacy|terms).*)", "destination": "/index.html" }
+    { "source": "/changelog", "destination": "/changelog.html" },
+    { "source": "/((?!api/|privacy|terms|changelog).*)", "destination": "/index.html" }
   ]
 }

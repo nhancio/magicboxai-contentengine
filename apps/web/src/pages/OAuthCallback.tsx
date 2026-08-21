@@ -43,7 +43,13 @@ export default function OAuthCallback() {
       }
 
       const fail = (reason: string) => {
-        setErrorMessage(reason);
+        let displayError = reason;
+        if (reason.includes("invalid_client") || reason.includes("client secret is invalid") || reason.includes("invalid_google_client_secret")) {
+          displayError = "The configured Google OAuth Client Secret is invalid. Please check the credentials in Google Cloud Console.";
+        } else if (reason.includes("no_youtube_channel")) {
+          displayError = "This Google account has no YouTube channel. Please visit youtube.com to create a channel first.";
+        }
+        setErrorMessage(displayError);
         if (window.opener && !window.opener.closed) {
           try {
             window.opener.postMessage({ type: "magicbox_social_error", reason }, "*");

@@ -106,6 +106,24 @@ export async function saveSocialAccount(
   return id;
 }
 
+export async function deleteSocialAccount(id: string): Promise<void> {
+  if (!db) return;
+  await deleteDoc(doc(db, "socialAccounts", id)).catch(() => {});
+}
+
+export async function deleteSocialAccountsForPlatform(userId: string, platform: string): Promise<void> {
+  if (!db) return;
+  const q = query(
+    collection(db, "socialAccounts"),
+    where("userId", "==", userId),
+    where("platform", "==", platform)
+  );
+  const snap = await getDocs(q);
+  for (const d of snap.docs) {
+    await deleteDoc(d.ref).catch(() => {});
+  }
+}
+
 // --- Brand Profiles ---
 
 export async function saveBrandProfile(

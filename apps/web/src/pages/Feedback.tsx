@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Card, CardContent } from "@shared/components/ui/card";
 import { Button } from "@shared/components/ui/button";
@@ -99,10 +100,8 @@ export default function Feedback() {
             <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </a>
 
-          <a
-            href="https://changelog.magicboxai.in" // Replace with actual changelog link
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            to="/changelog"
             className="flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:bg-secondary/50"
           >
             <div className="flex items-center gap-4">
@@ -110,14 +109,17 @@ export default function Feedback() {
                 <FileText className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-sm font-medium text-foreground">Changelog</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-medium text-foreground">Changelog</h3>
+                  <span className="rounded bg-brand/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-brand">v1.0</span>
+                </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  See what's new and what we've shipped recently
+                  See what's new and what we've shipped in MagicBox 1.0
                 </p>
               </div>
             </div>
             <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-          </a>
+          </Link>
         </div>
 
         <Card className="glass-card shadow-sm border border-border">

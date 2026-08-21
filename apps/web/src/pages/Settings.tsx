@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
+import { deleteSocialAccount, deleteSocialAccountsForPlatform } from "@shared/lib/automations";
 import { Button } from "@shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@shared/components/ui/card";
 import { Label } from "@shared/components/ui/label";
@@ -335,18 +336,40 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
     }
   }
 
-  async function handleDisconnect(accountId: string) {
+  async function handleDisconnect(accountId: string, platform?: string) {
     if (!accountId || disconnectingId) return;
     setDisconnectingId(accountId);
     try {
       await disconnect({ accountId: accountId as any });
-      toast.success("Channel disconnected");
+      if (user?.uid) {
+        if (platform) {
+          await deleteSocialAccountsForPlatform(user.uid, platform).catch(() => {});
+        }
+        await deleteSocialAccount(accountId).catch(() => {});
+      }
+      toast.success("Channel disconnected and sessions logged out");
     } catch (e) {
       console.error("[settings] disconnect failed", e);
       toast.error(convexErrorMessage(e));
     } finally {
       setDisconnectingId(null);
     }
+  }
+
+  if (accounts === undefined) {
+    return (
+      <div
+        className={cn(
+          "mb-3 grid gap-2.5",
+          compact
+            ? "grid-cols-3 sm:grid-cols-4"
+            : "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8",
+        )}
+      >
+        <div className="flex aspect-square animate-pulse items-center justify-center rounded-xl bg-secondary" />
+        <div className="flex aspect-square animate-pulse items-center justify-center rounded-xl bg-secondary" />
+      </div>
+    );
   }
 
   return (
@@ -396,7 +419,7 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
                 onClick={(ev) => {
                   ev.preventDefault();
                   ev.stopPropagation();
-                  void handleDisconnect(String(account._id));
+                  void handleDisconnect(String(account._id), account.platform);
                 }}
                 className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-background/80 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100"
               >
@@ -564,6 +587,8 @@ export default function Settings() {
       let cleanReason = rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
       if (rawReason?.includes("no_youtube_channel")) {
         cleanReason = "YouTube connection failed: This Google account does not have a YouTube channel. Please visit youtube.com to create a channel on this account, or select a Google account that has a channel.";
+      } else if (rawReason?.includes("invalid_google_client_secret") || rawReason?.includes("invalid_client") || rawReason?.includes("client secret is invalid")) {
+        cleanReason = "YouTube connection failed: The configured Google OAuth Client Secret is invalid. Please ensure GOOGLE_OAUTH_CLIENT_SECRET in your backend environment matches your Google Cloud Console OAuth 2.0 Client credentials.";
       } else if (rawReason?.includes("no_facebook_pages")) {
         cleanReason = "Facebook connection failed: You must own or manage at least one Facebook Page under your account.";
       } else if (rawReason?.includes("feature_unavailable") || rawReason?.includes("unavailable") || rawReason?.includes("Facebook Login")) {
@@ -761,6 +786,16 @@ export default function Settings() {
                       </DialogContent>
                     </Dialog>
                   </div>
+                </div>
+
+                <div className="pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <span>MagicBox Platform</span>
+                    <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-foreground font-medium">v1.0.0</span>
+                  </div>
+                  <Link to="/changelog" className="text-brand hover:underline font-medium">
+                    View Changelog
+                  </Link>
                 </div>
               </div>
             )}
