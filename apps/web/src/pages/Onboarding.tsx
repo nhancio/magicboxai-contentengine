@@ -9,7 +9,7 @@ import { db } from "@shared/lib/firebase";
 import { useAuth } from "@shared/lib/auth";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
-import type { SocialAccount, SocialPlatform, BrandProfile } from "@shared/types";
+import type { SocialAccount, SocialPlatform, SocialProvider, BrandProfile } from "@shared/types";
 import { getBrandProfiles, getSocialAccounts, saveBrandProfile, saveSocialAccount, stripUndefined } from "@shared/lib/automations";
 import {
   extractBrandFromWebsite,
@@ -256,7 +256,6 @@ export default function Onboarding() {
   // Convex queries and mutations
   const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
   const convexBrands = useQuery(api.brands.list, isConvexConfigured ? {} : "skip");
-  const syncAccount = useMutation(api.social.syncAccount);
   const connectUrl = useAction(api.social.connectUrl);
   const createPost = useAction(api.studio.createPost);
   const generateCopy = useAction(api.studio.generateCopy);
@@ -453,8 +452,8 @@ export default function Onboarding() {
       if (acc.status === "active" || acc.status === "expired") {
         void saveSocialAccount({
           userId: user.uid,
-          provider: acc.provider,
-          platform: acc.platform,
+          provider: acc.provider as SocialProvider,
+          platform: acc.platform as SocialPlatform,
           externalId: acc.externalId,
           username: acc.username ?? "",
           displayName: acc.displayName ?? acc.username ?? "",
@@ -465,26 +464,6 @@ export default function Onboarding() {
       }
     }
   }, [user, convexAccounts]);
-
-  // Dual-write: ensure legacy Firestore channels are synced into Convex
-  useEffect(() => {
-    if (!user || !isConvexConfigured || legacyAccounts.length === 0) return;
-    const convexPlatforms = new Set((convexAccounts ?? []).map((a: any) => a.platform));
-    for (const acc of legacyAccounts) {
-      if (!convexPlatforms.has(acc.platform) && acc.status !== "disconnected") {
-        void syncAccount({
-          legacyId: acc.id,
-          provider: acc.provider,
-          platform: acc.platform,
-          externalId: acc.externalId,
-          username: acc.username,
-          displayName: acc.displayName,
-          avatarUrl: acc.avatarUrl,
-          status: acc.status,
-        }).catch(() => {});
-      }
-    }
-  }, [user, isConvexConfigured, legacyAccounts, convexAccounts, syncAccount]);
 
   useEffect(() => {
     captureEvent(PRODUCT_EVENTS.onboardingStarted, {
