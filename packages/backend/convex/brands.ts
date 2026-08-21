@@ -295,26 +295,99 @@ export const extractFromWebsite = action({
         html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']*)["']/i);
       description = (descMatch ? descMatch[1] : "").trim();
 
-      // Look for logo / icon
-      const iconMatch =
-        html.match(/<link[^>]+rel=["'](?:apple-touch-icon|icon|shortcut icon)["'][^>]+href=["']([^"']*)["']/i) ||
-        html.match(/<link[^>]+href=["']([^"']*)["'][^>]+rel=["'](?:apple-touch-icon|icon|shortcut icon)["']/i);
-      if (iconMatch && iconMatch[1]) {
-        try {
-          logoUrl = new URL(iconMatch[1], parsed).toString();
-        } catch {
-          // ignore
+      // 1. Check JSON-LD Schema.org for Organization/Brand logo
+      try {
+        const jsonLdBlocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+        if (jsonLdBlocks) {
+          for (const block of jsonLdBlocks) {
+            const rawJson = block.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "").trim();
+            const ldData = JSON.parse(rawJson);
+            const findLogo = (obj: any): string | null => {
+              if (!obj || typeof obj !== "object") return null;
+              if (obj.logo) {
+                if (typeof obj.logo === "string") return obj.logo;
+                if (typeof obj.logo === "object" && obj.logo.url) return obj.logo.url;
+              }
+              if (Array.isArray(obj["@graph"])) {
+                for (const node of obj["@graph"]) {
+                  const found = findLogo(node);
+                  if (found) return found;
+                }
+              }
+              return null;
+            };
+            const ldLogo = findLogo(ldData);
+            if (ldLogo) {
+              try {
+                logoUrl = new URL(ldLogo, parsed).toString();
+                break;
+              } catch {}
+            }
+          }
+        }
+      } catch {}
+
+      // 2. Check <img> tags with high-confidence logo hints (header, nav, logo class/alt)
+      if (!logoUrl) {
+        const imgTags = html.match(/<img[^>]+>/gi) || [];
+        for (const imgTag of imgTags) {
+          const srcMatch = imgTag.match(/(?:src|data-src)=["']([^"']+)["']/i);
+          const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
+          const classMatch = imgTag.match(/class=["']([^"']*)["']/i);
+          const idMatch = imgTag.match(/id=["']([^"']*)["']/i);
+          const src = srcMatch ? srcMatch[1] : "";
+          const alt = altMatch ? altMatch[1] : "";
+          const cls = classMatch ? classMatch[1] : "";
+          const id = idMatch ? idMatch[1] : "";
+
+          if (src && !src.startsWith("data:") && !src.startsWith("javascript:")) {
+            const hint = `${src} ${alt} ${cls} ${id}`.toLowerCase();
+            if (
+              (/logo|brandmark|brand-icon/i.test(hint) || /logo-\d+|brand_logo/i.test(src)) &&
+              !/sponsor|client|partner|payment|card|badge|footer/i.test(hint)
+            ) {
+              try {
+                logoUrl = new URL(src, parsed).toString();
+                break;
+              } catch {}
+            }
+          }
         }
       }
 
+      // 3. Check Apple Touch Icon (high-resolution PNG/SVG brand mark)
       if (!logoUrl) {
-        const ogImage = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']*)["']/i);
-        if (ogImage && ogImage[1]) {
+        const appleIconMatch =
+          html.match(/<link[^>]+rel=["']apple-touch-icon(?:-precomposed)?["'][^>]+href=["']([^"']*)["']/i) ||
+          html.match(/<link[^>]+href=["']([^"']*)["'][^>]+rel=["']apple-touch-icon(?:-precomposed)?["']/i);
+        if (appleIconMatch && appleIconMatch[1]) {
           try {
-            logoUrl = new URL(ogImage[1], parsed).toString();
-          } catch {
-            // ignore
-          }
+            logoUrl = new URL(appleIconMatch[1], parsed).toString();
+          } catch {}
+        }
+      }
+
+      // 4. Check favicon / icon links
+      if (!logoUrl) {
+        const iconMatch =
+          html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']*)["']/i) ||
+          html.match(/<link[^>]+href=["']([^"']*)["'][^>]+rel=["'](?:shortcut )?icon["']/i);
+        if (iconMatch && iconMatch[1]) {
+          try {
+            logoUrl = new URL(iconMatch[1], parsed).toString();
+          } catch {}
+        }
+      }
+
+      // 5. Check OpenGraph / Twitter logo/image
+      if (!logoUrl) {
+        const ogLogo =
+          html.match(/<meta[^>]+(?:property|name)=["'](?:og:logo|twitter:image:src|og:image)["'][^>]+content=["']([^"']*)["']/i) ||
+          html.match(/<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["'](?:og:logo|twitter:image:src|og:image)["']/i);
+        if (ogLogo && ogLogo[1]) {
+          try {
+            logoUrl = new URL(ogLogo[1], parsed).toString();
+          } catch {}
         }
       }
 
@@ -324,11 +397,12 @@ export const extractFromWebsite = action({
       }
     }
 
+    const host = parsed.hostname.replace(/^www\./, "");
     if (!logoUrl) {
-      logoUrl = `${parsed.origin}/favicon.ico`;
+      // High-resolution Google Favicon CDN fallback (128px)
+      logoUrl = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${host}&size=128`;
     }
 
-    const host = parsed.hostname.replace(/^www\./, "");
     const defaultCompanyName = title
       ? title.split(/[-–—|•:]/)[0].trim()
       : host.split(".")[0].charAt(0).toUpperCase() + host.split(".")[0].slice(1);

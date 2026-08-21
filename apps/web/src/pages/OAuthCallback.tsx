@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Button } from "@shared/components/ui/button";
 
 export default function OAuthCallback() {
   const location = useLocation();
   const navigate = useNavigate();
   const [status, setStatus] = useState("Verifying connection...");
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const consumeState = useMutation(api.social.consumeState);
   const completeConnect = useAction(api.social.completeConnect);
@@ -41,12 +43,34 @@ export default function OAuthCallback() {
       }
 
       const fail = (reason: string) => {
-        navigate(`${returnTo}?social=error&reason=${encodeURIComponent(reason)}`, { replace: true });
+        setErrorMessage(reason);
+        if (window.opener && !window.opener.closed) {
+          try {
+            window.opener.postMessage({ type: "magicbox_social_error", reason }, "*");
+          } catch {}
+        }
+        setTimeout(() => {
+          navigate(`${returnTo}?social=error&reason=${encodeURIComponent(reason)}`, { replace: true });
+        }, 2000);
       };
 
-      // Since HTTP callback is hitting the frontend instead now due to local changes,
-      // it might be hitting this twice in React strict mode. Let's make sure we don't
-      // double-consume if we don't need to.
+      const succeed = (prov: string) => {
+        setIsSuccess(true);
+        setStatus(`${prov.charAt(0).toUpperCase() + prov.slice(1)} connected successfully!`);
+        if (window.opener && !window.opener.closed) {
+          try {
+            window.opener.postMessage({ type: "magicbox_social_connected", provider: prov }, "*");
+          } catch {}
+          setTimeout(() => {
+            window.close();
+          }, 1200);
+          return;
+        }
+        setTimeout(() => {
+          navigate(`${returnTo}?social=connected&provider=${encodeURIComponent(prov)}`, { replace: true });
+        }, 1000);
+      };
+
       if (oauthError) {
         return fail(errorDescription || "User denied consent.");
       }
@@ -63,24 +87,14 @@ export default function OAuthCallback() {
         return fail("invalid_or_expired_state");
       }
 
-      // If the state was *just* consumed by the HTTP handler, it might say "already used".
-      // But if we are running locally, the HTTP handler probably failed to redirect properly
-      // or we are hitting the frontend callback directly instead of HTTP.
       if (!claim || (!claim.ok && claim.error !== "state_already_used")) {
         return fail(claim?.error ?? "invalid_or_expired_state");
       }
 
       const { provider, userId, codeVerifier } = claim;
       if (!provider || !userId) {
-        // If we hit state_already_used, claim doesn't have provider/userId.
-        // That means something else (like the HTTP handler) already used it.
-        // Let's just assume it succeeded if it was already used, or we fallback.
         if (claim && !claim.ok && claim.error === "state_already_used") {
-             // We can't complete connect if it's already used because we lost the codeVerifier/userId in the return
-             // Actually, if it's already used, it might have ALREADY been connected.
-             // Let's just try to go back to settings.
-             navigate(`${returnTo}?social=connected`, { replace: true });
-             return;
+          return succeed(claim.provider || "channel");
         }
         return fail("missing_provider_or_user");
       }
@@ -98,25 +112,44 @@ export default function OAuthCallback() {
         });
       } catch (e: any) {
         console.error("[oauth] connect failed", e);
-        // If it says already used, it might have succeeded.
         if (e.message && e.message.includes("already used")) {
-           navigate(`${returnTo}?social=connected&provider=${encodeURIComponent(provider)}`, { replace: true });
-           return;
+          return succeed(provider);
         }
         return fail(e.message || "Connection failed");
       }
 
-      navigate(`${returnTo}?social=connected&provider=${encodeURIComponent(provider)}`, { replace: true });
+      succeed(provider);
     };
 
     run();
   }, [location, navigate, consumeState, completeConnect]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-background">
-      <Loader2 className="h-8 w-8 animate-spin text-brand mb-4" />
-      <h2 className="text-lg font-medium text-foreground">{status}</h2>
-      <p className="text-sm text-muted-foreground mt-2">Please wait while we securely connect your account.</p>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 text-center">
+      {errorMessage ? (
+        <div className="max-w-md space-y-4">
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
+          <h2 className="text-xl font-bold text-foreground">Connection Error</h2>
+          <p className="text-sm text-muted-foreground">{errorMessage}</p>
+          <Button onClick={() => window.close()} variant="outline" size="sm">
+            Close Window
+          </Button>
+        </div>
+      ) : isSuccess ? (
+        <div className="max-w-md space-y-4">
+          <CheckCircle2 className="h-12 w-12 text-emerald-500 mx-auto" />
+          <h2 className="text-xl font-bold text-foreground">{status}</h2>
+          <p className="text-sm text-muted-foreground">
+            {window.opener ? "This window will close automatically..." : "Redirecting back to your workspace..."}
+          </p>
+        </div>
+      ) : (
+        <div className="max-w-md space-y-4">
+          <Loader2 className="h-10 w-10 animate-spin text-brand mx-auto mb-4" />
+          <h2 className="text-lg font-medium text-foreground">{status}</h2>
+          <p className="text-sm text-muted-foreground">Please wait while we securely connect your account.</p>
+        </div>
+      )}
     </div>
   );
 }

@@ -703,7 +703,13 @@ export default function Integrations() {
         loginHint: user?.email ?? undefined,
       });
       captureEvent("social_channel_connect_started", { provider });
-      window.location.href = url;
+      const newTab = window.open(url, "_blank");
+      if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
+        window.location.href = url;
+      } else {
+        toast.info(`Connecting ${provider}... Complete authorization in the new tab.`);
+        setBusy(null);
+      }
     } catch (e: any) {
       toast.error(e?.message || `Could not connect ${provider}`);
       setBusy(null);

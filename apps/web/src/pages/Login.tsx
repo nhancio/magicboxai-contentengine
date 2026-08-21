@@ -136,11 +136,14 @@ export default function Login() {
             style={{ animationDelay: "0.05s" }}
           >
             <img
-              src="/logo.png"
+              src="/logo.svg"
               alt="MagicBox"
               width={44}
               height={44}
               className="h-11 w-11 rounded-xl shadow-sm ring-1 ring-foreground/10"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "/favicon.svg";
+              }}
             />
             <div>
               <div className="font-display text-2xl leading-none tracking-tight">MagicBox</div>

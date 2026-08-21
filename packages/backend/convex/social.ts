@@ -206,20 +206,8 @@ export const connectUrl = action({
     const returnTo = safeReturnTo(args.returnTo);
     const exp = Date.now() + STATE_TTL_MS;
 
-    // Meta providers (Instagram, Facebook, WhatsApp) strictly require public HTTPS redirect URIs.
-    // When running locally on http://, route through the Convex HTTPS callback, which will 302
-    // redirect back to returnOrigin after processing.
-    const isLocalHttp = returnOrigin && returnOrigin.startsWith("http://");
-    const isMetaProvider =
-      provider.id === "instagram" || provider.id === "facebook" || provider.id === "whatsapp";
-
-    let redirectUri: string;
-    if (isLocalHttp && isMetaProvider) {
-      redirectUri = callbackUrl();
-    } else {
-      const base = returnOrigin || process.env.APP_BASE_URL || "https://app.magicboxai.in";
-      redirectUri = `${base}/oauth/callback`;
-    }
+    const base = returnOrigin || process.env.APP_BASE_URL || "https://app.magicboxai.in";
+    const redirectUri = `${base}/oauth/callback`;
 
     // Hard guard: never hand Google or Meta a Firebase callback from the Convex path.
     if (redirectUri.includes("cloudfunctions.net")) {
