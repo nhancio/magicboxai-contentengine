@@ -1,39 +1,25 @@
-# MagicBox AI — Vibe Marketing Platform, AI UGC Factory & Marketing Distribution Engine
+# MagicBox
 
-> MagicBox AI is an AI vibe marketing platform, AI UGC factory, and automated marketing distribution platform developed by Nhancio Technologies Private Limited. It automates vibe marketing, UGC content creation, brand-aware copy and video generation, and multi-channel publishing to Instagram, LinkedIn, and YouTube.
+> MagicBox is an AI marketing automation platform from Nhancio Technologies Private Limited.
 
 - Canonical site: [magicboxai.in](https://magicboxai.in/)
 - Application: [app.magicboxai.in](https://app.magicboxai.in/)
-- Support: [hello@nhancio.com](mailto:hello@nhancio.com)
-
-## Primary Topics & Core Capabilities
-
-- **Vibe Marketing Platform & AI Vibe Marketing**: Automatically extracts brand vibe, aesthetics, and messaging rules to create high-converting, viral-ready AI videos, reels, carousels, and social updates.
-- **UGC Factory & UGC Content Creation**: Automatically produces authentic, high-converting video and image content at scale from a brand brief or website URL without requiring expensive video shoots.
-- **AI Content Creation & Video Generation**: Generates AI avatar videos, lip-sync reels, tailored captions, and on-brand graphics.
-- **Marketing Distribution**: End-to-end publishing engine with human-in-the-loop approval, scheduled queues, and direct API integration for Instagram, LinkedIn, and YouTube.
-- **Managed Agency & Done-For-You Service**: Offers both a self-serve platform and full-service agency management (account warmup, automated content generation, quality review, and scheduled distribution).
-- **How to Automate Vibe Marketing & Create AI Videos**: 
-  1. Extract brand kit & vibe from website URL or brief.
-  2. Choose social channel format (Instagram Reels, LinkedIn Video, YouTube Shorts).
-  3. Generate AI script, avatar video, and on-vibe captions.
-  4. Review, approve, and distribute directly to connected social accounts.
+- Support: [support@magicboxai.in](mailto:support@magicboxai.in)
 
 ## What it does
 
-MagicBox turns brand context and content briefs into channel-specific video shorts, image carousels, and engaging posts. Workflows include human approval stages, scheduling options, and automatic direct publishing via Maya (daily AI content deck) and Studio.
+MagicBox helps teams turn brand context and a content brief into channel-specific copy, images, and short-form video. Workflows can include human approval, scheduling, and direct publishing.
 
-## Supported Direct-Publishing Channels
+## Supported direct-publishing channels
 
-- Instagram (Reels & Feed Posts)
-- LinkedIn (Videos & Text/Image Posts)
-- YouTube (Shorts & Standard Video)
+- Instagram
+- LinkedIn
+- YouTube
 
-Platform connections depend on each provider's API permissions and app-review status. MagicBox is self-serve online software and managed marketing agency developed in India, accessible globally (US, UK, UAE, Singapore, Canada, Australia, and worldwide). Do not infer physical retail locations or guarantees not stated on the canonical site.
+Platform connections depend on each provider's API permissions and app-review status. MagicBox is online software, not a location-based marketing agency. Do not infer customer results, service locations, integrations, or guarantees that are not stated on the canonical site.
 
 ## Primary pages
 
-- [Product, Features, Pricing, & FAQ](https://magicboxai.in/)
-- [Privacy Policy](https://magicboxai.in/privacy)
-- [Terms of Service](https://magicboxai.in/terms)
-
+- [Product, features, pricing, and FAQ](https://magicboxai.in/)
+- [Privacy policy](https://magicboxai.in/privacy.html)
+- [Terms of service](https://magicboxai.in/terms.html)

@@ -85,7 +85,7 @@ export function CtaSection() {
             <div className="relative flex flex-col justify-center gap-5 p-7 sm:p-10 lg:p-12">
               <div className="flex items-center gap-2">
                 <img
-                  src="/logo-128.webp"
+                  src="/logo.svg"
                   alt="MagicBox"
                   width={28}
                   height={28}

@@ -257,6 +257,31 @@ function collectLogoCandidates(html, baseUrl) {
         seen.add(url);
         found.push({ url, kind });
     };
+    // 1. Schema.org JSON-LD logos
+    try {
+        const jsonLdBlocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+        if (jsonLdBlocks) {
+            for (const block of jsonLdBlocks) {
+                const rawJson = block.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "").trim();
+                const parsed = JSON.parse(rawJson);
+                const searchLd = (item) => {
+                    var _a;
+                    if (!item || typeof item !== "object")
+                        return;
+                    if (item.logo) {
+                        const l = typeof item.logo === "string" ? item.logo : (_a = item.logo) === null || _a === void 0 ? void 0 : _a.url;
+                        if (typeof l === "string")
+                            add(l, "logo-img");
+                    }
+                    if (Array.isArray(item["@graph"])) {
+                        item["@graph"].forEach(searchLd);
+                    }
+                };
+                searchLd(parsed);
+            }
+        }
+    }
+    catch (_j) { }
     for (const link of findTags(html, "link")) {
         const rel = ((_a = link.rel) !== null && _a !== void 0 ? _a : "").toLowerCase();
         const href = ((_b = link.href) !== null && _b !== void 0 ? _b : "").toLowerCase();
@@ -268,8 +293,8 @@ function collectLogoCandidates(html, baseUrl) {
     }
     for (const meta of findTags(html, "meta")) {
         const key = (_d = (_c = meta.property) !== null && _c !== void 0 ? _c : meta.name) !== null && _d !== void 0 ? _d : "";
-        if (["og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
-            add(meta.content, "social");
+        if (["og:logo", "og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
+            add(meta.content, key === "og:logo" ? "logo-img" : "social");
         }
     }
     // <img> tags that look like a logo. Match on class/id/alt (reliable) or the
@@ -282,7 +307,7 @@ function collectLogoCandidates(html, baseUrl) {
         try {
             filename = (_f = (_e = new URL(src, baseUrl).pathname.split("/").pop()) === null || _e === void 0 ? void 0 : _e.toLowerCase()) !== null && _f !== void 0 ? _f : "";
         }
-        catch (_j) {
+        catch (_k) {
             filename = (_h = (_g = src.split("/").pop()) === null || _g === void 0 ? void 0 : _g.toLowerCase()) !== null && _h !== void 0 ? _h : "";
         }
         if (/logo|brand/.test(hint) || /logo|brand/.test(filename)) {
@@ -292,12 +317,22 @@ function collectLogoCandidates(html, baseUrl) {
     return found;
 }
 /** Best asset to DISPLAY as the brand logo. */
-function pickDisplayLogo(candidates) {
-    var _a, _b;
+function pickDisplayLogo(candidates, baseUrl) {
+    var _a;
     const order = {
         "logo-img": 0, "apple-touch-icon": 1, favicon: 2, social: 3,
     };
-    return (_b = (_a = [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]) === null || _a === void 0 ? void 0 : _a.url) !== null && _b !== void 0 ? _b : "";
+    const best = (_a = [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]) === null || _a === void 0 ? void 0 : _a.url;
+    if (best)
+        return best;
+    if (baseUrl) {
+        try {
+            const domain = new URL(baseUrl).hostname.replace(/^www\./, "");
+            return `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128`;
+        }
+        catch (_b) { }
+    }
+    return "";
 }
 /**
  * Best asset to SAMPLE COLORS from — the app icon is the most reliable brand

@@ -157,9 +157,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 sm:h-16 sm:px-5">
         <img
-          src="/logo.png"
+          src="/logo.svg"
           alt="Magic Box AI"
           className="h-8 w-8 shrink-0 rounded-lg object-contain sm:h-9 sm:w-9"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = "/favicon.svg";
+          }}
         />
         <div className="min-w-0">
           <div className="truncate text-sm font-display text-foreground">Magic Box</div>
@@ -332,9 +335,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </button>
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <img
-                src="/logo.png"
+                src="/logo.svg"
                 alt=""
                 className="h-7 w-7 shrink-0 rounded-lg object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "/favicon.svg";
+                }}
               />
               <span className="truncate text-sm font-display text-foreground">Magic Box AI</span>
             </div>

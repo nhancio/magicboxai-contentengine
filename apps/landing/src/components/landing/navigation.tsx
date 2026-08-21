@@ -50,7 +50,7 @@ export function Navigation() {
         >
           <a href="/" className="flex items-center gap-2 group">
             <img
-              src="/logo-128.webp"
+              src="/logo.svg"
               alt="MagicBox"
               width={36}
               height={36}

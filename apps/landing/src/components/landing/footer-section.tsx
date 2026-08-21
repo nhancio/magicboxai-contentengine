@@ -38,7 +38,7 @@ export function FooterSection() {
             <div className="col-span-2">
               <a href="/" className="inline-flex items-center gap-2 mb-6">
                 <img
-                  src="/logo-128.webp"
+                  src="/logo.svg"
                   alt="MagicBox"
                   width={32}
                   height={32}

@@ -278,6 +278,28 @@ export function collectLogoCandidates(html: string, baseUrl: string): LogoCandid
     found.push({ url, kind });
   };
 
+  // 1. Schema.org JSON-LD logos
+  try {
+    const jsonLdBlocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+    if (jsonLdBlocks) {
+      for (const block of jsonLdBlocks) {
+        const rawJson = block.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "").trim();
+        const parsed = JSON.parse(rawJson);
+        const searchLd = (item: any) => {
+          if (!item || typeof item !== "object") return;
+          if (item.logo) {
+            const l = typeof item.logo === "string" ? item.logo : item.logo?.url;
+            if (typeof l === "string") add(l, "logo-img");
+          }
+          if (Array.isArray(item["@graph"])) {
+            item["@graph"].forEach(searchLd);
+          }
+        };
+        searchLd(parsed);
+      }
+    }
+  } catch {}
+
   for (const link of findTags(html, "link")) {
     const rel = (link.rel ?? "").toLowerCase();
     const href = (link.href ?? "").toLowerCase();
@@ -288,8 +310,8 @@ export function collectLogoCandidates(html: string, baseUrl: string): LogoCandid
 
   for (const meta of findTags(html, "meta")) {
     const key = meta.property ?? meta.name ?? "";
-    if (["og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
-      add(meta.content, "social");
+    if (["og:logo", "og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
+      add(meta.content, key === "og:logo" ? "logo-img" : "social");
     }
   }
 
@@ -314,11 +336,19 @@ export function collectLogoCandidates(html: string, baseUrl: string): LogoCandid
 }
 
 /** Best asset to DISPLAY as the brand logo. */
-export function pickDisplayLogo(candidates: LogoCandidate[]): string {
+export function pickDisplayLogo(candidates: LogoCandidate[], baseUrl?: string): string {
   const order: Record<LogoCandidate["kind"], number> = {
     "logo-img": 0, "apple-touch-icon": 1, favicon: 2, social: 3,
   };
-  return [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]?.url ?? "";
+  const best = [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]?.url;
+  if (best) return best;
+  if (baseUrl) {
+    try {
+      const domain = new URL(baseUrl).hostname.replace(/^www\./, "");
+      return `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128`;
+    } catch {}
+  }
+  return "";
 }
 
 /**

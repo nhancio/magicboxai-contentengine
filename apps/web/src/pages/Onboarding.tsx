@@ -98,7 +98,7 @@ function deriveBrandNameFromDomain(domain: string): string {
 function createFallbackBrandResult(url: string, manualName?: string): BrandExtractResult {
   const domain = extractDomain(url);
   const name = manualName?.trim() || deriveBrandNameFromDomain(domain);
-  const favicon = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=128` : "";
+  const favicon = domain ? `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128` : "";
   return {
     companyName: name,
     industry: "Digital & Technology",
@@ -310,6 +310,7 @@ export default function Onboarding() {
   const [toneOfVoice, setToneOfVoice] = useState("");
   const [isEditingBrand, setIsEditingBrand] = useState(false);
   const [brandProfileId, setBrandProfileId] = useState<string>("");
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
 
   // preview — branded samples from fetch
   const [previewPlatform, setPreviewPlatform] = useState<SocialPlatform>("linkedin");
@@ -569,6 +570,22 @@ export default function Onboarding() {
     window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
   }, [user]);
 
+  // Listen for OAuth completion from new tab/popup window
+  useEffect(() => {
+    const handleMsg = (e: MessageEvent) => {
+      if (e.data?.type === "magicbox_social_connected") {
+        const prov = e.data.provider || "channel";
+        toast.success(`${prov.charAt(0).toUpperCase() + prov.slice(1)} connected successfully!`);
+        setConnecting(null);
+      } else if (e.data?.type === "magicbox_social_error") {
+        toast.error(e.data.reason || "Connection failed");
+        setConnecting(null);
+      }
+    };
+    window.addEventListener("message", handleMsg);
+    return () => window.removeEventListener("message", handleMsg);
+  }, []);
+
   const handleConnect = async (provider: string) => {
     if (provider === "tiktok") {
       toast.info("TikTok OAuth is currently in verification with ByteDance. Connect Instagram, LinkedIn, or YouTube to publish live content today.", { duration: 5000 });
@@ -592,7 +609,7 @@ export default function Onboarding() {
     // Watchdog: reset connecting state if navigation is delayed or cancelled
     const watchdog = window.setTimeout(() => {
       setConnecting(null);
-    }, 10000);
+    }, 15000);
 
     try {
       if (!isConvexConfigured) {
@@ -613,7 +630,15 @@ export default function Onboarding() {
         window.clearTimeout(watchdog);
         return;
       }
-      window.location.href = url;
+      window.clearTimeout(watchdog);
+      // Open in a new tab so onboarding session is preserved
+      const newTab = window.open(url, "_blank");
+      if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
+        // Fallback if popup blocker intercepted
+        window.location.href = url;
+      } else {
+        toast.info(`Connecting ${PLATFORM_META[validProvider]?.label || validProvider}... Authorize in the new tab to continue.`, { duration: 6000 });
+      }
     } catch (error) {
       window.clearTimeout(watchdog);
       toast.error(error instanceof Error ? error.message : "Could not start connection");
@@ -781,7 +806,7 @@ export default function Onboarding() {
       secondary: currentExtracted.colors?.secondary || "#6366f1",
       accent: currentExtracted.colors?.accent || "#f59e0b",
     };
-    const finalLogoUrl = currentExtracted.logoUrl || `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+    const finalLogoUrl = currentExtracted.logoUrl || (domain ? `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128` : "");
     const finalHashtags = (currentExtracted.hashtags ?? []).map((h) => h.replace(/^#/, "")).filter(Boolean);
     const finalSampleCaptions = currentExtracted.sampleCaptions?.length ? currentExtracted.sampleCaptions : undefined;
 
@@ -1198,20 +1223,27 @@ export default function Onboarding() {
   }, [extracted, brandName, websiteUrl, extractedUrl]);
 
   return (
-    <div className="h-[100dvh] flex flex-col overflow-hidden bg-background text-foreground">
+    <div className="min-h-[100dvh] h-full flex flex-col bg-background text-foreground overflow-x-hidden">
       <div
         className={cn(
           "relative mx-auto flex flex-col flex-1 min-h-0 w-full py-4 lg:py-6",
-          step === 2 ? "max-w-[1600px] px-4 lg:px-8 xl:px-12" : "max-w-3xl px-4",
+          step === 2 ? "max-w-[1600px] px-3 sm:px-6 lg:px-8 xl:px-12" : "max-w-3xl px-3 sm:px-6",
         )}
       >
         <div className="mb-4 lg:mb-6 text-center shrink-0">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center overflow-hidden">
-            <img src="/logo.png" alt="MagicBox" className="h-full w-full object-contain" />
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-card border border-border shadow-sm p-1.5">
+            <img
+              src="/logo.svg"
+              alt="MagicBox"
+              className="h-full w-full object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "/favicon.svg";
+              }}
+            />
           </div>
           <span className="eyebrow text-[10px]">Get started</span>
           <h1 className="mt-1 font-display text-2xl sm:text-3xl tracking-tight">Turn your website into a campaign</h1>
-          <p className="mt-1 text-sm text-muted-foreground max-w-xl mx-auto">
+          <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-xl mx-auto px-2">
             Start with your site. Connect channels. Review the creative. Nothing posts without your approval.
           </p>
         </div>
@@ -1486,21 +1518,22 @@ export default function Onboarding() {
                     </div>
 
                     {/* Rich Extracted Brand Preview Card */}
-                    <div className="rounded-2xl border border-border/80 bg-card p-5 sm:p-6 space-y-6 shadow-sm">
+                    <div className="rounded-2xl border border-border/80 bg-card p-4 sm:p-6 space-y-6 shadow-sm">
                       {/* Brand Identity Header Row */}
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                         <div className="relative shrink-0">
-                          {safeExtracted.logoUrl ? (
+                          {safeExtracted.logoUrl && !logoLoadFailed ? (
                             <img
                               src={safeExtracted.logoUrl}
-                              alt=""
+                              alt={brandName || safeExtracted.companyName || "Logo"}
                               className="h-16 w-16 rounded-xl border border-border bg-card object-contain p-1.5 shadow-sm"
-                              onError={(e) => {
-                                (e.target as HTMLElement).style.display = "none";
-                              }}
+                              onError={() => setLogoLoadFailed(true)}
                             />
                           ) : (
-                            <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-secondary font-display text-2xl font-bold text-foreground border border-border">
+                            <div
+                              className="flex h-16 w-16 items-center justify-center rounded-xl font-display text-2xl font-bold text-white shadow-sm border border-white/10"
+                              style={{ background: safeExtracted.colors?.primary || "#6366f1" }}
+                            >
                               {(brandName || safeExtracted.companyName || "?").slice(0, 1).toUpperCase()}
                             </div>
                           )}
@@ -1528,6 +1561,18 @@ export default function Onboarding() {
                                   onChange={(e) => updateExtractedField("industry", e.target.value)}
                                   className="h-9 mt-1 text-sm bg-secondary/50"
                                   placeholder="e.g. Technology, Apparel, Healthcare"
+                                />
+                              </div>
+                              <div className="sm:col-span-2">
+                                <label className="text-[11px] font-mono uppercase text-muted-foreground">Logo URL</label>
+                                <Input
+                                  value={safeExtracted.logoUrl || ""}
+                                  onChange={(e) => {
+                                    setLogoLoadFailed(false);
+                                    updateExtractedField("logoUrl", e.target.value);
+                                  }}
+                                  className="h-9 mt-1 text-sm bg-secondary/50 font-mono text-xs"
+                                  placeholder="https://example.com/logo.png"
                                 />
                               </div>
                             </div>
@@ -1945,13 +1990,21 @@ export default function Onboarding() {
                         </div>
                         {(safeExtracted?.logoUrl || brandName) && (
                           <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 shadow-sm">
-                            {safeExtracted?.logoUrl ? (
+                            {safeExtracted?.logoUrl && !logoLoadFailed ? (
                               <img
                                 src={safeExtracted.logoUrl}
                                 alt=""
                                 className="h-7 w-7 rounded-full object-contain"
+                                onError={() => setLogoLoadFailed(true)}
                               />
-                            ) : null}
+                            ) : (
+                              <div
+                                className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm"
+                                style={{ background: safeExtracted?.colors?.primary || "#6366f1" }}
+                              >
+                                {(brandName || safeExtracted?.companyName || "?").slice(0, 1).toUpperCase()}
+                              </div>
+                            )}
                             <span className="text-xs font-semibold">{brandName || safeExtracted?.companyName || "Your brand"}</span>
                           </div>
                         )}
