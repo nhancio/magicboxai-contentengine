@@ -47,7 +47,7 @@ export {
   claimGuestEntitlement,
   triggerWelcomeEmail,
 } from "./welcome";
-export { createDodoCheckout, createDodoPortal, dodoWebhook, createGuestCheckout } from "./dodo";
+export { createStripeCheckout, createStripePortal, stripeWebhook, createGuestCheckout } from "./stripe";
 
 type SubscriptionPlan = "free" | "pro" | "max";
 

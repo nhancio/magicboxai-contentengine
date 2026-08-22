@@ -81,7 +81,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const syncPlan = useMutation(api.credits.syncPlan);
   const mayaActivation = useMayaActivation();
 
-  // Firestore/Dodo is the billing source of truth. Refresh the signed claim
+  // Firestore/Stripe is the billing source of truth. Refresh the signed claim
   // used by Convex and use the same record for the sidebar label.
   useEffect(() => {
     if (!user) {

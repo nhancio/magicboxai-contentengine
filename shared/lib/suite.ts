@@ -1,4 +1,5 @@
-// Client wrappers for the marketing automation suite callables.
+// client wrappers for the marketing automation suite callables.
+import { loadStripe } from '@stripe/stripe-js';
 
 import { httpsCallable, type FunctionsErrorCode } from "firebase/functions";
 import { FirebaseError } from "firebase/app";
@@ -215,16 +216,19 @@ export const generateBrandedPostImage = callable<
   },
   { imageUrl: string; source: "website" | "generated" }
 >("generateBrandedPostImage");
-/** Create a Dodo Payments checkout session and return its hosted URL. */
-export const createDodoCheckout = callable<
+/** Create a Stripe checkout session and return its hosted URL. */
+export const createStripeCheckout = callable<
   { planId: "pro" | "max"; billing: "monthly" | "annual" },
   { url: string }
->("createDodoCheckout");
+>("createStripeCheckout");
 
-/** Open the authenticated Dodo customer portal for billing management. */
-export const createDodoPortal = callable<Record<string, never>, { url: string }>(
-  "createDodoPortal"
+/** Open the authenticated Stripe customer portal for billing management. */
+export const createStripePortal = callable<Record<string, never>, { url: string }>(
+  "createStripePortal"
 );
+
+// Initialize stripe with the publishable key
+export const getStripe = () => loadStripe("pk_live_51U6siSPHdNrclWGwZWF051XfVCs52X03ObWrr8CBsrG0wOMkdHy4zjaXNxeekW5iV4C4EPT2fI3Kx1Znjp9u8a2j00OGEeHjNw");
 
 export const syncBillingClaims = callable<
   Record<string, never>,

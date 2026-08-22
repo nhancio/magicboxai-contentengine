@@ -69,7 +69,7 @@ async function applyBillingClaims(uid: string): Promise<{
  *
  * Entitlement only attaches when the paying email matches the signed-in
  * Google email. A mismatch looks like "none" because pending rows are keyed
- * by the Dodo customer email.
+ * by the Stripe customer email.
  */
 async function claimPendingEntitlement(uid: string, email: string): Promise<ClaimOutcome> {
   const key = email.toLowerCase();
@@ -107,7 +107,7 @@ async function claimPendingEntitlement(uid: string, email: string): Promise<Clai
       videosUsed: 0,
       videosLimit: PLAN_VIDEO_LIMIT[p.plan],
       status: "active",
-      provider: p.provider ?? "dodo",
+              provider: p.provider ?? "stripe",
       providerProductId: p.providerProductId ?? null,
       providerSubscriptionId: p.providerSubscriptionId ?? null,
       providerCustomerId: p.providerCustomerId ?? null,
@@ -237,7 +237,7 @@ export const onUserUpdatedClaimPendingEntitlement = onDocumentUpdated(
  * Client-callable claim after guest checkout returns to /pricing?checkout=returned.
  * Looks up pendingEntitlements by the signed-in Google email, writes subscriptions/{uid},
  * and refreshes custom claims so Convex can enforce the paid plan. Does not change
- * the Dodo webhook path that creates the pending row.
+ * the Stripe webhook path that creates the pending row.
  */
 export const claimGuestEntitlement = onCall(callableSecurity, async (request) => {
   const uid = requireAuth(request);

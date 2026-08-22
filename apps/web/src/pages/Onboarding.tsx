@@ -20,7 +20,7 @@ import { Input } from "@shared/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/components/ui/avatar";
 import { cn } from "@shared/lib/utils";
 import { captureEvent, PRODUCT_EVENTS } from "@shared/lib/analytics";
-import PreviewModule from "../components/previews/PreviewModule";
+import PlatformPreview from "../components/previews/PlatformPreview";
 import BrandedSlide from "../components/carousel/BrandedSlide";
 import { exportSlidePngs } from "../components/carousel/exportSlides";
 import {
@@ -35,10 +35,12 @@ import WebsitePostCard from "../components/creative/WebsitePostCard";
 import { WhatsAppV2Modal, isWhatsAppV2Active } from "./Integrations";
 import {
   ArrowRight,
+  BatteryFull,
   CalendarClock,
   Check,
   CheckCircle2,
   ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Facebook,
   Flame,
@@ -55,12 +57,14 @@ import {
   RotateCcw,
   Send,
   ShieldCheck,
+  Signal,
   Sparkles,
   Tag,
   Twitter,
   Users,
   Video,
   Volume2,
+  Wifi,
   Youtube,
 } from "lucide-react";
 
@@ -166,8 +170,7 @@ const PREVIEW_PLATFORMS: SocialPlatform[] = [
   "instagram",
   "linkedin",
   "youtube",
-  "facebook",
-  "whatsapp",
+  "twitter",
 ];
 
 type SamplePost = {
@@ -323,9 +326,7 @@ export default function Onboarding() {
   const [carouselPack, setCarouselPack] = useState<CarouselPack | null>(null);
   const [carouselGenerating, setCarouselGenerating] = useState(false);
   const [activeCarouselSlide, setActiveCarouselSlide] = useState(0);
-  const [clientApproved, setClientApproved] = useState(false);
   const [posting, setPosting] = useState(false);
-  const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const imageCardRef = useRef<HTMLDivElement | null>(null);
   const carouselSlideRefs = useRef<(HTMLDivElement | null)[]>([]);
   const contentHydratedRef = useRef(false);
@@ -1050,9 +1051,11 @@ export default function Onboarding() {
     setPreviewPlatform(platform);
   };
 
-  useEffect(() => {
-    setClientApproved(false);
-  }, [activeSampleId, creativeMode, previewPlatform]);
+  const cyclePlatform = (direction: number) => {
+    const index = PREVIEW_PLATFORMS.indexOf(previewPlatform);
+    const size = PREVIEW_PLATFORMS.length;
+    setPreviewPlatform(PREVIEW_PLATFORMS[(index + direction + size) % size]);
+  };
 
   useEffect(() => {
     if (step !== 2 || contentHydratedRef.current) return;
@@ -1096,33 +1099,28 @@ export default function Onboarding() {
     return urls;
   };
 
-  const handleQuickPost = async (mode: "now" | "schedule") => {
+  const handleQuickPost = async (mode: "now" | "schedule" | "draft") => {
     if (!activeCaption) return;
     if (!isConvexConfigured) {
       toast.error("Convex is not configured — can't publish yet.");
       return;
     }
-    if (!clientApproved) {
-      toast.error("Please approve the copy and creative before posting.");
-      return;
-    }
-    if (!activeAccountForPreview) {
+    const isDraft = mode === "draft";
+    if (!isDraft && !activeAccountForPreview) {
       toast.error(`Connect ${PLATFORM_META[previewPlatform]?.label || previewPlatform} first to post this.`);
       return;
     }
 
-    if (previewPlatform === "youtube") {
+    if (!isDraft && previewPlatform === "youtube") {
       toast.error("YouTube requires a video. Use this branded creative as the visual direction in Studio.");
       return;
     }
-    if (creativeMode === "carousel" && !["instagram", "linkedin"].includes(previewPlatform)) {
+    if (!isDraft && creativeMode === "carousel" && !["instagram", "linkedin"].includes(previewPlatform)) {
       toast.error("Carousel posting is currently available for Instagram and LinkedIn.");
       return;
     }
-    if (creativeMode === "image" && !previewImageUrl) {
-      toast.error(
-        `A finished branded image is required before posting to ${PLATFORM_META[previewPlatform]?.label || previewPlatform}. Fetch the website again or use Studio.`,
-      );
+    if (creativeMode === "image" && !imageCardRef.current) {
+      toast.error("The creative is still rendering — try again in a moment.");
       return;
     }
     if (creativeMode === "carousel" && !carouselPack) {
@@ -1142,7 +1140,7 @@ export default function Onboarding() {
         caption: activeCaption,
         hashtags: activeHashtags,
         platforms: [previewPlatform],
-        socialAccountIds: [activeAccountForPreview.id],
+        socialAccountIds: activeAccountForPreview ? [activeAccountForPreview.id] : undefined,
         mediaUrls,
         mediaType: "image",
         mediaSource: "upload",
@@ -1154,7 +1152,12 @@ export default function Onboarding() {
         mode,
         timezone,
       });
-      if (mode === "now") {
+      if (mode === "draft") {
+        toast.success(
+          `Saved to drafts for ${PLATFORM_META[previewPlatform]?.label || previewPlatform}`,
+        );
+        cyclePlatform(1);
+      } else if (mode === "now") {
         captureEvent("post_publish_requested", { channel: previewPlatform, source: "onboarding" });
         if (result.status === "posted") captureEvent("post_published", { channel: previewPlatform, source: "onboarding" });
         toast.success(
@@ -1162,6 +1165,7 @@ export default function Onboarding() {
             ? `${creativeMode === "carousel" ? "Carousel" : "Image"} posted to ${PLATFORM_META[previewPlatform]?.label || previewPlatform}`
             : `Approved — sending to ${PLATFORM_META[previewPlatform]?.label || previewPlatform} now…`,
         );
+        cyclePlatform(1);
       } else {
         captureEvent("post_scheduled", { channel: previewPlatform, source: "onboarding" });
         const when = result.scheduledFor
@@ -1185,7 +1189,10 @@ export default function Onboarding() {
   };
 
   const finish = async (goToWizard: boolean) => {
-    if (!user || !db) return;
+    if (!user || !db) {
+      toast.error("You are signed out — sign in again to finish setup.");
+      return;
+    }
     if (!brandProfileId) {
       toast.error("Link your website before completing setup.");
       setStep(0);
@@ -1194,15 +1201,24 @@ export default function Onboarding() {
     try {
       sessionStorage.removeItem("magicbox_onboarding_step");
     } catch {}
-    await setDoc(
-      doc(db, "users", user.uid),
-      {
-        onboardingComplete: true,
-        onboardingDeferred: false,
-        onboardingCompletedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
+    // A failed write leaves OnboardingGate bouncing the user back here, so the
+    // failure has to be visible rather than an unhandled rejection.
+    try {
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          onboardingComplete: true,
+          onboardingDeferred: false,
+          onboardingCompletedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? `Could not save setup: ${error.message}` : "Could not save setup",
+      );
+      return;
+    }
     captureEvent(PRODUCT_EVENTS.onboardingCompleted, {
       next: goToWizard ? "automation_wizard" : "dashboard",
     });
@@ -1221,10 +1237,7 @@ export default function Onboarding() {
   return (
     <div className="min-h-[100dvh] h-full flex flex-col bg-background text-foreground overflow-x-hidden">
       <div
-        className={cn(
-          "relative mx-auto flex flex-col flex-1 min-h-0 w-full py-4 lg:py-6",
-          step === 2 ? "max-w-[1600px] px-3 sm:px-6 lg:px-8 xl:px-12" : "max-w-3xl px-3 sm:px-6",
-        )}
+        className="relative mx-auto flex w-full flex-1 min-h-0 flex-col px-3 py-4 sm:px-6 lg:px-8 lg:py-6 xl:px-12"
       >
         <div className="mb-4 lg:mb-6 text-center shrink-0">
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-card border border-border shadow-sm p-1.5">
@@ -1300,7 +1313,7 @@ export default function Onboarding() {
           >
             {/* STEP 0: Website & Brand Kit */}
             {step === 0 && (
-              <div className="glass-card p-5 sm:p-8 space-y-6">
+              <div className="glass-card p-4 sm:p-6 space-y-4">
                 {/* Phase A: Input State (Before Extraction) */}
                 {brandPhase === "idle" && (
                   <div className="space-y-6">
@@ -1476,7 +1489,7 @@ export default function Onboarding() {
 
                 {/* Phase D: Preview & Confirmation State */}
                 {brandPhase === "ready" && safeExtracted && (
-                  <div className="space-y-6">
+                  <div className="space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-4">
                       <div>
                         <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
@@ -1514,7 +1527,7 @@ export default function Onboarding() {
                     </div>
 
                     {/* Rich Extracted Brand Preview Card */}
-                    <div className="rounded-2xl border border-border/80 bg-card p-4 sm:p-6 space-y-6 shadow-sm">
+                    <div className="rounded-2xl border border-border/80 bg-card p-4 space-y-4 shadow-sm">
                       {/* Brand Identity Header Row */}
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                         <div className="relative shrink-0">
@@ -1601,6 +1614,7 @@ export default function Onboarding() {
                         </div>
                       </div>
 
+                      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-2">
                       {/* Color Palette Row */}
                       <div className="space-y-2.5 pt-2 border-t border-border/60">
                         <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-muted-foreground">
@@ -1730,6 +1744,7 @@ export default function Onboarding() {
                           </div>
                         )}
                       </div>
+                      </div>
                     </div>
 
                     {/* Action Buttons: Clear Save & Continue */}
@@ -1800,6 +1815,8 @@ export default function Onboarding() {
                   </p>
                 </div>
 
+                <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+                <div className="space-y-5">
                 {accounts.length > 0 && (
                   <div className="space-y-2">
                     <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
@@ -1866,8 +1883,9 @@ export default function Onboarding() {
                     <li><strong className="text-foreground">Facebook, Instagram &amp; WhatsApp:</strong> If Meta displays <em>&quot;Feature unavailable&quot;</em>, ensure your Meta App is in Live mode or add test accounts in Meta Developer Dashboard.</li>
                   </ul>
                 </div>
+                </div>
 
-                <div className="grid gap-2.5 sm:grid-cols-2">
+                <div className="grid gap-2.5 sm:grid-cols-2 lg:content-start">
                   {CONNECTABLE.filter((provider) => {
                     const linked = connectedByPlatform.get(provider);
                     return !(linked && linked.status === "active");
@@ -1923,6 +1941,7 @@ export default function Onboarding() {
                     <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold">Soon</span>
                   </Button>
                 </div>
+                </div>
 
                 <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[auto_auto_1fr] pt-2">
                   <Button
@@ -1954,374 +1973,172 @@ export default function Onboarding() {
               </div>
             )}
 
-            {/* STEP 2: Review & Approve */}
+            {/* STEP 2: Review & Approve — one phone per platform, cycled */}
             {step === 2 && (
-              <div
-                className={cn(
-                  "grid gap-5 lg:h-[calc(100vh-280px)]",
-                  previewCollapsed
-                    ? "lg:grid-cols-[minmax(0,1fr)_3.5rem]"
-                    : "lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]",
-                )}
-              >
-                <div
-                  className={cn(
-                    "min-w-0 space-y-5 lg:overflow-y-auto lg:pr-2 lg:pb-4 no-scrollbar",
-                    !previewCollapsed && "pb-[min(52vh,440px)] lg:pb-4",
-                  )}
-                >
-                  <div className="glass-card overflow-hidden">
-                    <div className="border-b border-border bg-secondary/35 p-6">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-brand">
-                            <ShieldCheck className="h-3.5 w-3.5" />
-                            Approval workspace
-                          </div>
-                          <h2 className="font-display text-3xl">{STEPS[2].title}</h2>
-                          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                            MagicBox used your brand imagery, logo, palette, audience, and
-                            voice. Review the hook and finished creative before granting permission to post.
-                          </p>
-                        </div>
-                        {(safeExtracted?.logoUrl || brandName) && (
-                          <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 shadow-sm">
-                            {safeExtracted?.logoUrl && !logoLoadFailed ? (
-                              <img
-                                src={safeExtracted.logoUrl}
-                                alt=""
-                                className="h-7 w-7 rounded-full object-contain"
-                                onError={() => setLogoLoadFailed(true)}
-                              />
-                            ) : (
-                              <div
-                                className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm"
-                                style={{ background: safeExtracted?.colors?.primary || "#6366f1" }}
-                              >
-                                {(brandName || safeExtracted?.companyName || "?").slice(0, 1).toUpperCase()}
-                              </div>
-                            )}
-                            <span className="text-xs font-semibold">{brandName || safeExtracted?.companyName || "Your brand"}</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                        {[
-                          ["Website grounded", "Copy follows the supplied site"],
-                          ["Logo locked", "Brand mark stays consistent"],
-                          ["Permission first", "No automatic publishing"],
-                        ].map(([label, detail]) => (
-                          <div key={label} className="rounded-lg border border-border bg-card px-3 py-2.5">
-                            <div className="flex items-center gap-1.5 text-xs font-semibold">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                              {label}
-                            </div>
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">{detail}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-5 p-6">
-                      <div className="grid grid-cols-2 gap-2 rounded-xl bg-secondary p-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setCreativeMode("image")}
-                          className={cn(
-                            "flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-all",
-                            creativeMode === "image"
-                              ? "bg-card text-foreground shadow-sm ring-1 ring-border"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          <ImageIcon className="h-4 w-4" />
-                          Image post
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCreativeMode("carousel")}
-                          className={cn(
-                            "flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-all",
-                            creativeMode === "carousel"
-                              ? "bg-card text-foreground shadow-sm ring-1 ring-border"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          <Layers className="h-4 w-4" />
-                          Carousel {carouselPack ? `· ${carouselPack.slides.length} slides` : ""}
-                        </button>
-                      </div>
-
-                      {creativeMode === "image" && samples.length > 1 && (
-                        <div className="flex flex-wrap gap-2">
-                          {samples.map((sample, index) => (
-                            <button
-                              key={sample.id}
-                              type="button"
-                              onClick={() => setActiveSampleId(sample.id)}
-                              className={cn(
-                                "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-                                activeSampleId === sample.id
-                                  ? "border-foreground bg-foreground text-background"
-                                  : "border-border text-muted-foreground hover:bg-secondary",
-                              )}
-                            >
-                              Hook {index + 1}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {creativeMode === "carousel" && carouselPack && (
-                        <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-2">
-                          {carouselPack.slides.map((slide, index) => (
-                            <button
-                              key={`${slide.title}-${index}`}
-                              type="button"
-                              onClick={() => setActiveCarouselSlide(index)}
-                              className={cn(
-                                "snap-start rounded-lg border px-3 py-2 text-left transition-colors",
-                                activeCarouselSlide === index
-                                  ? "border-foreground bg-foreground text-background"
-                                  : "border-border bg-card text-muted-foreground hover:bg-secondary",
-                              )}
-                            >
-                              <span className="font-mono text-[9px] uppercase tracking-widest">
-                                {index + 1}/{carouselPack.slides.length}
-                              </span>
-                              <span className="mt-0.5 block max-w-36 truncate text-xs font-semibold">
-                                {slide.title}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {(generating || carouselGenerating) && (
-                        <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
-                          {generating && carouselGenerating
-                            ? "Writing the strongest hooks and building the carousel…"
-                            : carouselGenerating
-                            ? "Building the carousel…"
-                            : "Polishing the image-post copy…"}
-                        </div>
-                      )}
-
-                      {activeCaption ? (
-                        <div className="rounded-xl border border-border bg-card p-4">
-                          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                            {creativeMode === "carousel" ? "Carousel caption" : "Post copy"}
-                          </div>
-                          <h3 className="mt-2 font-display text-xl leading-tight">{activeHook}</h3>
-                          <p className="mt-2 line-clamp-5 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
-                            {activeCaption}
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {activeHashtags.slice(0, 6).map((tag) => (
-                              <span key={tag} className="rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">
-                                #{tag.replace(/^#/, "")}
-                              </span>
-                            ))}
-                          </div>
-                          {(activeTrend || activeShareReason) ? (
-                            <div className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
-                              {activeTrend ? (
-                                <p><span className="font-semibold text-foreground">Trend signal:</span> {activeTrend}</p>
-                              ) : null}
-                              {activeShareReason ? (
-                                <p className="mt-1">
-                                  <span className="font-semibold text-foreground">
-                                    {creativeMode === "carousel" ? "Why it earns a save:" : "Why it earns a share:"}
-                                  </span>{" "}
-                                  {activeShareReason}
-                                </p>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : !generating && !carouselGenerating ? (
-                        <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
-                          Generating your brand campaign drafts…
-                        </div>
-                      ) : null}
-
-                      {creativeMode === "carousel" && !["instagram", "linkedin"].includes(previewPlatform) && (
-                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-                          Multi-image publishing is currently available for Instagram and LinkedIn.
-                          Switch the preview platform to approve this carousel.
-                        </div>
-                      )}
-
-                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-foreground/15 bg-secondary/60 p-4">
-                        <input
-                          type="checkbox"
-                          checked={clientApproved}
-                          onChange={(event) => setClientApproved(event.target.checked)}
-                          className="mt-0.5 h-4 w-4 accent-black"
-                        />
-                        <span>
-                          <span className="block text-sm font-semibold text-foreground">
-                            I approve this copy and creative for {PLATFORM_META[previewPlatform]?.label || previewPlatform}
-                          </span>
-                          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-                            MagicBox will only post the version visible in the preview. Editing the hook,
-                            format, or platform clears this permission and asks again.
-                          </span>
-                        </span>
-                      </label>
-
-                      {activeAccountForPreview ? (
-                        <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2">
-                          <Button
-                            onClick={() => void handleQuickPost("now")}
-                            disabled={posting || !clientApproved || !activeCaption}
-                            className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm bg-brand hover:bg-brand/90 text-brand-foreground font-semibold"
-                          >
-                            {posting ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <Send className="mr-1.5 h-4 w-4 shrink-0" />}
-                            <span className="truncate">Approve &amp; post now</span>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => void handleQuickPost("schedule")}
-                            disabled={posting || !clientApproved || !activeCaption}
-                            className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm"
-                          >
-                            {posting ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <CalendarClock className="mr-1.5 h-4 w-4 shrink-0" />}
-                            <span className="truncate">Approve for next best time</span>
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button variant="outline" onClick={() => setStep(1)} className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm">
-                          <span className="truncate">Connect {PLATFORM_META[previewPlatform]?.label || previewPlatform} to post after approval</span>
-                          <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
-                    <Button
-                      variant="ghost"
-                      onClick={() => setStep(1)}
-                      className="w-full sm:w-auto text-muted-foreground"
-                    >
-                      ← Back to channels
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => finish(false)}
-                      className="w-full sm:flex-1 text-muted-foreground hover:text-foreground"
-                    >
-                      Explore the dashboard
-                    </Button>
-                    <Button
-                      onClick={() => finish(true)}
-                      className="w-full sm:flex-1 bg-brand h-auto py-3.5 px-4 text-xs sm:text-sm hover:bg-brand/90 font-semibold"
-                    >
-                      <span className="truncate">Create my first automation</span>
-                      <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
-                    </Button>
-                  </div>
-                  <p className="text-center text-xs text-muted-foreground">
-                    Posting timezone: {timezone}
-                  </p>
-                </div>
-
-                {/* Right preview rail — desktop sticky; mobile bottom sheet */}
-                <div
-                  className={cn(
-                    "z-20 border-border bg-background/95 backdrop-blur-md",
-                    "fixed inset-x-0 bottom-0 border-t p-3 shadow-[0_-8px_30px_rgba(0,0,0,0.12)]",
-                    previewCollapsed && "hidden lg:block",
-                    "lg:static lg:inset-auto lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none",
-                    "lg:sticky lg:top-6 lg:self-start",
-                  )}
-                >
-                  {!previewCollapsed && (
-                    <div className="mb-2 flex items-center justify-between lg:hidden">
-                      <span className="text-xs font-medium text-muted-foreground">Live preview</span>
+              <div className="flex h-full min-h-0 flex-col items-center justify-center gap-4">
+                {/* Platform rail — icon only, green dot = connected */}
+                <div className="flex shrink-0 items-center gap-2">
+                  {PREVIEW_PLATFORMS.map((platform) => {
+                    const meta = PLATFORM_META[platform];
+                    const Icon = meta?.icon ?? Link2;
+                    const connected = accounts.some(
+                      (a) => a.platform === platform && a.status === "active",
+                    );
+                    return (
                       <button
+                        key={platform}
                         type="button"
-                        onClick={() => setPreviewCollapsed(true)}
-                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                      >
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                        Hide
-                      </button>
-                    </div>
-                  )}
-                  <PreviewModule
-                    collapsible
-                    collapsed={previewCollapsed}
-                    onCollapsedChange={setPreviewCollapsed}
-                    className={cn(
-                      "h-full",
-                      previewCollapsed
-                        ? "min-h-[min(48vh,280px)] lg:min-h-0"
-                        : "max-h-[min(48vh,420px)] min-h-0 lg:max-h-none",
-                    )}
-                    title={clientApproved ? "Approved preview" : "Approval preview"}
-                    platform={previewPlatform}
-                    onPlatformChange={handlePreviewPlatform}
-                    allowedPlatforms={PREVIEW_PLATFORMS}
-                    content={
-                      activeCaption
-                        ? {
-                            caption: activeCaption,
-                            hashtags: activeHashtags,
-                            mediaAspect: creativeMode === "carousel" ? carouselAspect : "4:5",
-                            mediaNode:
-                              creativeMode === "carousel" && carouselPack ? (
-                                <BrandedSlide
-                                  slide={carouselPack.slides[activeCarouselSlide] ?? carouselPack.slides[0]}
-                                  brand={creativeBrand}
-                                  aspect={carouselAspect}
-                                  index={activeCarouselSlide}
-                                  total={carouselPack.slides.length}
-                                  scale={carouselPreviewScale}
-                                />
-                              ) : (
-                                <WebsitePostCard
-                                  brand={creativeBrand}
-                                  hook={activeHook}
-                                  supporting={activeSupporting}
-                                  eyebrow={safeExtracted?.industry || "From your website"}
-                                  imageUrl={previewImageUrl || undefined}
-                                  scale={340 / 1080}
-                                />
-                              ),
-                            brandName: brandName || safeExtracted?.companyName || "Your Brand",
-                            handle: (brandName || safeExtracted?.companyName)
-                              ? (brandName || safeExtracted?.companyName || "").toLowerCase().replace(/\s+/g, "")
-                              : "yourbrand",
-                            logoUrl: safeExtracted?.logoUrl,
-                            brandColors: safeExtracted?.colors,
-                          }
-                        : null
-                    }
-                    emptyHint={
-                      generating || carouselGenerating
-                        ? "Building website-grounded campaign drafts…"
-                        : "Go back and enter a website to unlock campaign drafts."
-                    }
-                    footer={
-                      <div className="flex items-center gap-2 text-xs">
-                        {clientApproved ? (
-                          <>
-                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                            <span className="font-medium text-emerald-700">Client permission confirmed for this version</span>
-                          </>
-                        ) : (
-                          <>
-                            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-muted-foreground">Waiting for explicit approval</span>
-                          </>
+                        onClick={() => handlePreviewPlatform(platform)}
+                        aria-label={meta?.label || platform}
+                        aria-current={platform === previewPlatform}
+                        className={cn(
+                          "relative flex h-10 w-10 items-center justify-center rounded-xl border transition-all",
+                          platform === previewPlatform
+                            ? "border-brand/40 bg-brand/10 text-brand shadow-sm"
+                            : "border-border bg-card text-muted-foreground hover:text-foreground",
                         )}
-                      </div>
-                    }
-                  />
+                      >
+                        <Icon className="h-4.5 w-4.5" />
+                        {connected && (
+                          <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-background" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
+
+                {/* Device */}
+                <div className="flex min-h-0 w-full flex-1 items-center justify-center gap-2 sm:gap-6">
+                  <button
+                    type="button"
+                    onClick={() => cyclePlatform(-1)}
+                    aria-label="Previous channel"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-foreground"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+
+                  <div className="relative aspect-[9/19.5] h-[min(68vh,660px)] shrink-0">
+                    {/* side buttons */}
+                    <span className="absolute -left-[2px] top-[18%] h-7 w-[3px] rounded-l-sm bg-neutral-700" />
+                    <span className="absolute -left-[2px] top-[27%] h-12 w-[3px] rounded-l-sm bg-neutral-700" />
+                    <span className="absolute -left-[2px] top-[41%] h-12 w-[3px] rounded-l-sm bg-neutral-700" />
+                    <span className="absolute -right-[2px] top-[31%] h-16 w-[3px] rounded-r-sm bg-neutral-700" />
+                    {/* titanium frame → bezel → screen */}
+                    <div className="h-full w-full rounded-[2.9rem] bg-gradient-to-b from-neutral-600 via-neutral-800 to-neutral-700 p-[2px] shadow-[0_35px_60px_-18px_rgba(0,0,0,0.55)]">
+                      <div className="h-full w-full rounded-[2.8rem] bg-black p-[9px]">
+                        <div className="relative h-full w-full overflow-hidden rounded-[2.3rem] bg-black">
+                          {/* status bar */}
+                          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex h-[38px] items-center justify-between px-6 text-[11px] font-semibold text-white">
+                            <span className="tabular-nums">9:41</span>
+                            <span className="flex items-center gap-[5px]">
+                              <Signal className="h-3 w-3" />
+                              <Wifi className="h-3 w-3" />
+                              <BatteryFull className="h-3.5 w-3.5" />
+                            </span>
+                          </div>
+                          {/* dynamic island */}
+                          <span className="pointer-events-none absolute left-1/2 top-[9px] z-40 h-[24px] w-[84px] -translate-x-1/2 rounded-full bg-black" />
+                          {/* app UI — full bleed, its own card chrome stripped */}
+                          <div className="no-scrollbar h-full overflow-y-auto pb-7 pt-[38px]">
+                      {activeCaption ? (
+                        <motion.div
+                          key={previewPlatform}
+                          initial={{ opacity: 0, x: 16 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.18 }}
+                          className="[&>div]:max-w-none [&>div]:rounded-none [&>div]:border-0 [&>div]:shadow-none"
+                        >
+                          <PlatformPreview
+                            platform={previewPlatform}
+                            content={{
+                              caption: activeCaption,
+                              hashtags: activeHashtags,
+                              mediaAspect: creativeMode === "carousel" ? carouselAspect : "4:5",
+                              mediaNode:
+                                creativeMode === "carousel" && carouselPack ? (
+                                  <BrandedSlide
+                                    slide={carouselPack.slides[activeCarouselSlide] ?? carouselPack.slides[0]}
+                                    brand={creativeBrand}
+                                    aspect={carouselAspect}
+                                    index={activeCarouselSlide}
+                                    total={carouselPack.slides.length}
+                                    scale={carouselPreviewScale}
+                                  />
+                                ) : (
+                                  <WebsitePostCard
+                                    brand={creativeBrand}
+                                    hook={activeHook}
+                                    supporting={activeSupporting}
+                                    eyebrow={safeExtracted?.industry || "From your website"}
+                                    imageUrl={previewImageUrl || undefined}
+                                    scale={340 / 1080}
+                                  />
+                                ),
+                              brandName: brandName || safeExtracted?.companyName || "Your Brand",
+                              handle: (brandName || safeExtracted?.companyName)
+                                ? (brandName || safeExtracted?.companyName || "").toLowerCase().replace(/\s+/g, "")
+                                : "yourbrand",
+                              logoUrl: safeExtracted?.logoUrl,
+                              brandColors: safeExtracted?.colors,
+                            }}
+                          />
+                        </motion.div>
+                      ) : (
+                        <div className="flex h-full items-center justify-center">
+                          <Loader2 className="h-6 w-6 animate-spin text-white/50" />
+                        </div>
+                      )}
+                          </div>
+                          {/* home indicator */}
+                          <span className="pointer-events-none absolute bottom-2 left-1/2 z-30 h-[4px] w-[110px] -translate-x-1/2 rounded-full bg-white/75" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => cyclePlatform(1)}
+                    aria-label="Next channel"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-foreground"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Actions */}
+                <div className="flex w-[min(90vw,420px)] shrink-0 flex-col gap-2 sm:flex-row">
+                  <Button
+                    onClick={() => void handleQuickPost("now")}
+                    disabled={posting || !activeCaption || !activeAccountForPreview}
+                    className="w-full flex-1 h-11 bg-brand hover:bg-brand/90 text-brand-foreground font-semibold"
+                  >
+                    {posting ? (
+                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="mr-1.5 h-4 w-4" />
+                    )}
+                    Post Now
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => void handleQuickPost("draft")}
+                    disabled={posting || !activeCaption}
+                    className="w-full flex-1 h-11"
+                  >
+                    <Layers className="mr-1.5 h-4 w-4" />
+                    Save to Draft
+                  </Button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void finish(false)}
+                  className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Finish setup →
+                </button>
+
                 <div
                   aria-hidden
                   style={{

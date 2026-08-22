@@ -51,7 +51,7 @@ const SUPPORTED_PLATFORMS = ["instagram", "linkedin", "youtube"];
 const MAX_POST_ATTEMPTS = 3;
 /**
  * Synchronize the billing entitlement used by Convex. Firestore is the
- * authoritative Dodo/webhook store; the signed custom claims let Convex
+ * authoritative Stripe/webhook store; the signed custom claims let Convex
  * enforce the same entitlement without trusting client-supplied plan data.
  */
 exports.syncBillingClaims = (0, https_1.onCall)(Object.assign({}, core_1.callableSecurity), async (request) => {
