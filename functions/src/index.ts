@@ -10,6 +10,7 @@ import {
   enforceCallableRateLimit,
   PLAN_VIDEO_LIMIT,
 } from "./core";
+import { renderImageBuffer } from "./image";
 import { generateVeoVideo, type VeoDurationSeconds } from "./video/googleVeo";
 import { MODELS } from "./models";
 
@@ -47,7 +48,7 @@ export {
   claimGuestEntitlement,
   triggerWelcomeEmail,
 } from "./welcome";
-export { createStripeCheckout, createStripePortal, stripeWebhook, createGuestCheckout } from "./stripe";
+export { createDodoCheckout, createDodoPortal, dodoWebhook, createGuestCheckout } from "./dodo";
 
 type SubscriptionPlan = "free" | "pro" | "max";
 
@@ -703,25 +704,14 @@ export const generateImage = onCall(
     await enforceCallableRateLimit(uid, "legacy-image-generation", AI_RATE_LIMITS.imageGeneration);
 
     try {
-      const ai = getAI();
-      const response = await ai.models.generateImages({
-        model: "imagen-3.0-generate-001",
+      const imageBuffer = await renderImageBuffer({
+        ai: getAI(),
         prompt,
-        config: {
-          numberOfImages: 1,
-          outputMimeType: "image/png",
-          aspectRatio: "1:1",
-        },
+        aspectRatio: "1:1",
       });
 
-      const generatedImage = response.generatedImages?.[0];
-      const imageBytes = generatedImage?.image?.imageBytes;
-      if (!imageBytes) {
-        throw new Error("No image returned from Imagen");
-      }
-
       const fileName = `users/${uid}/${type}s/${uuidv4()}.png`;
-      await getBucket().file(fileName).save(Buffer.from(imageBytes, "base64"), {
+      await getBucket().file(fileName).save(imageBuffer, {
         metadata: {
           contentType: "image/png",
           cacheControl: "public, max-age=31536000",

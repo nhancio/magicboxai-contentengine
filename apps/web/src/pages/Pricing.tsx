@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@shared/lib/auth";
 import { getUserSubscription, type SubscriptionRecord } from "@shared/lib/firestore";
 import {
-  createStripeCheckout,
-  createStripePortal,
+  createDodoCheckout,
+  createDodoPortal,
   claimGuestEntitlement,
   syncBillingClaims,
 } from "@shared/lib/suite";
@@ -147,7 +147,7 @@ export default function Pricing() {
     if (checkout) window.history.replaceState({}, "", window.location.pathname);
     if (checkout !== "returned" || !user || checkoutRecovery.current) return;
     checkoutRecovery.current = true;
-    captureEvent("checkout_returned", { source: "stripe" });
+    captureEvent("checkout_returned", { source: "dodo" });
 
     const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     void (async () => {
@@ -203,11 +203,11 @@ export default function Pricing() {
     });
     setProcessing(plan.id);
     try {
-      const { url } = await createStripeCheckout({
+      const { url } = await createDodoCheckout({
         planId: plan.id as "pro" | "max",
         billing: isAnnual ? "annual" : "monthly",
       });
-      window.location.href = url; // redirect to Stripe hosted checkout
+      window.location.href = url; // redirect to Dodo hosted checkout
     } catch (err) {
       const detail = err instanceof Error ? err.message : "";
       toast.error(detail ? `Could not start checkout: ${detail}` : "Could not start checkout");
@@ -218,7 +218,7 @@ export default function Pricing() {
   const handleManageBilling = async () => {
     setProcessing("portal");
     try {
-      const { url } = await createStripePortal({});
+      const { url } = await createDodoPortal({});
       window.location.href = url;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not open billing management");
@@ -340,7 +340,7 @@ export default function Pricing() {
                   <Button variant="outline" className="w-full h-11" disabled>
                     {isCurrentPlan ? "Current Plan" : "Included free"}
                   </Button>
-                ) : isCurrentPlan && subscription?.provider === "stripe" ? (
+                ) : isCurrentPlan && subscription?.provider === "dodo" ? (
                   <Button
                     onClick={handleManageBilling}
                     disabled={processing !== null}
@@ -406,7 +406,7 @@ export default function Pricing() {
         <div className="flex flex-wrap items-center justify-center gap-6">
           <div className="flex items-center gap-2 text-muted-foreground text-xs">
             <Shield className="w-4 h-4" />
-            Secure checkout via Stripe
+            Secure checkout via Dodo Payments
           </div>
           <div className="flex items-center gap-2 text-muted-foreground text-xs">
             <Camera className="w-4 h-4" />

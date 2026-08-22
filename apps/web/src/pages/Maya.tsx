@@ -10,6 +10,7 @@ import { cn } from "@shared/lib/utils";
 import { isConvexConfigured } from "../lib/convex";
 import { trialClock } from "../lib/credits";
 import { useMayaActivation } from "../hooks/useMayaActivation";
+import PhoneFrame from "../components/previews/PhoneFrame";
 import {
   ArrowRight,
   CheckCircle2,
@@ -25,8 +26,7 @@ import {
   Link2,
   ChevronLeft,
   ChevronRight,
-  Heart,
-  Eye,
+  TrendingUp,
   VolumeX,
   Volume2,
   Pencil,
@@ -133,9 +133,48 @@ function PaidPlanGate() {
   );
 }
 
-// Pseudo-random image generator based on ID for the Remixed card
-function getSeededImage(id: string) {
-  return `https://picsum.photos/seed/${id}/400/700`;
+/** A neighbouring suggestion, angled behind the active one — tap to bring it forward. */
+function NeighbourPhone({
+  s,
+  side,
+  onClick,
+}: {
+  s: any;
+  side: "left" | "right";
+  onClick: () => void;
+}) {
+  const asset = s?.media?.[0];
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      aria-label={side === "left" ? "Previous suggestion" : "Next suggestion"}
+      onPointerDown={(e) => e.stopPropagation()}
+      className={cn(
+        "pointer-events-auto hidden shrink-0 opacity-45 transition-all duration-300 hover:opacity-80 sm:block",
+        side === "left" ? "-mr-14 -rotate-[9deg] origin-bottom-right" : "-ml-14 rotate-[9deg] origin-bottom-left",
+      )}
+    >
+      <PhoneFrame className="h-[540px] w-[260px]">
+        <div className="absolute inset-0">
+          {asset?.type === "image" ? (
+            <img src={asset.url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          ) : asset?.type === "video" ? (
+            <video src={asset.url} muted loop playsInline className="absolute inset-0 h-full w-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-[#E2D4F0] to-[#E9DFCA]" />
+          )}
+          <div className="absolute inset-0 bg-black/25" />
+          <p className="absolute inset-x-0 bottom-0 line-clamp-2 p-3 text-[10px] font-semibold leading-snug text-white/90">
+            {s?.hook || s?.angle || ""}
+          </p>
+        </div>
+      </PhoneFrame>
+    </button>
+  );
 }
 
 // Swipable Card Group (contains both Remixed and Main Card)
@@ -162,8 +201,14 @@ function SwipableGroup({
   const isRendering = !asset && !!s.mediaPlan && s.mediaPlan.type !== "none";
   
   // Remixed from text
-  const remixedText = s.angle || s.hook || "When will people realize the real reason launching a site feels stressful isn't because you're bad with tech...";
-  const remixedImage = getSeededImage(s._id);
+  const remixedText = s.angle || s.hook || "";
+  // Cyclic deck: the suggestion on either side of the active one.
+  const prevSuggestion =
+    pending.length > 1 ? pending[(activePendingIndex - 1 + pending.length) % pending.length] : null;
+  const nextSuggestion =
+    pending.length > 1 ? pending[(activePendingIndex + 1) % pending.length] : null;
+  // The creative the card actually shows, and the short line written over it.
+  const overlayText = s.hook || s.angle || "";
 
   function handleDragEnd(_: unknown, info: PanInfo) {
     if (isEditing) return;
@@ -173,7 +218,7 @@ function SwipableGroup({
 
   return (
     <motion.div
-      className="absolute top-0 left-0 right-0 mx-auto w-full h-full flex items-center justify-center gap-8 cursor-grab active:cursor-grabbing"
+      className="absolute top-0 left-0 right-0 mx-auto w-full h-full flex items-center justify-center cursor-grab active:cursor-grabbing"
       style={{ x, rotate, zIndex: 10, willChange: "transform" }}
       drag={!isEditing ? "x" : false}
       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
@@ -189,28 +234,19 @@ function SwipableGroup({
       }}
       transition={{ type: "spring", stiffness: 400, damping: 20, mass: 0.8 }}
     >
-      {/* Remixed From Card (Left) */}
-      <div className="hidden lg:flex w-[200px] flex-col gap-2 opacity-95 shrink-0 pointer-events-none">
-        <h3 className="text-[13px] font-semibold tracking-tight text-foreground/80 font-sans ml-1 text-center">Remixed From</h3>
-        <div className="aspect-[9/16] w-full rounded-[1.5rem] overflow-hidden relative shadow-[0_15px_30px_rgba(0,0,0,0.08)] bg-secondary border border-black/5">
-          <img src={remixedImage} alt="Trend reference" className="absolute inset-0 w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-          <div className="absolute bottom-4 left-3 right-3 text-white">
-            <p className="text-[10px] font-medium line-clamp-4 mb-2 leading-snug text-white/95">
-              {remixedText}
-            </p>
-            <div className="flex items-center gap-3 text-[9px] font-semibold text-white/80">
-              <div className="flex flex-col items-center"><Heart className="w-3.5 h-3.5 mb-0.5"/>299K</div>
-              <div className="flex flex-col items-center"><Eye className="w-3.5 h-3.5 mb-0.5"/>3.3M</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Previous suggestion, angled behind */}
+      {prevSuggestion && <NeighbourPhone s={prevSuggestion} side="left" onClick={onPrev} />}
 
-      {/* Main Preview Card (Center) */}
-      <div className="relative flex flex-col items-center shrink-0 w-[260px] pointer-events-auto">
-        {/* Main Card */}
-        <div className="relative w-full aspect-[9/16] rounded-[1.5rem] shadow-[0_20px_40px_-12px_rgba(0,0,0,0.25)] overflow-hidden bg-black border border-white/10 z-10">
+      {/* Active suggestion, in the iPhone 14 Pro Max frame */}
+      <div className="pointer-events-auto relative z-10 flex w-[340px] shrink-0 flex-col items-center gap-2">
+        {remixedText && (
+          <p className="pointer-events-none flex items-start gap-1.5 px-1 text-[11px] leading-snug text-muted-foreground">
+            <TrendingUp className="mt-[1px] h-3 w-3 shrink-0 text-brand" />
+            <span className="line-clamp-1">Remixed from: {remixedText}</span>
+          </p>
+        )}
+        <PhoneFrame className="h-[700px] w-full">
+        <div className="absolute inset-0 bg-black">
           {asset?.type === "video" ? (
             <video src={asset.url} autoPlay loop muted={isMuted} playsInline className="absolute inset-0 w-full h-full object-cover" />
           ) : asset?.type === "image" ? (
@@ -232,7 +268,7 @@ function SwipableGroup({
           </button>
 
           {/* Caption Editing Overlay / Display */}
-          <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 px-4 z-20 text-center flex flex-col items-center justify-center pointer-events-auto">
+          <div className="absolute bottom-14 left-0 right-0 px-5 z-20 text-center flex flex-col items-center justify-center pointer-events-auto">
             {isEditing ? (
               <div className="w-full bg-black/70 backdrop-blur-md p-3 rounded-xl border border-white/20">
                 <textarea 
@@ -247,11 +283,11 @@ function SwipableGroup({
                 </div>
               </div>
             ) : (
-              <p 
+              <p
                 onPointerDown={(e) => e.stopPropagation()} // Prevent drag when selecting text
-                className="text-white font-semibold text-[12px] drop-shadow-md leading-snug line-clamp-8 whitespace-pre-wrap cursor-text"
+                className="text-white font-bold text-[16px] drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] leading-tight line-clamp-3 cursor-text"
               >
-                {editedCaption}
+                {overlayText}
               </p>
             )}
           </div>
@@ -275,7 +311,7 @@ function SwipableGroup({
           )}
 
           {/* Pagination Dots */}
-          <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 z-20 pointer-events-none">
+          <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5 z-20 pointer-events-none">
             {pending.map((_: any, i: number) => (
               <div 
                 key={i} 
@@ -284,7 +320,12 @@ function SwipableGroup({
             ))}
           </div>
         </div>
+        </PhoneFrame>
+
       </div>
+
+      {/* Next suggestion, angled behind */}
+      {nextSuggestion && <NeighbourPhone s={nextSuggestion} side="right" onClick={onNext} />}
     </motion.div>
   );
 }
@@ -501,10 +542,10 @@ export default function Maya() {
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col items-center w-full max-w-3xl relative h-[70vh] max-h-[600px]">
+          <div className="flex flex-col items-center w-full max-w-5xl relative h-[86vh] max-h-[900px]">
             
             {/* The Cards Area */}
-            <div className="relative w-full h-[85%] mb-4">
+            <div className="relative w-full h-[88%] mb-4">
               <AnimatePresence mode="popLayout">
                 {topSuggestion && (
                   <SwipableGroup

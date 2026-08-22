@@ -216,7 +216,7 @@ export default function Schedule() {
   const previewUrl = previewPost ? getSocialPostUrl(previewPost) : null;
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-5rem)] max-w-6xl flex-col overflow-hidden lg:h-[calc(100dvh-2.5rem)]">
+    <div className="mx-auto max-w-6xl pb-8">
       <div className="mb-4 flex shrink-0 items-center justify-between sm:mb-5">
         <div>
           <span className="eyebrow">Schedule</span>
@@ -232,8 +232,8 @@ export default function Schedule() {
         </Button>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 lg:grid-cols-2 lg:grid-rows-1 lg:gap-6">
-        <div className="glass-card flex min-h-0 flex-col p-4 sm:p-5">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:items-start">
+        <div className="glass-card flex flex-col p-4 sm:p-5">
           <div className="mb-3 flex shrink-0 items-center justify-between sm:mb-4">
             <h2 className="font-display text-xl">{monthLabel}</h2>
             <div className="flex items-center gap-1">
@@ -267,15 +267,15 @@ export default function Schedule() {
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="grid shrink-0 grid-cols-7 gap-1">
+          <div className="flex flex-col">
+            <div className="grid grid-cols-7 gap-1">
               {WEEKDAYS.map((d) => (
                 <div key={d} className="pb-1.5 text-center text-[10px] font-mono uppercase tracking-widest text-muted-foreground sm:pb-2">
                   {d}
                 </div>
               ))}
             </div>
-            <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1">
+            <div className="grid grid-cols-7 gap-1">
             {days.map((day) => {
               const inMonth = day.getMonth() === anchor.getMonth();
               const isToday = dayKey(day) === dayKey(today);
@@ -286,31 +286,37 @@ export default function Schedule() {
                   key={day.toISOString()}
                   onClick={() => setSelectedDay(day)}
                   className={cn(
-                    "flex min-h-0 flex-col items-center justify-start rounded-lg border p-0.5 pt-1 transition-colors sm:p-1 sm:pt-1.5",
+                    "flex h-16 flex-col items-start gap-1 rounded-lg border p-1.5 text-left transition-colors sm:h-[72px]",
                     isSelected
-                      ? "border-brand/40 bg-brand/10"
-                      : "border-transparent hover:bg-accent",
-                    !inMonth && "opacity-30"
+                      ? "border-brand/40 bg-brand/[0.07]"
+                      : "border-border/50 bg-background/40 hover:border-border hover:bg-accent",
+                    !inMonth && "border-transparent bg-transparent text-muted-foreground/50",
                   )}
                 >
                   <span
                     className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-xs",
-                      isToday ? "bg-brand font-semibold text-brand-foreground" : "text-foreground"
+                      "flex h-5 w-5 items-center justify-center rounded-full text-[11px] tabular-nums",
+                      isToday
+                        ? "bg-brand font-semibold text-brand-foreground"
+                        : inMonth
+                          ? "text-foreground"
+                          : "text-muted-foreground/50",
                     )}
                   >
                     {day.getDate()}
                   </span>
                   {dayPosts.length > 0 && (
-                    <div className="mt-1 flex flex-wrap items-center justify-center gap-0.5">
-                      {dayPosts.slice(0, 4).map((post) => (
+                    <div className="flex w-full flex-wrap items-center gap-1">
+                      {dayPosts.slice(0, 3).map((post) => (
                         <span
                           key={post.id}
-                          className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[post.status])}
+                          className={cn("h-1 w-4 rounded-full", STATUS_DOT[post.status])}
                         />
                       ))}
-                      {dayPosts.length > 4 && (
-                        <span className="text-[9px] text-muted-foreground">+{dayPosts.length - 4}</span>
+                      {dayPosts.length > 3 && (
+                        <span className="text-[9px] leading-none text-muted-foreground">
+                          +{dayPosts.length - 3}
+                        </span>
                       )}
                     </div>
                   )}
@@ -320,10 +326,10 @@ export default function Schedule() {
             </div>
           </div>
 
-          <div className="mt-3 flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-t border-border pt-2.5 text-[11px] text-muted-foreground sm:mt-4 sm:pt-3">
+          <div className="mt-4 flex flex-wrap gap-x-3.5 gap-y-1 text-[10px] text-muted-foreground">
             {(["scheduled", "generating", "pending_approval", "posted", "failed", "draft"] as PostStatus[]).map((s) => (
               <span key={s} className="flex items-center gap-1.5">
-                <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[s])} />
+                <span className={cn("h-1 w-3 rounded-full", STATUS_DOT[s])} />
                 {STATUS_LABEL[s]}
               </span>
             ))}
@@ -331,7 +337,7 @@ export default function Schedule() {
         </div>
 
         {/* Day detail / draft preview */}
-        <div className="glass-card flex min-h-0 flex-col overflow-hidden p-4 sm:p-5">
+        <div className="glass-card flex flex-col overflow-hidden p-4 sm:p-5 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-7rem)]">
           {previewPost ? (
             <div className="flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto">
               <button
@@ -387,9 +393,14 @@ export default function Schedule() {
                   ))}
                 </div>
               ) : selectedPosts.length === 0 ? (
-                <div className="py-8 text-center">
-                  <LottiePlayer size={96} className="mx-auto" />
-                  <p className="mt-1 text-sm text-muted-foreground">Nothing scheduled this day.</p>
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <LottiePlayer size={48} className="opacity-70" />
+                  <p className="text-sm text-muted-foreground">Nothing scheduled this day.</p>
+                  <Button asChild variant="outline" size="sm" className="gap-1.5 text-xs">
+                    <Link to="/studio">
+                      <Plus className="h-3.5 w-3.5" /> Create a post
+                    </Link>
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-2.5">

@@ -280,26 +280,28 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
   const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
   // Live Meta + Google channels. Deferred (twitter/reddit) stay in catalogue but
   // only surface if we intentionally add them here later.
-  const launchPlatforms = new Set([
+  // Channel order shown across the app.
+  const launchPlatforms = [
     "instagram",
-    "linkedin",
     "youtube",
+    "linkedin",
     "facebook",
     "whatsapp",
-  ]);
+  ];
 
   const connected = (accounts ?? []).filter(
     (a: any) => a.status === "active" || a.status === "expired",
   );
 
   const connectable = (catalogue ?? [])
-    .filter((p: any) => launchPlatforms.has(p.id))
+    .filter((p: any) => launchPlatforms.includes(p.id))
     .filter((p: any) => {
       const active = connected.some(
         (a: any) => a.platform === p.id && a.status === "active",
       );
       return !active;
-    });
+    })
+    .sort((a: any, b: any) => launchPlatforms.indexOf(a.id) - launchPlatforms.indexOf(b.id));
 
   async function handleConnect(provider: string) {
     if (provider === "whatsapp" && isWhatsAppV2Active()) {
@@ -660,10 +662,10 @@ export default function Settings() {
                   key={tab.id}
                   onClick={() => handleTabChange(tab.id)}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors whitespace-nowrap",
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 whitespace-nowrap border",
                     activeTab === tab.id
-                      ? "bg-background text-foreground shadow-sm ring-1 ring-border"
-                      : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                      ? "bg-brand/10 text-brand border-brand/20"
+                      : "text-muted-foreground border-transparent hover:bg-accent hover:text-foreground"
                   )}
                 >
                   <Icon className="h-4 w-4" />

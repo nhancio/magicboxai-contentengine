@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@shared/components/ui/avata
 import { cn } from "@shared/lib/utils";
 import { captureEvent, PRODUCT_EVENTS } from "@shared/lib/analytics";
 import PlatformPreview from "../components/previews/PlatformPreview";
+import PhoneFrame from "../components/previews/PhoneFrame";
 import BrandedSlide from "../components/carousel/BrandedSlide";
 import { exportSlidePngs } from "../components/carousel/exportSlides";
 import {
@@ -43,7 +44,6 @@ import {
   ChevronRight,
   ExternalLink,
   Facebook,
-  Flame,
   Globe2,
   Image as ImageIcon,
   Instagram,
@@ -135,26 +135,98 @@ function createFallbackBrandResult(url: string, manualName?: string): BrandExtra
 
 const PLATFORM_META: Record<
   string,
-  { label: string; icon: typeof Instagram; tint: string; category: string }
+  {
+    label: string;
+    icon: typeof Instagram;
+    tint: string;
+    category: string;
+    badgeBg: string;
+    badgeText: string;
+  }
 > = {
-  instagram: { label: "Instagram", icon: Instagram, tint: "from-pink-500 to-orange-400", category: "Social & Visual" },
-  linkedin: { label: "LinkedIn", icon: Linkedin, tint: "from-blue-600 to-cyan-500", category: "Professional" },
-  youtube: { label: "YouTube", icon: Youtube, tint: "from-red-500 to-rose-600", category: "Video & Shorts" },
-  tiktok: { label: "TikTok", icon: Video, tint: "from-fuchsia-500 to-cyan-400", category: "Short-form Video" },
-  twitter: { label: "Twitter / X", icon: Twitter, tint: "from-sky-400 to-blue-500", category: "Real-time & News" },
-  x: { label: "X (Twitter)", icon: Twitter, tint: "from-slate-700 to-slate-900", category: "Real-time & News" },
-  facebook: { label: "Facebook", icon: Facebook, tint: "from-blue-600 to-indigo-500", category: "Social & Community" },
-  whatsapp: { label: "WhatsApp", icon: MessageCircle, tint: "from-emerald-500 to-teal-500", category: "Messaging" },
+  instagram: {
+    label: "Instagram",
+    icon: Instagram,
+    tint: "from-pink-500 to-orange-400",
+    category: "Social & Visual",
+    badgeBg: "bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888]",
+    badgeText: "text-white",
+  },
+  linkedin: {
+    label: "LinkedIn",
+    icon: Linkedin,
+    tint: "from-blue-600 to-cyan-500",
+    category: "Professional",
+    badgeBg: "bg-[#0A66C2]",
+    badgeText: "text-white",
+  },
+  youtube: {
+    label: "YouTube",
+    icon: Youtube,
+    tint: "from-red-500 to-rose-600",
+    category: "Video & Shorts",
+    badgeBg: "bg-[#FF0000]",
+    badgeText: "text-white",
+  },
+  tiktok: {
+    label: "TikTok",
+    icon: Video,
+    tint: "from-fuchsia-500 to-cyan-400",
+    category: "Short-form Video",
+    badgeBg: "bg-black dark:bg-zinc-900",
+    badgeText: "text-white",
+  },
+  twitter: {
+    label: "Twitter / X",
+    icon: Twitter,
+    tint: "from-sky-400 to-blue-500",
+    category: "Real-time & News",
+    badgeBg: "bg-[#1DA1F2]",
+    badgeText: "text-white",
+  },
+  x: {
+    label: "X (Twitter)",
+    icon: Twitter,
+    tint: "from-slate-700 to-slate-900",
+    category: "Real-time & News",
+    badgeBg: "bg-black dark:bg-zinc-900",
+    badgeText: "text-white",
+  },
+  facebook: {
+    label: "Facebook",
+    icon: Facebook,
+    tint: "from-blue-600 to-indigo-500",
+    category: "Social & Community",
+    badgeBg: "bg-[#1877F2]",
+    badgeText: "text-white",
+  },
+  whatsapp: {
+    label: "WhatsApp",
+    icon: MessageCircle,
+    tint: "from-emerald-500 to-teal-500",
+    category: "Messaging",
+    badgeBg: "bg-[#25D366]",
+    badgeText: "text-white",
+  },
+  reddit: {
+    label: "Reddit",
+    icon: MessageCircle,
+    tint: "from-orange-500 to-red-500",
+    category: "Communities",
+    badgeBg: "bg-[#FF4500]",
+    badgeText: "text-white",
+  },
 };
 
 const CONNECTABLE = [
   "instagram",
-  "linkedin",
   "youtube",
-  "tiktok",
-  "x",
+  "linkedin",
   "facebook",
   "whatsapp",
+  "x",
+  "reddit",
+  "tiktok",
 ] as const;
 
 function channelHandle(account: SocialAccount): string {
@@ -665,23 +737,29 @@ export default function Onboarding() {
   }, [brandPhase]);
 
   const updateExtractedField = (field: keyof BrandExtractResult, val: any) => {
-    if (!extracted) return;
-    setExtracted((prev) => (prev ? { ...prev, [field]: val } : prev));
+    setExtracted((prev) => {
+      const base =
+        prev ||
+        safeExtracted ||
+        createFallbackBrandResult(websiteUrl || "https://mybrand.com", brandName);
+      return { ...base, [field]: val };
+    });
   };
 
   const updateColor = (colorKey: "primary" | "secondary" | "accent", hex: string) => {
-    if (!extracted) return;
-    setExtracted((prev) =>
-      prev
-        ? {
-            ...prev,
-            colors: {
-              ...prev.colors,
-              [colorKey]: hex,
-            },
-          }
-        : prev,
-    );
+    setExtracted((prev) => {
+      const base =
+        prev ||
+        safeExtracted ||
+        createFallbackBrandResult(websiteUrl || "https://mybrand.com", brandName);
+      return {
+        ...base,
+        colors: {
+          ...base.colors,
+          [colorKey]: hex,
+        },
+      };
+    });
   };
 
   const handleScanBrand = async () => {
@@ -1105,17 +1183,14 @@ export default function Onboarding() {
       toast.error("Convex is not configured — can't publish yet.");
       return;
     }
-    const isDraft = mode === "draft";
-    if (!isDraft && !activeAccountForPreview) {
-      toast.error(`Connect ${PLATFORM_META[previewPlatform]?.label || previewPlatform} first to post this.`);
-      return;
-    }
+    const hasAccount = !!activeAccountForPreview;
+    const effectiveMode = hasAccount ? mode : "draft";
 
-    if (!isDraft && previewPlatform === "youtube") {
+    if (hasAccount && effectiveMode !== "draft" && previewPlatform === "youtube") {
       toast.error("YouTube requires a video. Use this branded creative as the visual direction in Studio.");
       return;
     }
-    if (!isDraft && creativeMode === "carousel" && !["instagram", "linkedin"].includes(previewPlatform)) {
+    if (hasAccount && effectiveMode !== "draft" && creativeMode === "carousel" && !["instagram", "linkedin"].includes(previewPlatform)) {
       toast.error("Carousel posting is currently available for Instagram and LinkedIn.");
       return;
     }
@@ -1149,15 +1224,17 @@ export default function Onboarding() {
             ? carouselPack?.topic || SAMPLE_BRIEF
             : SAMPLE_BRIEF,
         brandProfileId: brandProfileId || undefined,
-        mode,
+        mode: effectiveMode,
         timezone,
       });
-      if (mode === "draft") {
+      if (effectiveMode === "draft" || result.status === "draft" || !hasAccount) {
         toast.success(
-          `Saved to drafts for ${PLATFORM_META[previewPlatform]?.label || previewPlatform}`,
+          !hasAccount
+            ? `No channel connected — saved to drafts for ${PLATFORM_META[previewPlatform]?.label || previewPlatform}`
+            : `Saved to drafts for ${PLATFORM_META[previewPlatform]?.label || previewPlatform}`,
         );
         cyclePlatform(1);
-      } else if (mode === "now") {
+      } else if (effectiveMode === "now") {
         captureEvent("post_publish_requested", { channel: previewPlatform, source: "onboarding" });
         if (result.status === "posted") captureEvent("post_published", { channel: previewPlatform, source: "onboarding" });
         toast.success(
@@ -1207,6 +1284,9 @@ export default function Onboarding() {
       await setDoc(
         doc(db, "users", user.uid),
         {
+          // `email` keeps this legal when the document does not exist yet:
+          // a merge-set is then a create, and the create rule requires it.
+          email: user.email,
           onboardingComplete: true,
           onboardingDeferred: false,
           onboardingCompletedAt: serverTimestamp(),
@@ -1235,12 +1315,16 @@ export default function Onboarding() {
   }, [extracted, brandName, websiteUrl, extractedUrl]);
 
   return (
-    <div className="min-h-[100dvh] h-full flex flex-col bg-background text-foreground overflow-x-hidden">
+    <div className="min-h-[100dvh] h-full flex flex-col bg-background text-foreground overflow-x-hidden relative">
+      {/* Subtle warm ambient gradient aura */}
+      <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-96 w-full max-w-4xl rounded-full bg-gradient-to-b from-brand/[0.06] via-brand/[0.01] to-transparent blur-3xl" />
+
       <div
-        className="relative mx-auto flex w-full flex-1 min-h-0 flex-col px-3 py-4 sm:px-6 lg:px-8 lg:py-6 xl:px-12"
+        className={`relative mx-auto flex w-full flex-1 min-h-0 flex-col px-3 py-6 sm:px-6 lg:px-8 ${step === 0 ? "max-w-3xl" : "max-w-5xl"}`}
       >
-        <div className="mb-4 lg:mb-6 text-center shrink-0">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-card border border-border shadow-sm p-1.5">
+        {/* Top Header */}
+        <div className="mb-6 lg:mb-8 text-center shrink-0">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-card border border-border/80 shadow-xs p-2">
             <img
               src="/logo.svg"
               alt="MagicBox"
@@ -1250,21 +1334,21 @@ export default function Onboarding() {
               }}
             />
           </div>
-          <span className="eyebrow text-[10px]">Get started</span>
-          <h1 className="mt-1 font-display text-2xl sm:text-3xl tracking-tight">Turn your website into a campaign</h1>
-          <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-xl mx-auto px-2">
+          <span className="eyebrow text-[10px] tracking-widest text-muted-foreground font-mono">GET STARTED</span>
+          <h1 className="mt-1 font-display text-3xl sm:text-4xl tracking-tight text-foreground">Turn your website into a campaign</h1>
+          <p className="mt-1.5 text-xs sm:text-sm text-muted-foreground max-w-xl mx-auto px-2">
             Start with your site. Connect channels. Review the creative. Nothing posts without your approval.
           </p>
         </div>
 
         {/* Stepper with click navigation */}
-        <div className="mb-4 flex items-center justify-center gap-2 sm:gap-3 shrink-0">
+        <div className="mb-6 flex items-center justify-center gap-1.5 sm:gap-3 shrink-0">
           {STEPS.map((s, i) => {
             const isDone = i < step;
             const isCurrent = i === step;
             const canJump = i <= step || (i === 1 && (brandProfileId || extracted)) || (i === 2 && hasActiveChannel);
             return (
-              <div key={s.title} className="flex items-center gap-2 sm:gap-3">
+              <div key={s.title} className="flex items-center gap-1.5 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -1272,11 +1356,11 @@ export default function Onboarding() {
                   }}
                   disabled={!canJump}
                   className={cn(
-                    "flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-all",
+                    "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium transition-all",
                     isCurrent
-                      ? "bg-brand/10 text-brand ring-1 ring-brand/30 shadow-sm"
+                      ? "bg-brand/10 text-brand ring-1 ring-brand/30 shadow-xs"
                       : isDone
-                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
+                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
                       : canJump
                       ? "bg-secondary text-muted-foreground hover:text-foreground cursor-pointer"
                       : "bg-secondary/40 text-muted-foreground/40 cursor-not-allowed",
@@ -1284,15 +1368,15 @@ export default function Onboarding() {
                 >
                   <div
                     className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold",
+                      "flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold transition-transform",
                       isCurrent
-                        ? "bg-brand text-brand-foreground"
+                        ? "bg-brand text-brand-foreground shadow-xs scale-105"
                         : isDone
                         ? "bg-emerald-600 text-white"
                         : "bg-muted text-muted-foreground",
                     )}
                   >
-                    {isDone ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                    {isDone ? <Check className="h-3 w-3" /> : i + 1}
                   </div>
                   <span className="hidden sm:inline font-medium">{s.title}</span>
                 </button>
@@ -1313,16 +1397,16 @@ export default function Onboarding() {
           >
             {/* STEP 0: Website & Brand Kit */}
             {step === 0 && (
-              <div className="glass-card p-4 sm:p-6 space-y-4">
+              <div className="rounded-2xl border border-border/80 bg-card p-6 sm:p-8 shadow-[0_4px_24px_rgba(0,0,0,0.03)] space-y-6">
                 {/* Phase A: Input State (Before Extraction) */}
                 {brandPhase === "idle" && (
                   <div className="space-y-6">
                     <div>
                       <div className="inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand/10 px-3 py-1 text-xs font-medium text-brand">
                         <Sparkles className="h-3.5 w-3.5" />
-                        Step 1 of 3 · Website & Brand Kit
+                        Step 1 of 3 · Website &amp; Brand Kit
                       </div>
-                      <h2 className="mt-3 font-display text-2xl sm:text-3xl text-foreground">
+                      <h2 className="mt-3 font-display text-2xl sm:text-3xl text-foreground font-normal tracking-tight">
                         Build your Brand Kit from your website
                       </h2>
                       <p className="mt-2 text-sm sm:text-base text-muted-foreground leading-relaxed">
@@ -1348,9 +1432,12 @@ export default function Onboarding() {
                               }
                             }}
                             placeholder="e.g. nhancio.com or https://yourbrand.com"
-                            className="h-13 bg-card border-border/90 pl-12 text-base shadow-sm focus-visible:ring-brand"
+                            className="h-13 bg-card border-border/90 pl-12 pr-12 text-base shadow-xs focus-visible:ring-brand"
                             autoFocus
                           />
+                          <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs font-mono text-muted-foreground bg-secondary/80 px-2 py-0.5 rounded border border-border/60">
+                            ↵
+                          </span>
                         </div>
                       </div>
 
@@ -1358,7 +1445,7 @@ export default function Onboarding() {
                         type="button"
                         onClick={() => void handleScanBrand()}
                         disabled={!websiteUrl.trim()}
-                        className="w-full h-12 text-base font-semibold bg-brand hover:bg-brand/90 text-brand-foreground shadow-md transition-all flex items-center justify-center gap-2"
+                        className="w-full h-12 text-base font-semibold bg-brand hover:bg-brand/90 text-brand-foreground shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 rounded-xl"
                       >
                         <Sparkles className="h-4.5 w-4.5" />
                         Analyze Website &amp; Build Brand Kit
@@ -1389,12 +1476,13 @@ export default function Onboarding() {
 
                 {/* Phase B: Loading / Scanning State */}
                 {brandPhase === "scanning" && (
-                  <div className="space-y-6 py-4">
+                  <div className="space-y-6 py-6">
                     <div className="text-center max-w-md mx-auto space-y-2">
-                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-brand/20 bg-brand/10 text-brand shadow-inner">
-                        <Loader2 className="h-7 w-7 animate-spin text-brand" />
+                      <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-brand/20 bg-brand/10 text-brand shadow-inner">
+                        <div className="absolute inset-0 rounded-2xl bg-brand/20 animate-ping opacity-25" />
+                        <Loader2 className="h-8 w-8 animate-spin text-brand" />
                       </div>
-                      <h2 className="font-display text-2xl text-foreground">
+                      <h2 className="font-display text-2xl text-foreground font-normal tracking-tight">
                         Analyzing {extractDomain(normalizeInputUrl(websiteUrl)) || "your website"}…
                       </h2>
                       <p className="text-sm text-muted-foreground">
@@ -1464,7 +1552,7 @@ export default function Onboarding() {
                       <Loader2 className="h-8 w-8 animate-spin text-brand" />
                     </div>
                     <div className="space-y-2">
-                      <h2 className="font-display text-2xl text-foreground">
+                      <h2 className="font-display text-2xl text-foreground font-normal tracking-tight">
                         Saving Brand Profile…
                       </h2>
                       <p className="text-sm text-muted-foreground">
@@ -1487,16 +1575,17 @@ export default function Onboarding() {
                   </div>
                 )}
 
-                {/* Phase D: Preview & Confirmation State */}
+                {/* Phase D: Preview & Confirmation State (Screenshot 1 Redesign) */}
                 {brandPhase === "ready" && safeExtracted && (
-                  <div className="space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-4">
+                  <div className="space-y-6">
+                    {/* Header Bar with Badge & Action Toolbar */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-5">
                       <div>
-                        <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           Brand Kit Extracted
                         </div>
-                        <h2 className="mt-2 font-display text-2xl text-foreground">
+                        <h2 className="mt-2 font-display text-2xl sm:text-3xl text-foreground font-normal tracking-tight">
                           Review your Brand Profile
                         </h2>
                         <p className="text-xs sm:text-sm text-muted-foreground">
@@ -1509,7 +1598,7 @@ export default function Onboarding() {
                           variant="outline"
                           size="sm"
                           onClick={() => setIsEditingBrand((prev) => !prev)}
-                          className="text-xs h-8 gap-1.5"
+                          className="text-xs h-9 px-3 gap-1.5 rounded-xl border-border/80 hover:bg-secondary"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           {isEditingBrand ? "Done Editing" : "Edit Details"}
@@ -1518,7 +1607,7 @@ export default function Onboarding() {
                           variant="ghost"
                           size="sm"
                           onClick={handleRescan}
-                          className="text-xs h-8 gap-1.5 text-muted-foreground hover:text-foreground"
+                          className="text-xs h-9 px-3 gap-1.5 text-muted-foreground hover:text-foreground rounded-xl"
                         >
                           <RotateCcw className="h-3.5 w-3.5" />
                           Re-scan
@@ -1526,116 +1615,115 @@ export default function Onboarding() {
                       </div>
                     </div>
 
-                    {/* Rich Extracted Brand Preview Card */}
-                    <div className="rounded-2xl border border-border/80 bg-card p-4 space-y-4 shadow-sm">
-                      {/* Brand Identity Header Row */}
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                        <div className="relative shrink-0">
-                          {safeExtracted.logoUrl && !logoLoadFailed ? (
-                            <img
-                              src={safeExtracted.logoUrl}
-                              alt={brandName || safeExtracted.companyName || "Logo"}
-                              className="h-16 w-16 rounded-xl border border-border bg-card object-contain p-1.5 shadow-sm"
-                              onError={() => setLogoLoadFailed(true)}
-                            />
-                          ) : (
-                            <div
-                              className="flex h-16 w-16 items-center justify-center rounded-xl font-display text-2xl font-bold text-white shadow-sm border border-white/10"
-                              style={{ background: safeExtracted.colors?.primary || "#6366f1" }}
-                            >
-                              {(brandName || safeExtracted.companyName || "?").slice(0, 1).toUpperCase()}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="min-w-0 flex-1 space-y-1.5 w-full">
-                          {isEditingBrand ? (
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <div>
-                                <label className="text-[11px] font-mono uppercase text-muted-foreground">Brand Name</label>
-                                <Input
-                                  value={brandName || safeExtracted.companyName}
-                                  onChange={(e) => {
-                                    setBrandName(e.target.value);
-                                    updateExtractedField("companyName", e.target.value);
-                                  }}
-                                  className="h-9 mt-1 text-sm bg-secondary/50"
-                                  placeholder="Brand Name"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[11px] font-mono uppercase text-muted-foreground">Industry</label>
-                                <Input
-                                  value={safeExtracted.industry || ""}
-                                  onChange={(e) => updateExtractedField("industry", e.target.value)}
-                                  className="h-9 mt-1 text-sm bg-secondary/50"
-                                  placeholder="e.g. Technology, Apparel, Healthcare"
-                                />
-                              </div>
-                              <div className="sm:col-span-2">
-                                <label className="text-[11px] font-mono uppercase text-muted-foreground">Logo URL</label>
-                                <Input
-                                  value={safeExtracted.logoUrl || ""}
-                                  onChange={(e) => {
-                                    setLogoLoadFailed(false);
-                                    updateExtractedField("logoUrl", e.target.value);
-                                  }}
-                                  className="h-9 mt-1 text-sm bg-secondary/50 font-mono text-xs"
-                                  placeholder="https://example.com/logo.png"
-                                />
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h3 className="font-display text-2xl font-bold text-foreground leading-tight">
-                                  {brandName || safeExtracted.companyName || extractDomain(extractedUrl || websiteUrl)}
-                                </h3>
-                                {safeExtracted.industry && (
-                                  <span className="rounded-md border border-border/80 bg-secondary/80 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                                    {safeExtracted.industry}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <Globe2 className="h-3.5 w-3.5" />
-                                <a
-                                  href={extractedUrl || normalizeInputUrl(websiteUrl)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="hover:text-foreground inline-flex items-center gap-1 underline-offset-4 hover:underline"
-                                >
-                                  {extractDomain(extractedUrl || websiteUrl)}
-                                  <ExternalLink className="h-3 w-3" />
-                                </a>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                    {/* Brand Identity Card */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl bg-secondary/30 border border-border/60">
+                      <div className="relative shrink-0">
+                        {safeExtracted.logoUrl && !logoLoadFailed ? (
+                          <img
+                            src={safeExtracted.logoUrl}
+                            alt={brandName || safeExtracted.companyName || "Logo"}
+                            className="h-16 w-16 rounded-xl border border-border bg-card object-contain p-1.5 shadow-xs"
+                            onError={() => setLogoLoadFailed(true)}
+                          />
+                        ) : (
+                          <div
+                            className="flex h-16 w-16 items-center justify-center rounded-xl font-display text-2xl font-bold text-white shadow-xs border border-white/10"
+                            style={{ background: safeExtracted.colors?.primary || "#6366f1" }}
+                          >
+                            {(brandName || safeExtracted.companyName || "?").slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
                       </div>
 
-                      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-2">
-                      {/* Color Palette Row */}
-                      <div className="space-y-2.5 pt-2 border-t border-border/60">
-                        <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                          <Palette className="h-3.5 w-3.5 text-brand" />
+                      <div className="min-w-0 flex-1 space-y-1.5 w-full">
+                        {isEditingBrand ? (
+                          <div className="grid gap-2.5 sm:grid-cols-2">
+                            <div>
+                              <label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground font-medium">Brand Name</label>
+                              <Input
+                                value={brandName || safeExtracted.companyName}
+                                onChange={(e) => {
+                                  setBrandName(e.target.value);
+                                  updateExtractedField("companyName", e.target.value);
+                                }}
+                                className="h-9 mt-1 text-sm bg-card border-border/80"
+                                placeholder="Brand Name"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground font-medium">Industry</label>
+                              <Input
+                                value={safeExtracted.industry || ""}
+                                onChange={(e) => updateExtractedField("industry", e.target.value)}
+                                className="h-9 mt-1 text-sm bg-card border-border/80"
+                                placeholder="e.g. Technology, Apparel, Healthcare"
+                              />
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground font-medium">Logo URL</label>
+                              <Input
+                                value={safeExtracted.logoUrl || ""}
+                                onChange={(e) => {
+                                  setLogoLoadFailed(false);
+                                  updateExtractedField("logoUrl", e.target.value);
+                                }}
+                                className="h-9 mt-1 text-sm bg-card border-border/80 font-mono text-xs"
+                                placeholder="https://example.com/logo.png"
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="font-display text-2xl font-bold text-foreground leading-tight">
+                                {brandName || safeExtracted.companyName || extractDomain(extractedUrl || websiteUrl)}
+                              </h3>
+                              {safeExtracted.industry && (
+                                <span className="rounded-md border border-border/80 bg-secondary/80 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                  {safeExtracted.industry}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <Globe2 className="h-3.5 w-3.5" />
+                              <a
+                                href={extractedUrl || normalizeInputUrl(websiteUrl)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="hover:text-brand inline-flex items-center gap-1 underline-offset-4 hover:underline transition-colors"
+                              >
+                                {extractDomain(extractedUrl || websiteUrl)}
+                                <ExternalLink className="h-3 w-3 inline opacity-70" />
+                              </a>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Two-Column Details Grid: Palette on Left, Voice & Positioning on Right */}
+                    <div className="grid gap-6 lg:grid-cols-2 pt-2">
+                      {/* Left: Color Palette Section */}
+                      <div className="space-y-3.5">
+                        <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-muted-foreground font-semibold">
+                          <Palette className="h-4 w-4 text-brand" />
                           Extracted Brand Colors
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                           {(["primary", "secondary", "accent"] as const).map((key) => {
                             const hex = safeExtracted.colors?.[key] || (key === "primary" ? "#18181b" : key === "secondary" ? "#6366f1" : "#f59e0b");
                             return (
                               <div
                                 key={key}
-                                className="flex items-center gap-3 rounded-xl border border-border/70 bg-secondary/30 p-2.5"
+                                className="flex items-center gap-3 rounded-xl border border-border/70 bg-card p-2.5 shadow-xs hover:border-border transition-all"
                               >
                                 <div
-                                  className="h-9 w-9 rounded-lg border border-black/10 shadow-sm shrink-0"
+                                  className="h-10 w-10 rounded-lg border border-black/10 shadow-xs shrink-0"
                                   style={{ background: hex }}
                                 />
                                 <div className="min-w-0 flex-1">
-                                  <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                                  <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                                     {key}
                                   </div>
                                   {isEditingBrand ? (
@@ -1654,7 +1742,7 @@ export default function Onboarding() {
                                       />
                                     </div>
                                   ) : (
-                                    <div className="font-mono text-xs font-medium text-foreground">
+                                    <div className="font-mono text-xs font-semibold text-foreground truncate">
                                       {hex}
                                     </div>
                                   )}
@@ -1663,45 +1751,60 @@ export default function Onboarding() {
                             );
                           })}
                         </div>
+
+                        {/* Continuous Palette Blend Bar */}
+                        <div className="space-y-1.5 pt-1">
+                          <div
+                            className="h-2.5 w-full rounded-full border border-black/10 shadow-inner"
+                            style={{
+                              background: `linear-gradient(to right, ${safeExtracted.colors?.primary || "#18181b"}, ${safeExtracted.colors?.secondary || "#6366f1"}, ${safeExtracted.colors?.accent || "#f59e0b"})`,
+                            }}
+                          />
+                          <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground px-0.5">
+                            <span>Primary</span>
+                            <span>Secondary</span>
+                            <span>Accent</span>
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Brand Positioning & Voice Row */}
-                      <div className="space-y-3 pt-2 border-t border-border/60">
-                        <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                          <Sparkles className="h-3.5 w-3.5 text-brand" />
+                      {/* Right: Brand Positioning & Voice Section */}
+                      <div className="space-y-3.5">
+                        <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-muted-foreground font-semibold">
+                          <Sparkles className="h-4 w-4 text-brand" />
                           Brand Positioning &amp; Voice
                         </div>
 
                         {isEditingBrand ? (
                           <div className="space-y-3">
                             <div>
-                              <label className="text-[11px] font-mono uppercase text-muted-foreground">Core Tagline / Bio</label>
+                              <label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground font-medium">Core Tagline / Bio</label>
                               <Input
                                 value={safeExtracted.coreIdentity || safeExtracted.mission || ""}
                                 onChange={(e) => updateExtractedField("coreIdentity", e.target.value)}
-                                className="h-9 mt-1 text-sm bg-secondary/50"
+                                className="h-9 mt-1 text-sm bg-card border-border/80"
                                 placeholder="Short summary of what your brand does"
                               />
                             </div>
                             <div className="grid gap-3 sm:grid-cols-2">
                               <div>
-                                <label className="text-[11px] font-mono uppercase text-muted-foreground">Tone of Voice</label>
+                                <label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground font-medium">Tone of Voice</label>
                                 <Input
                                   value={toneOfVoice || safeExtracted.tone || ""}
                                   onChange={(e) => {
                                     setToneOfVoice(e.target.value);
                                     updateExtractedField("tone", e.target.value);
                                   }}
-                                  className="h-9 mt-1 text-sm bg-secondary/50"
+                                  className="h-9 mt-1 text-sm bg-card border-border/80"
                                   placeholder="e.g. Professional, authoritative, friendly"
                                 />
                               </div>
                               <div>
-                                <label className="text-[11px] font-mono uppercase text-muted-foreground">Target Audience</label>
+                                <label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground font-medium">Target Audience</label>
                                 <Input
                                   value={safeExtracted.audience || ""}
                                   onChange={(e) => updateExtractedField("audience", e.target.value)}
-                                  className="h-9 mt-1 text-sm bg-secondary/50"
+                                  className="h-9 mt-1 text-sm bg-card border-border/80"
                                   placeholder="e.g. B2B founders, marketing leaders"
                                 />
                               </div>
@@ -1715,40 +1818,68 @@ export default function Onboarding() {
                               </p>
                             )}
 
-                            <div className="flex flex-wrap gap-2 pt-1">
+                            <div className="space-y-2.5">
                               {(toneOfVoice || safeExtracted.tone) && (
-                                <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-2.5 py-1 text-xs text-foreground">
-                                  <Volume2 className="h-3.5 w-3.5 text-brand" />
-                                  <span className="font-medium">Tone:</span>
-                                  <span className="text-muted-foreground">{toneOfVoice || safeExtracted.tone}</span>
+                                <div className="rounded-xl border border-border/60 bg-secondary/20 p-2.5 space-y-1">
+                                  <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                    <Volume2 className="h-3.5 w-3.5 text-brand" />
+                                    Tone of Voice
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                    {(toneOfVoice || safeExtracted.tone)
+                                      .split(/[,·|]/)
+                                      .map((t) => t.trim())
+                                      .filter(Boolean)
+                                      .map((token) => (
+                                        <span
+                                          key={token}
+                                          className="inline-flex items-center rounded-md border border-border/70 bg-card px-2 py-0.5 text-xs font-medium text-foreground"
+                                        >
+                                          {token}
+                                        </span>
+                                      ))}
+                                  </div>
                                 </div>
                               )}
 
                               {safeExtracted.audience && (
-                                <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-2.5 py-1 text-xs text-foreground">
-                                  <Users className="h-3.5 w-3.5 text-brand" />
-                                  <span className="font-medium">Audience:</span>
-                                  <span className="text-muted-foreground">{safeExtracted.audience}</span>
+                                <div className="rounded-xl border border-border/60 bg-secondary/20 p-2.5 space-y-1">
+                                  <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                    <Users className="h-3.5 w-3.5 text-brand" />
+                                    Target Audience
+                                  </div>
+                                  <p className="text-xs text-muted-foreground leading-relaxed">
+                                    {safeExtracted.audience}
+                                  </p>
                                 </div>
                               )}
 
                               {safeExtracted.hashtags && safeExtracted.hashtags.length > 0 && (
-                                <div className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-2.5 py-1 text-xs text-foreground">
-                                  <Tag className="h-3.5 w-3.5 text-brand" />
-                                  <span className="text-muted-foreground truncate max-w-[200px]">
-                                    {safeExtracted.hashtags.slice(0, 3).map((h) => `#${h.replace(/^#/, "")}`).join(" ")}
-                                  </span>
+                                <div className="rounded-xl border border-border/60 bg-secondary/20 p-2.5 space-y-1">
+                                  <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                    <Tag className="h-3.5 w-3.5 text-brand" />
+                                    Campaign Hashtags
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                    {safeExtracted.hashtags.slice(0, 5).map((tag) => (
+                                      <span
+                                        key={tag}
+                                        className="inline-flex items-center rounded-md border border-border/70 bg-card px-2 py-0.5 text-[11px] font-mono text-muted-foreground"
+                                      >
+                                        #{tag.replace(/^#/, "")}
+                                      </span>
+                                    ))}
+                                  </div>
                                 </div>
                               )}
                             </div>
                           </div>
                         )}
                       </div>
-                      </div>
                     </div>
 
                     {/* Action Buttons: Clear Save & Continue */}
-                    <div className="flex flex-col-reverse sm:flex-row items-center gap-3 pt-2">
+                    <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border/60">
                       <Button
                         variant="ghost"
                         onClick={() => setStep(1)}
@@ -1759,7 +1890,7 @@ export default function Onboarding() {
                       <Button
                         onClick={() => void handleSaveBrand()}
                         disabled={saving}
-                        className="w-full sm:flex-1 h-12 text-base font-semibold bg-brand hover:bg-brand/90 text-brand-foreground shadow-md transition-all flex items-center justify-center gap-2"
+                        className="w-full sm:w-auto h-12 text-sm sm:text-base font-semibold bg-brand hover:bg-brand/90 text-brand-foreground shadow-sm hover:shadow-md transition-all px-6 flex items-center justify-center gap-2 rounded-xl"
                       >
                         {saving ? (
                           <Loader2 className="h-4.5 w-4.5 animate-spin" />
@@ -1775,12 +1906,12 @@ export default function Onboarding() {
               </div>
             )}
 
-            {/* STEP 1: Connect Social Channels */}
+            {/* STEP 1: Connect Social Channels (Screenshot 2 Redesign) */}
             {step === 1 && (
-              <div className="glass-card space-y-5 p-4 sm:p-6">
+              <div className="rounded-2xl border border-border/80 bg-card p-6 sm:p-8 shadow-[0_4px_24px_rgba(0,0,0,0.03)] space-y-6">
                 {preset && (
-                  <div className="rounded-lg border border-brand/20 bg-brand/[0.06] p-4">
-                    <div className="text-[11px] font-mono uppercase tracking-widest text-brand">
+                  <div className="rounded-xl border border-brand/20 bg-brand/[0.05] p-4">
+                    <div className="text-[11px] font-mono uppercase tracking-widest text-brand font-semibold">
                       {preset.label} setup
                     </div>
                     <p className="mt-1 text-sm text-foreground">
@@ -1793,7 +1924,7 @@ export default function Onboarding() {
                         return (
                           <span
                             key={p}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-card px-3 py-1 text-xs font-medium text-foreground"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-card px-3 py-1 text-xs font-medium text-foreground shadow-xs"
                           >
                             <meta.icon className="h-3.5 w-3.5 text-brand" />
                             {meta.label}
@@ -1803,171 +1934,201 @@ export default function Onboarding() {
                     </div>
                   </div>
                 )}
+
                 <div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand/10 px-3 py-1 text-xs font-medium text-brand mb-2">
                     <Link2 className="h-3.5 w-3.5" />
                     Step 2 of 3 · Social Distribution
                   </div>
-                  <h2 className="font-display text-2xl">{STEPS[1].title}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
+                  <h2 className="font-display text-2xl sm:text-3xl text-foreground font-normal tracking-tight">{STEPS[1].title}</h2>
+                  <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-2xl leading-relaxed">
                     Connect at least one channel where approved content can go. Nothing is posted
                     automatically; you review and approve every post before publishing.
                   </p>
                 </div>
 
-                <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
-                <div className="space-y-5">
-                {accounts.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-                      Connected Channels · {accounts.length}
-                    </p>
-                    {accounts.map((account) => {
-                      const meta = PLATFORM_META[account.platform] ?? {
-                        label: account.platform,
+                <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
+                  {/* Left Column: Connected channels + Setup notes */}
+                  <div className="lg:col-span-5 space-y-4">
+                    {accounts.length > 0 && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground font-semibold">
+                            Connected Channels
+                          </p>
+                          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                            {accounts.length} active
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {accounts.map((account) => {
+                            const meta = PLATFORM_META[account.platform] ?? {
+                              label: account.platform,
+                              icon: Link2,
+                              badgeBg: "bg-secondary",
+                              badgeText: "text-foreground",
+                            };
+                            const Icon = meta.icon;
+                            const handle = channelHandle(account);
+                            const initials = (account.displayName || account.username || "?")
+                              .slice(0, 2)
+                              .toUpperCase();
+                            const needsReconnect = account.status === "expired";
+                            return (
+                              <div
+                                key={account.id}
+                                className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-xs"
+                              >
+                                <Avatar className="h-10 w-10 border border-border">
+                                  <AvatarImage src={account.avatarUrl} alt="" />
+                                  <AvatarFallback className="bg-secondary text-xs text-foreground font-semibold">
+                                    {initials}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                    <span className="truncate text-sm font-semibold text-foreground">
+                                      {account.displayName || meta.label}
+                                    </span>
+                                  </div>
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {meta.label} · {handle}
+                                  </p>
+                                </div>
+                                {needsReconnect ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="shrink-0 border-amber-500/30 text-amber-700 h-8 text-xs rounded-lg"
+                                    disabled={connecting !== null}
+                                    onClick={() => handleConnect(account.platform)}
+                                  >
+                                    Reconnect
+                                  </Button>
+                                ) : (
+                                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                                    <Check className="h-3 w-3" /> Connected
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Channel Setup Notes Card */}
+                    <div className="rounded-2xl border border-border/80 bg-secondary/25 p-4 sm:p-5 space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-foreground font-semibold">
+                        <ShieldCheck className="h-4 w-4 text-brand" />
+                        Channel Setup Notes
+                      </div>
+                      <div className="space-y-2.5 text-xs text-muted-foreground leading-relaxed">
+                        <div className="flex items-start gap-2">
+                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-brand shrink-0" />
+                          <p>
+                            <strong className="text-foreground">YouTube:</strong> If Google displays <em>&quot;Google hasn&apos;t verified this app&quot;</em>, click <strong>Advanced → Go to MagicBox (unsafe)</strong> to proceed.
+                          </p>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-brand shrink-0" />
+                          <p>
+                            <strong className="text-foreground">Facebook, Instagram &amp; WhatsApp:</strong> If Meta displays <em>&quot;Feature unavailable&quot;</em>, ensure your Meta App is in Live mode or add test accounts in Meta Developer Dashboard.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Connect channel cards */}
+                  <div className="lg:col-span-7 grid gap-3 sm:grid-cols-2">
+                    {CONNECTABLE.filter((provider) => {
+                      const linked = connectedByPlatform.get(provider);
+                      return !(linked && linked.status === "active");
+                    }).map((provider) => {
+                      const meta = PLATFORM_META[provider] ?? {
+                        label: provider,
                         icon: Link2,
+                        category: "Social",
+                        badgeBg: "bg-secondary",
+                        badgeText: "text-foreground",
                       };
                       const Icon = meta.icon;
-                      const handle = channelHandle(account);
-                      const initials = (account.displayName || account.username || "?")
-                        .slice(0, 2)
-                        .toUpperCase();
-                      const needsReconnect = account.status === "expired";
+                      const linked = connectedByPlatform.get(provider);
+                      const busy = connecting === provider;
+                      const expired = linked?.status === "expired";
                       return (
-                        <div
-                          key={account.id}
-                          className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 shadow-sm"
+                        <button
+                          key={provider}
+                          type="button"
+                          onClick={() => handleConnect(provider)}
+                          disabled={connecting !== null}
+                          className="group relative flex items-center justify-between p-3.5 sm:p-4 rounded-xl border border-border/80 bg-card hover:border-brand/40 hover:shadow-xs transition-all duration-200 text-left w-full cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                          <Avatar className="h-11 w-11 border border-border">
-                            <AvatarImage src={account.avatarUrl} alt="" />
-                            <AvatarFallback className="bg-secondary text-xs text-foreground">
-                              {initials}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                              <span className="truncate text-sm font-medium text-foreground">
-                                {account.displayName || meta.label}
-                              </span>
+                          <div className="flex items-center gap-3 min-w-0">
+                            {busy ? (
+                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/10 text-brand shrink-0">
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                              </div>
+                            ) : (
+                              <div
+                                className={cn(
+                                  "flex h-10 w-10 items-center justify-center rounded-xl shrink-0 shadow-xs transition-transform group-hover:scale-105",
+                                  meta.badgeBg,
+                                  meta.badgeText,
+                                )}
+                              >
+                                <Icon className="h-5 w-5" />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-foreground group-hover:text-brand transition-colors truncate">
+                                {expired ? `Reconnect ${meta.label}` : `Connect ${meta.label}`}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground truncate">
+                                {meta.category}
+                              </div>
                             </div>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {meta.label} · {handle}
-                            </p>
                           </div>
-                          {needsReconnect ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="shrink-0 border-amber-500/30 text-amber-700"
-                              disabled={connecting !== null}
-                              onClick={() => handleConnect(account.platform)}
-                            >
-                              Reconnect
-                            </Button>
-                          ) : (
-                            <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                              <Check className="h-3 w-3" /> Connected
-                            </span>
-                          )}
-                        </div>
+
+                          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-secondary text-muted-foreground group-hover:bg-brand/10 group-hover:text-brand transition-all shrink-0 ml-2">
+                            <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
+                          </div>
+                        </button>
                       );
                     })}
                   </div>
-                )}
-
-                <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
-                  <p className="font-semibold text-foreground">Channel Setup Notes:</p>
-                  <ul className="list-disc list-inside space-y-0.5">
-                    <li><strong className="text-foreground">YouTube:</strong> If Google displays <em>&quot;Google hasn&apos;t verified this app&quot;</em>, click <strong>Advanced → Go to MagicBox (unsafe)</strong> to proceed.</li>
-                    <li><strong className="text-foreground">Facebook, Instagram &amp; WhatsApp:</strong> If Meta displays <em>&quot;Feature unavailable&quot;</em>, ensure your Meta App is in Live mode or add test accounts in Meta Developer Dashboard.</li>
-                  </ul>
-                </div>
                 </div>
 
-                <div className="grid gap-2.5 sm:grid-cols-2 lg:content-start">
-                  {CONNECTABLE.filter((provider) => {
-                    const linked = connectedByPlatform.get(provider);
-                    return !(linked && linked.status === "active");
-                  }).map((provider) => {
-                    const meta = PLATFORM_META[provider] ?? { label: provider, icon: Link2, category: "Social" };
-                    const Icon = meta.icon;
-                    const linked = connectedByPlatform.get(provider);
-                    const busy = connecting === provider;
-                    const expired = linked?.status === "expired";
-                    return (
-                      <Button
-                        key={provider}
-                        onClick={() => handleConnect(provider)}
-                        disabled={connecting !== null}
-                        variant="outline"
-                        className="justify-between py-5 px-4 h-auto border-border/80 hover:border-brand/40 transition-all text-left"
-                      >
-                        <div className="flex items-center gap-3">
-                          {busy ? (
-                            <Loader2 className="h-5 w-5 animate-spin text-brand" />
-                          ) : (
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary/80 text-foreground">
-                              <Icon className="h-4 w-4" />
-                            </div>
-                          )}
-                          <div>
-                            <div className="text-sm font-semibold text-foreground">
-                              {expired ? `Reconnect ${meta.label}` : `Connect ${meta.label}`}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground">
-                              {meta.category}
-                            </div>
-                          </div>
-                        </div>
-                        <ArrowRight className="h-4 w-4 text-muted-foreground opacity-60" />
-                      </Button>
-                    );
-                  })}
-                  <Button
-                    onClick={() => toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.")}
-                    variant="outline"
-                    className="justify-between py-5 px-4 h-auto border-dashed border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600">
-                        <Flame className="h-4 w-4" />
-                      </div>
-                      <div className="text-left">
-                        <div className="text-sm font-semibold">Buy Warmed Up Accounts</div>
-                        <div className="text-[11px] text-amber-600/80">Aged accounts with verified trust</div>
-                      </div>
-                    </div>
-                    <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold">Soon</span>
-                  </Button>
-                </div>
-                </div>
-
-                <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[auto_auto_1fr] pt-2">
-                  <Button
-                    onClick={() => setStep(0)}
-                    variant="ghost"
-                    className="w-full sm:w-auto text-muted-foreground"
-                  >
-                    ← Back to website
-                  </Button>
-                  <Button
-                    onClick={() => void deferOnboarding("social")}
-                    variant="ghost"
-                    className="w-full sm:w-auto text-muted-foreground"
-                  >
-                    Skip for now
-                  </Button>
+                {/* Bottom Navigation Bar */}
+                <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border/60">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Button
+                      onClick={() => setStep(0)}
+                      variant="ghost"
+                      className="text-muted-foreground hover:text-foreground text-xs sm:text-sm"
+                    >
+                      ← Back to website
+                    </Button>
+                    <Button
+                      onClick={() => void deferOnboarding("social")}
+                      variant="ghost"
+                      className="text-muted-foreground hover:text-foreground text-xs sm:text-sm"
+                    >
+                      Skip for now
+                    </Button>
+                  </div>
                   <Button
                     onClick={() => void handleContinueToReview()}
-                    className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm bg-brand hover:bg-brand/90 text-brand-foreground font-semibold"
+                    className="w-full sm:w-auto h-12 py-3.5 px-6 text-xs sm:text-sm bg-brand hover:bg-brand/90 text-brand-foreground font-semibold shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 rounded-xl"
                   >
                     <span className="truncate">
                       {hasActiveChannel
                         ? "Review my campaign"
                         : "Continue to campaign review"}
                     </span>
-                    <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
+                    <ArrowRight className="h-4 w-4 shrink-0 ml-0.5" />
                   </Button>
                 </div>
               </div>
@@ -2018,29 +2179,7 @@ export default function Onboarding() {
                     <ChevronLeft className="h-5 w-5" />
                   </button>
 
-                  <div className="relative aspect-[9/19.5] h-[min(68vh,660px)] shrink-0">
-                    {/* side buttons */}
-                    <span className="absolute -left-[2px] top-[18%] h-7 w-[3px] rounded-l-sm bg-neutral-700" />
-                    <span className="absolute -left-[2px] top-[27%] h-12 w-[3px] rounded-l-sm bg-neutral-700" />
-                    <span className="absolute -left-[2px] top-[41%] h-12 w-[3px] rounded-l-sm bg-neutral-700" />
-                    <span className="absolute -right-[2px] top-[31%] h-16 w-[3px] rounded-r-sm bg-neutral-700" />
-                    {/* titanium frame → bezel → screen */}
-                    <div className="h-full w-full rounded-[2.9rem] bg-gradient-to-b from-neutral-600 via-neutral-800 to-neutral-700 p-[2px] shadow-[0_35px_60px_-18px_rgba(0,0,0,0.55)]">
-                      <div className="h-full w-full rounded-[2.8rem] bg-black p-[9px]">
-                        <div className="relative h-full w-full overflow-hidden rounded-[2.3rem] bg-black">
-                          {/* status bar */}
-                          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex h-[38px] items-center justify-between px-6 text-[11px] font-semibold text-white">
-                            <span className="tabular-nums">9:41</span>
-                            <span className="flex items-center gap-[5px]">
-                              <Signal className="h-3 w-3" />
-                              <Wifi className="h-3 w-3" />
-                              <BatteryFull className="h-3.5 w-3.5" />
-                            </span>
-                          </div>
-                          {/* dynamic island */}
-                          <span className="pointer-events-none absolute left-1/2 top-[9px] z-40 h-[24px] w-[84px] -translate-x-1/2 rounded-full bg-black" />
-                          {/* app UI — full bleed, its own card chrome stripped */}
-                          <div className="no-scrollbar h-full overflow-y-auto pb-7 pt-[38px]">
+                  <PhoneFrame className="max-w-[430px]">
                       {activeCaption ? (
                         <motion.div
                           key={previewPlatform}
@@ -2089,13 +2228,7 @@ export default function Onboarding() {
                           <Loader2 className="h-6 w-6 animate-spin text-white/50" />
                         </div>
                       )}
-                          </div>
-                          {/* home indicator */}
-                          <span className="pointer-events-none absolute bottom-2 left-1/2 z-30 h-[4px] w-[110px] -translate-x-1/2 rounded-full bg-white/75" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  </PhoneFrame>
 
                   <button
                     type="button"
@@ -2111,8 +2244,8 @@ export default function Onboarding() {
                 <div className="flex w-[min(90vw,420px)] shrink-0 flex-col gap-2 sm:flex-row">
                   <Button
                     onClick={() => void handleQuickPost("now")}
-                    disabled={posting || !activeCaption || !activeAccountForPreview}
-                    className="w-full flex-1 h-11 bg-brand hover:bg-brand/90 text-brand-foreground font-semibold"
+                    disabled={posting || !activeCaption}
+                    className="w-full flex-1 h-11 bg-brand hover:bg-brand/90 text-brand-foreground font-semibold rounded-xl"
                   >
                     {posting ? (
                       <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
@@ -2125,7 +2258,7 @@ export default function Onboarding() {
                     variant="outline"
                     onClick={() => void handleQuickPost("draft")}
                     disabled={posting || !activeCaption}
-                    className="w-full flex-1 h-11"
+                    className="w-full flex-1 h-11 rounded-xl"
                   >
                     <Layers className="mr-1.5 h-4 w-4" />
                     Save to Draft
@@ -2182,12 +2315,12 @@ export default function Onboarding() {
 
             {/* Fallback for any non-standard step index */}
             {step !== 0 && step !== 1 && step !== 2 && (
-              <div className="glass-card p-8 text-center space-y-4 max-w-md mx-auto">
+              <div className="rounded-2xl border border-border/80 bg-card p-8 text-center space-y-4 max-w-md mx-auto shadow-sm">
                 <h2 className="font-display text-xl">Let&apos;s get you setup</h2>
                 <p className="text-sm text-muted-foreground">
                   Start by setting up your brand or connecting your social channels.
                 </p>
-                <Button onClick={() => setStep(0)} className="w-full">
+                <Button onClick={() => setStep(0)} className="w-full rounded-xl">
                   Go to Website &amp; Brand Kit
                 </Button>
               </div>

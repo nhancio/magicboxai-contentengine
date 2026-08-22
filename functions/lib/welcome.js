@@ -73,7 +73,7 @@ async function applyBillingClaims(uid) {
  *
  * Entitlement only attaches when the paying email matches the signed-in
  * Google email. A mismatch looks like "none" because pending rows are keyed
- * by the Stripe customer email.
+ * by the Dodo customer email.
  */
 async function claimPendingEntitlement(uid, email) {
     var _a, _b, _c, _d, _e;
@@ -99,7 +99,7 @@ async function claimPendingEntitlement(uid, email) {
         });
         return { outcome: "already_active", plan: (existing.plan === "max" ? "max" : "pro") };
     }
-    await core_1.db.collection("subscriptions").doc(uid).set(Object.assign(Object.assign({ plan: p.plan, billing: (_a = p.billing) !== null && _a !== void 0 ? _a : null, videosUsed: 0, videosLimit: core_1.PLAN_VIDEO_LIMIT[p.plan], status: "active", provider: (_b = p.provider) !== null && _b !== void 0 ? _b : "stripe", providerProductId: (_c = p.providerProductId) !== null && _c !== void 0 ? _c : null, providerSubscriptionId: (_d = p.providerSubscriptionId) !== null && _d !== void 0 ? _d : null, providerCustomerId: (_e = p.providerCustomerId) !== null && _e !== void 0 ? _e : null }, (p.currentPeriodEnd ? { currentPeriodEnd: p.currentPeriodEnd } : {})), { claimedFrom: "guest-checkout", updatedAt: admin.firestore.FieldValue.serverTimestamp() }), { merge: true });
+    await core_1.db.collection("subscriptions").doc(uid).set(Object.assign(Object.assign({ plan: p.plan, billing: (_a = p.billing) !== null && _a !== void 0 ? _a : null, videosUsed: 0, videosLimit: core_1.PLAN_VIDEO_LIMIT[p.plan], status: "active", provider: (_b = p.provider) !== null && _b !== void 0 ? _b : "dodo", providerProductId: (_c = p.providerProductId) !== null && _c !== void 0 ? _c : null, providerSubscriptionId: (_d = p.providerSubscriptionId) !== null && _d !== void 0 ? _d : null, providerCustomerId: (_e = p.providerCustomerId) !== null && _e !== void 0 ? _e : null }, (p.currentPeriodEnd ? { currentPeriodEnd: p.currentPeriodEnd } : {})), { claimedFrom: "guest-checkout", updatedAt: admin.firestore.FieldValue.serverTimestamp() }), { merge: true });
     await pendingRef.set({
         status: "claimed",
         claimedByUid: uid,
@@ -197,7 +197,7 @@ exports.onUserUpdatedClaimPendingEntitlement = (0, firestore_1.onDocumentUpdated
  * Client-callable claim after guest checkout returns to /pricing?checkout=returned.
  * Looks up pendingEntitlements by the signed-in Google email, writes subscriptions/{uid},
  * and refreshes custom claims so Convex can enforce the paid plan. Does not change
- * the Stripe webhook path that creates the pending row.
+ * the Dodo webhook path that creates the pending row.
  */
 exports.claimGuestEntitlement = (0, https_1.onCall)(core_1.callableSecurity, async (request) => {
     var _a;

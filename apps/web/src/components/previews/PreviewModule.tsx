@@ -13,6 +13,7 @@ import {
   Youtube,
 } from "lucide-react";
 import PlatformPreview, { type PreviewContent } from "./PlatformPreview";
+import PhoneFrame from "./PhoneFrame";
 
 const PLATFORM_META: {
   id: SocialPlatform;
@@ -150,11 +151,11 @@ export default function PreviewModule({
         </div>
       )}
 
-      <div className="flex flex-1 justify-center overflow-y-auto p-4">
+      <div className="flex min-h-0 flex-1 justify-center p-4">
         {content ? (
-          <div className="w-full max-w-[340px]">
+          <PhoneFrame>
             <PlatformPreview platform={active} content={content} />
-          </div>
+          </PhoneFrame>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-16 text-center">
             <Smartphone className="h-8 w-8 text-muted-foreground/40" />

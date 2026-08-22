@@ -32,6 +32,20 @@ die() { printf '\n\033[1;31m✖ %s\033[0m\n' "$*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "Run with sudo."
 command -v docker >/dev/null || die "docker is not installed on this host."
 
+# --local: run the container only, no DNS record and no public vhost. Reach it
+# with `./magicboxvm.sh -t` from a laptop. Useful before DNS has propagated.
+if [ "${1:-}" = "--local" ]; then
+  say "Starting ${CONTAINER} (local only — no public vhost)"
+  docker pull "$IMAGE"
+  docker rm -f "$CONTAINER" 2>/dev/null || true
+  docker run -d --name "$CONTAINER" --restart unless-stopped \
+    -p "127.0.0.1:${DASH_PORT}:6791" \
+    -e "NEXT_PUBLIC_DEPLOYMENT_URL=${BACKEND_PUBLIC}" "$IMAGE"
+  printf '\n\033[1;32m✔ Running.\033[0m From your laptop: ./magicboxvm.sh -t\n'
+  printf '  Then open http://localhost:%s and paste CONVEX_SELF_HOSTED_ADMIN_KEY.\n\n' "$DASH_PORT"
+  exit 0
+fi
+
 # ---------------------------------------------------------------------------
 # 1. Preflight: DNS must already point here, or Caddy's TLS challenge fails.
 # ---------------------------------------------------------------------------

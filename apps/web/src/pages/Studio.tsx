@@ -1,11 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { isConvexConfigured } from "../lib/convex";
-import { studioKey, usePersistentState, type StudioField } from "../lib/drafts";
+import {
+  deleteStudioSession,
+  readStudioSessions,
+  studioActiveSessionKey,
+  studioKey,
+  usePersistentState,
+  writeStudioSessions,
+  type StudioField,
+  type StudioSession,
+} from "../lib/drafts";
 import { useAuth } from "@shared/lib/auth";
 import { getPhotoAvatars, type PhotoAvatarRecord } from "@shared/lib/firestore";
 import { rewriteAsUGC } from "@shared/lib/gemini";
@@ -15,11 +24,15 @@ import { Textarea } from "@shared/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/components/ui/select";
 import { cn } from "@shared/lib/utils";
 import Carousel from "./Carousel";
+import MyVideo from "./MyVideo";
 import PlatformPreview, { type PreviewContent } from "../components/previews/PlatformPreview";
+import PhoneFrame from "../components/previews/PhoneFrame";
 import CreativeImageLoader from "../components/common/CreativeImageLoader";
 import type { SocialPlatform } from "@shared/types";
 import {
   Sparkles,
+  Trash2,
+  Plus,
   Loader2,
   Wand2,
   Send,
@@ -34,6 +47,7 @@ import {
   Twitter,
   ImagePlus,
   Film,
+  Scissors,
   Type,
   Layers,
   CheckCircle2,
@@ -65,7 +79,7 @@ import {
  * 5. Display Preview with Post Now, Post Best Time, Save to Draft options
  */
 
-type PostType = "text" | "image" | "carousel" | "reel" | "video" | "post";
+type PostType = "text" | "image" | "carousel" | "reel" | "video" | "post" | "videoedit";
 
 type StudioMedia = { type: "image" | "video"; url: string; source: string };
 
@@ -81,11 +95,11 @@ function cleanErrorMessage(e: unknown): string {
 
 const CHANNELS: { id: string; label: string; icon: typeof Instagram }[] = [
   { id: "instagram", label: "Instagram", icon: Instagram },
-  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
   { id: "youtube", label: "YouTube", icon: Youtube },
+  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
   { id: "facebook", label: "Facebook", icon: Facebook },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { id: "twitter", label: "Twitter / X", icon: Twitter },
+  { id: "twitter", label: "X", icon: Twitter },
 ];
 
 const CHANNEL_POST_TYPES: Record<
@@ -97,16 +111,19 @@ const CHANNEL_POST_TYPES: Record<
     { id: "carousel", label: "Carousel", icon: Layers, description: "Multi-slide story or educational deck" },
     { id: "reel", label: "Reel", icon: Film, description: "Vertical short-form video Reel" },
     { id: "post", label: "Standard Post", icon: Type, description: "Standard post copy & caption" },
+    { id: "videoedit", label: "AI Video Editor", icon: Scissors, description: "Upload raw footage — AI cuts filler words, grades, and captions it" },
   ],
   linkedin: [
     { id: "image", label: "Image Post", icon: ImagePlus, description: "Single graphic or photo with caption" },
     { id: "carousel", label: "Carousel (Document)", icon: Layers, description: "PDF / multi-image document carousel" },
     { id: "reel", label: "Reel / Video", icon: Film, description: "Short vertical video or video clip" },
     { id: "post", label: "Standard Post", icon: Type, description: "Text post & professional insight" },
+    { id: "videoedit", label: "AI Video Editor", icon: Scissors, description: "Upload raw footage — AI cuts filler words, grades, and captions it" },
   ],
   youtube: [
     { id: "reel", label: "Reel / Short", icon: Film, description: "Vertical short-form YouTube Short (9:16)" },
     { id: "video", label: "Long-form Video", icon: Film, description: "Standard long-form YouTube video" },
+    { id: "videoedit", label: "AI Video Editor", icon: Scissors, description: "Upload raw footage — AI cuts filler words, grades, and captions it" },
   ],
   facebook: [
     { id: "image", label: "Image Post", icon: ImagePlus, description: "Single photo with caption" },
@@ -114,6 +131,7 @@ const CHANNEL_POST_TYPES: Record<
     { id: "reel", label: "Reel", icon: Film, description: "Short-form video Reel" },
     { id: "video", label: "Video", icon: Film, description: "Longer video post" },
     { id: "post", label: "Standard Post", icon: Type, description: "Text update or link post" },
+    { id: "videoedit", label: "AI Video Editor", icon: Scissors, description: "Upload raw footage — AI cuts filler words, grades, and captions it" },
   ],
   twitter: [
     { id: "post", label: "Standard Post", icon: Type, description: "Short post copy & tweet" },
@@ -160,14 +178,21 @@ function initialPostType(searchParams: URLSearchParams): PostType {
   return "image";
 }
 
-export default function Studio() {
+function StudioWorkspace({
+  sessionId,
+  onTitle,
+}: {
+  sessionId: string;
+  onTitle: (title: string) => void;
+}) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Queries & Mutations
   const accounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
   const brands = useQuery(api.brands.list, isConvexConfigured ? {} : "skip");
-  const primaryBrand = brands?.[0];
+  const [brandId, setBrandId] = useState<string>("");
+  const primaryBrand = brands?.find((b: any) => b._id === brandId) ?? brands?.[0];
 
   const generateCopy = useAction(api.studio.generateCopy);
   const generateImage = useAction(api.media.generateImage);
@@ -180,7 +205,7 @@ export default function Studio() {
   // post. Writes go straight to storage, so a generation that lands after the
   // page unmounted is still here when the user returns.
   const uid = user?.uid ?? "anon";
-  const key = (field: StudioField) => studioKey(uid, field);
+  const key = (field: StudioField) => studioKey(uid, field, sessionId);
 
   // Form State
   const [channel, setChannel] = usePersistentState<string>(key("channel"), "instagram");
@@ -352,6 +377,13 @@ export default function Studio() {
 
   const selectedAvatar = avatars.find((a) => a.id === avatarId) ?? null;
 
+  // Name the session after whatever the user has actually written, so the rail
+  // reads like a list of posts rather than a list of ids.
+  useEffect(() => {
+    const title = (caption || prompt).trim().replace(/\s+/g, " ");
+    if (title) onTitle(title.slice(0, 60));
+  }, [prompt, caption, onTitle]);
+
   // Auto-grow the prompt textarea to fit its content (no inner scroll until it
   // gets very tall), including when a preset pre-fills it programmatically.
   useEffect(() => {
@@ -367,8 +399,9 @@ export default function Studio() {
     const el = captionRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-    el.style.overflowY = "hidden";
+    const max = 180;
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
   }, [caption]);
 
   // File Upload Handler
@@ -641,14 +674,20 @@ export default function Studio() {
           toast.success("Publishing in progress...");
         }
       } else if (mode === "schedule") {
-        const when = r.scheduledFor
-          ? new Date(r.scheduledFor).toLocaleString(undefined, {
-              weekday: "short",
-              hour: "numeric",
-              minute: "2-digit",
-            })
-          : null;
-        toast.success(when ? `Scheduled for best time: ${when}` : "Scheduled for best time.");
+        if (r.status === "draft") {
+          toast.warning("Saved as a draft — connect a channel to schedule directly.", {
+            action: { label: "Channels", onClick: () => (window.location.href = "/settings") },
+          });
+        } else {
+          const when = r.scheduledFor
+            ? new Date(r.scheduledFor).toLocaleString(undefined, {
+                weekday: "short",
+                hour: "numeric",
+                minute: "2-digit",
+              })
+            : null;
+          toast.success(when ? `Scheduled for best time: ${when}` : "Scheduled for best time.");
+        }
       } else {
         toast.success("Saved to Drafts.");
       }
@@ -710,12 +749,28 @@ export default function Studio() {
           </h1>
         </div>
         {primaryBrand && (
-          <div className="flex items-center gap-2 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground shadow-sm">
-            {primaryBrand.logoUrl && (
-              <img src={primaryBrand.logoUrl} alt="" className="h-4 w-4 rounded-full object-contain" />
-            )}
-            <span className="font-medium text-foreground">{primaryBrand.name}</span>
-          </div>
+          <Select value={primaryBrand._id} onValueChange={setBrandId}>
+            <SelectTrigger className="h-8 w-auto gap-2 rounded-full border-border bg-card px-2.5 text-xs shadow-sm hover:bg-secondary">
+              <div className="flex items-center gap-2">
+                {primaryBrand.logoUrl && (
+                  <img src={primaryBrand.logoUrl} alt="" className="h-4 w-4 rounded-full object-contain" />
+                )}
+                <span className="font-medium text-foreground">{primaryBrand.name}</span>
+              </div>
+            </SelectTrigger>
+            <SelectContent align="end">
+              {(brands ?? []).map((b: any) => (
+                <SelectItem key={b._id} value={b._id}>
+                  <div className="flex items-center gap-2">
+                    {b.logoUrl && (
+                      <img src={b.logoUrl} alt="" className="h-4 w-4 rounded-full object-contain" />
+                    )}
+                    {b.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </header>
 
@@ -725,6 +780,10 @@ export default function Studio() {
           <div className="h-full w-full overflow-y-auto pr-1">
             <Carousel embedded />
           </div>
+        ) : postType === "videoedit" ? (
+          <div className="h-full w-full overflow-y-auto pr-1">
+            <MyVideo embedded />
+          </div>
         ) : (
           <div
             className={cn(
@@ -732,179 +791,210 @@ export default function Studio() {
               hasEditPanel ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1",
             )}
           >
-            {/* Left Edit & Publish Card (Internally scrollable if needed on smaller viewports, page never scrolls) */}
+            {/* Left Edit & Publish Card (Structured 3-part layout: fixed header, scrollable body, pinned publish actions footer) */}
             {hasEditPanel && (
-              <div className="flex h-full flex-col min-w-0 overflow-y-auto rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-sm space-y-3.5 no-scrollbar">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                    2. Edit & Publish Options
-                  </p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={isCreating || isRenderingMedia}
-                    onClick={() => void handleRegenerateAll()}
-                    className="h-6 px-2 text-[11px] font-medium text-brand hover:bg-brand/10"
-                    title="Regenerate all content (copy, hashtags & AI media)"
-                  >
-                    <RefreshCw className="mr-1 h-3 w-3" />
-                    Regenerate Post
-                  </Button>
-                </div>
-
-                {/* Caption */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label className="text-xs font-medium">Caption</Label>
+              <div className="flex h-full flex-col min-w-0 rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+                {/* Fixed Card Header */}
+                <div className="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-2.5 sm:px-5 bg-secondary/15">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand/10 text-[10px] font-bold text-brand">
+                      2
+                    </span>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                      Edit & Publish Options
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       disabled={isRewriting || !caption.trim()}
                       onClick={() => void handleRewriteUgc()}
-                      className="h-6 shrink-0 px-2 text-[11px] text-brand hover:bg-brand/10"
+                      className="h-7 px-2 text-[11px] font-medium text-brand hover:bg-brand/10 gap-1 rounded-lg"
+                      title="Rewrite caption in UGC creator style"
                     >
                       {isRewriting ? (
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        <Loader2 className="h-3 w-3 animate-spin" />
                       ) : (
-                        <Wand2 className="mr-1 h-3 w-3" />
+                        <Wand2 className="h-3 w-3" />
                       )}
-                      Rewrite as UGC
+                      <span>Rewrite UGC</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={isCreating || isRenderingMedia}
+                      onClick={() => void handleRegenerateAll()}
+                      className="h-7 px-2 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-secondary gap-1 rounded-lg"
+                      title="Regenerate all content (copy, hashtags & AI media)"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      <span>Regenerate</span>
                     </Button>
                   </div>
-                  <Textarea
-                    ref={captionRef}
-                    value={caption}
-                    onChange={(e) => setCaption(e.target.value)}
-                    rows={3}
-                    className="min-h-[4.5rem] w-full overflow-hidden text-xs leading-relaxed"
-                  />
                 </div>
 
-                {/* Hashtags */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Hashtags</Label>
-                  <Textarea
-                    value={hashtags}
-                    onChange={(e) => setHashtags(e.target.value)}
-                    onBlur={() => {
-                      if (hashtags.trim()) {
-                        const formatted = hashtags
-                          .split(/\s+/)
-                          .map((h) => h.trim())
-                          .filter(Boolean)
-                          .map((h) => (h.startsWith("#") ? h : `#${h.replace(/^[#\s]+/, "")}`))
-                          .join(" ");
-                        setHashtags(formatted);
-                      }
-                    }}
-                    placeholder="#marketing #ai #growth"
-                    rows={2}
-                    className="min-h-[2.5rem] w-full overflow-hidden text-xs leading-relaxed"
-                  />
-                </div>
-
-                {/* Media Generation Failure banner */}
-                {mediaError && (
-                  <div className="flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
-                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <div className="flex-1 space-y-1">
-                      <p className="font-semibold">AI Media Generation Failed</p>
-                      <p className="text-destructive/90 leading-relaxed">{mediaError}</p>
+                {/* Scrollable Form Body */}
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 no-scrollbar">
+                  {/* Caption */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold text-foreground">Caption</Label>
+                      {caption && (
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {caption.length} chars
+                        </span>
+                      )}
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRegenerateMedia}
-                      disabled={isRenderingMedia}
-                      className="h-7 shrink-0 text-xs border-destructive/30 hover:bg-destructive/20"
-                    >
-                      <RefreshCw className="mr-1 h-3 w-3" /> Retry
-                    </Button>
+                    <Textarea
+                      ref={captionRef}
+                      value={caption}
+                      onChange={(e) => setCaption(e.target.value)}
+                      rows={3}
+                      className="min-h-[4.5rem] max-h-44 w-full text-xs leading-relaxed rounded-xl border-border bg-background/50 focus:bg-background"
+                      placeholder="Write or edit caption..."
+                    />
                   </div>
-                )}
 
-                {/* Regenerate AI Media button */}
-                {postType !== "text" && postType !== "post" && (
-                  <div className="flex items-center gap-2 pt-0.5">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRegenerateMedia}
-                      disabled={isRenderingMedia || (!prompt.trim() && !selectedPreset?.starterPrompt)}
-                      className="h-7 text-xs"
-                    >
-                      {isRenderingMedia ? (
-                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                      ) : (
-                        <RefreshCw className="mr-1.5 h-3 w-3" />
-                      )}
-                      Regenerate AI Media
-                    </Button>
+                  {/* Hashtags */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-foreground">Hashtags</Label>
+                    <Textarea
+                      value={hashtags}
+                      onChange={(e) => setHashtags(e.target.value)}
+                      onBlur={() => {
+                        if (hashtags.trim()) {
+                          const formatted = hashtags
+                            .split(/\s+/)
+                            .map((h) => h.trim())
+                            .filter(Boolean)
+                            .map((h) => (h.startsWith("#") ? h : `#${h.replace(/^[#\s]+/, "")}`))
+                            .join(" ");
+                          setHashtags(formatted);
+                        }
+                      }}
+                      placeholder="#marketing #ai #growth"
+                      rows={2}
+                      className="min-h-[2.5rem] max-h-20 w-full text-xs leading-relaxed rounded-xl border-border bg-background/50 focus:bg-background"
+                    />
                   </div>
-                )}
 
-                {/* No active account alert */}
-                {!connectedAccount && (
-                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber-600 dark:text-amber-400">
-                    <Link2 className="h-4 w-4 shrink-0" />
-                    <span>
-                      No active {channel} account connected. You can publish as draft or{" "}
-                      <Link to="/settings" className="underline font-semibold">
-                        connect channel
-                      </Link>.
-                    </span>
-                  </div>
-                )}
+                  {/* Media Generation Failure banner */}
+                  {mediaError && (
+                    <div className="flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div className="flex-1 space-y-1">
+                        <p className="font-semibold">AI Media Generation Failed</p>
+                        <p className="text-destructive/90 leading-relaxed">{mediaError}</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRegenerateMedia}
+                        disabled={isRenderingMedia}
+                        className="h-7 shrink-0 text-xs border-destructive/30 hover:bg-destructive/20 rounded-lg"
+                      >
+                        <RefreshCw className="mr-1 h-3 w-3" /> Retry
+                      </Button>
+                    </div>
+                  )}
 
-                {/* Publish Options */}
-                <div className="mt-auto space-y-2 border-t border-border pt-3">
-                  <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-                    Publish Options
-                  </p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {/* Regenerate AI Media button */}
+                  {postType !== "text" && postType !== "post" && (
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRegenerateMedia}
+                        disabled={isRenderingMedia || (!prompt.trim() && !selectedPreset?.starterPrompt)}
+                        className="h-8 text-xs rounded-xl border-border bg-card hover:bg-secondary text-foreground gap-1.5"
+                      >
+                        {isRenderingMedia ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5 text-brand" />
+                        )}
+                        <span>Regenerate AI Media</span>
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Fixed Card Footer (Publish Options - ALWAYS PINNED & FULLY VISIBLE) */}
+                <div className="shrink-0 border-t border-border/80 bg-card p-3.5 sm:p-4 space-y-2.5 shadow-md">
+                  {/* Active account status or unconnected banner */}
+                  {!connectedAccount ? (
+                    <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Link2 className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <span className="truncate text-[11px] sm:text-xs">
+                          No active <strong>{channel}</strong> account. Post will save to draft.
+                        </span>
+                      </div>
+                      <Link
+                        to="/settings"
+                        className="shrink-0 underline font-semibold text-[11px] sm:text-xs hover:text-amber-900 dark:hover:text-amber-100"
+                      >
+                        Connect
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                      <span className="flex items-center gap-1.5 font-medium text-foreground">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                        Publishing to <strong className="capitalize">{channel}</strong>
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        @{connectedAccount.username || connectedAccount.displayName || channel}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Publish Buttons Grid */}
+                  <div className="grid grid-cols-3 gap-2">
                     <Button
                       onClick={() => void handlePublish("now")}
                       disabled={posting !== null}
-                      className="w-full h-8 text-xs"
+                      className="h-10 text-xs font-semibold rounded-xl bg-brand text-brand-foreground hover:bg-brand/90 shadow-sm transition-transform active:scale-[0.98] gap-1.5"
                     >
                       {posting === "now" ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <Send className="mr-1.5 h-3.5 w-3.5" />
+                        <Send className="h-3.5 w-3.5" />
                       )}
-                      Post Now
+                      <span>Post Now</span>
                     </Button>
 
                     <Button
                       variant="outline"
                       onClick={() => void handlePublish("schedule")}
                       disabled={posting !== null}
-                      className="w-full h-8 text-xs"
+                      className="h-10 text-xs font-medium rounded-xl border-border bg-card hover:bg-secondary text-foreground gap-1.5"
                     >
                       {posting === "schedule" ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <CalendarClock className="mr-1.5 h-3.5 w-3.5" />
+                        <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
                       )}
-                      Post Best Time
+                      <span>Best Time</span>
                     </Button>
 
                     <Button
                       variant="secondary"
                       onClick={() => void handlePublish("draft")}
                       disabled={posting !== null}
-                      className="w-full h-8 text-xs"
+                      className="h-10 text-xs font-medium rounded-xl bg-secondary/80 hover:bg-secondary text-foreground gap-1.5"
                     >
                       {posting === "draft" ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <Save className="mr-1.5 h-3.5 w-3.5" />
+                        <Save className="h-3.5 w-3.5 text-muted-foreground" />
                       )}
-                      Save to Draft
+                      <span>Save Draft</span>
                     </Button>
                   </div>
                 </div>
@@ -918,7 +1008,7 @@ export default function Studio() {
               )}
             >
               {caption || media || isRenderingMedia || mediaError ? (
-                <div className="mx-auto w-full max-w-sm max-h-full overflow-y-auto no-scrollbar flex items-center justify-center">
+                <div className="mx-auto w-full max-w-sm max-h-full overflow-y-auto no-scrollbar flex items-center justify-center py-2">
                   {isRenderingMedia && !media ? (
                     <CreativeImageLoader
                       aspectRatio="9:16"
@@ -927,11 +1017,13 @@ export default function Studio() {
                       className="w-full max-h-[68vh]"
                     />
                   ) : (
-                    <div className="w-full">
-                      <PlatformPreview
-                        platform={channel as SocialPlatform}
-                        content={previewContent}
-                      />
+                    <div className="h-[min(70vh,820px)] w-full flex items-center justify-center">
+                      <PhoneFrame>
+                        <PlatformPreview
+                          platform={channel as SocialPlatform}
+                          content={previewContent}
+                        />
+                      </PhoneFrame>
                     </div>
                   )}
                 </div>
@@ -1215,6 +1307,106 @@ export default function Studio() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+
+/**
+ * Studio shell: a rail of saved sessions beside the workspace.
+ *
+ * Each session owns its own draft keys, so switching one in is a remount with a
+ * different key prefix — no state copying, no merge logic.
+ */
+export default function Studio() {
+  const { user } = useAuth();
+  const uid = user?.uid ?? "anon";
+
+  const [sessions, setSessions] = useState<StudioSession[]>(() => readStudioSessions(uid));
+  const [activeId, setActiveId] = usePersistentState<string>(studioActiveSessionKey(uid), "");
+
+  const persist = useCallback(
+    (next: StudioSession[]) => {
+      writeStudioSessions(uid, next);
+      setSessions(next);
+    },
+    [uid],
+  );
+
+  const newSession = useCallback(() => {
+    const session: StudioSession = {
+      id: `s${Date.now().toString(36)}`,
+      title: "New post",
+      updatedAt: Date.now(),
+    };
+    persist([session, ...readStudioSessions(uid)]);
+    setActiveId(session.id);
+  }, [persist, setActiveId, uid]);
+
+  // Always land in a session — first visit, or after deleting the last one.
+  useEffect(() => {
+    if (sessions.length === 0) {
+      newSession();
+      return;
+    }
+    if (!sessions.some((s) => s.id === activeId)) setActiveId(sessions[0].id);
+  }, [sessions, activeId, newSession, setActiveId]);
+
+  const handleTitle = useCallback(
+    (title: string) => {
+      persist(
+        readStudioSessions(uid).map((s) =>
+          s.id === activeId ? { ...s, title, updatedAt: Date.now() } : s,
+        ),
+      );
+    },
+    [activeId, persist, uid],
+  );
+
+  function handleDelete(id: string) {
+    deleteStudioSession(uid, id);
+    setSessions(readStudioSessions(uid));
+  }
+
+  if (!activeId) return null;
+
+  return (
+    <div className="flex h-full w-full gap-3 overflow-hidden">
+      <aside className="hidden w-52 shrink-0 flex-col gap-2 border-r border-border/60 pr-3 lg:flex">
+        <Button onClick={newSession} variant="outline" className="w-full justify-start gap-2 text-sm">
+          <Plus className="h-4 w-4" /> New post
+        </Button>
+        <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto no-scrollbar">
+          {sessions.map((session) => (
+            <div
+              key={session.id}
+              className={cn(
+                "group flex items-center gap-1 rounded-lg pr-1 transition-colors",
+                session.id === activeId ? "bg-brand/10 text-brand" : "hover:bg-accent",
+              )}
+            >
+              <button
+                onClick={() => setActiveId(session.id)}
+                className="min-w-0 flex-1 truncate px-2.5 py-2 text-left text-xs"
+                title={session.title}
+              >
+                {session.title}
+              </button>
+              <button
+                onClick={() => handleDelete(session.id)}
+                aria-label="Delete session"
+                className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </aside>
+
+      <div className="min-w-0 flex-1">
+        <StudioWorkspace key={activeId} sessionId={activeId} onTitle={handleTitle} />
+      </div>
     </div>
   );
 }

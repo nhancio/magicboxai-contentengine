@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
 import { getUserSubscription, type SubscriptionRecord } from "@shared/lib/firestore";
@@ -29,7 +29,6 @@ import {
   Palette,
   Settings,
   Sparkles,
-  Video,
   X,
 } from "lucide-react";
 
@@ -45,12 +44,6 @@ const NAV_SECTIONS = [
       { label: "Library", path: "/posts", icon: FolderOpen },
       { label: "Brand Kit", path: "/brand", icon: Palette },
       { label: "Warmed-Up Accounts", path: "/warmed-up-accounts", icon: Flame, badge: "NEW" },
-    ],
-  },
-  {
-    heading: "AI Video",
-    items: [
-      { label: "My Video", path: "/my-video", icon: Video },
     ],
   },
 ] as const;
@@ -81,7 +74,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const syncPlan = useMutation(api.credits.syncPlan);
   const mayaActivation = useMayaActivation();
 
-  // Firestore/Stripe is the billing source of truth. Refresh the signed claim
+  // Firestore/Dodo is the billing source of truth. Refresh the signed claim
   // used by Convex and use the same record for the sidebar label.
   useEffect(() => {
     if (!user) {
@@ -283,16 +276,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           />
         )}
         <div className="flex items-center gap-2.5">
-          <Avatar className="h-9 w-9 shrink-0 border border-border">
-            <AvatarImage src={user?.photoURL ?? undefined} />
-            <AvatarFallback className="bg-brand/10 text-xs text-brand">{initials}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-foreground">
-              {user?.displayName ?? "User"}
-            </p>
-            <p className="truncate text-[10px] text-muted-foreground">{user?.email}</p>
-          </div>
+          <Link
+            to="/settings"
+            onClick={closeSidebar}
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1 -m-1 transition-colors hover:bg-accent"
+          >
+            <Avatar className="h-9 w-9 shrink-0 border border-border">
+              <AvatarImage src={user?.photoURL ?? undefined} />
+              <AvatarFallback className="bg-brand/10 text-xs text-brand">{initials}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground">
+                {user?.displayName ?? "User"}
+              </p>
+              <p className="truncate text-[10px] text-muted-foreground">{user?.email}</p>
+            </div>
+          </Link>
           <Button
             variant="ghost"
             size="icon"

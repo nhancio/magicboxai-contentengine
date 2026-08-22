@@ -14,6 +14,7 @@ import type { BrandProfileDoc, PostDoc, SocialPlatform } from "./core";
 import { buildContentPrompt, buildImagePrompt } from "./prompts/marketingPrompts";
 import { generateVeoVideo } from "./video/googleVeo";
 import { MODELS } from "./models";
+import { renderImageBuffer } from "./image";
 
 function parseJsonBlock(text: string): { caption: string; hashtags: string[] } {
   const cleaned = text
@@ -66,21 +67,11 @@ export async function generatePostImage(args: {
     brief: args.brief,
     caption: args.caption,
   });
-  const response = await ai.models.generateImages({
-    model: "imagen-3.0-generate-001",
-    prompt: prompt.slice(0, 4000),
-    config: {
-      numberOfImages: 1,
-      outputMimeType: "image/png",
-      aspectRatio: "1:1",
-    },
-  });
-  const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
-  if (!imageBytes) throw new Error("No image returned from Imagen");
+  const imageBuffer = await renderImageBuffer({ ai, prompt, aspectRatio: "1:1" });
 
   const storagePath = `posts/${args.postId}/${uuidv4()}.png`;
   const file = getBucket().file(storagePath);
-  await file.save(Buffer.from(imageBytes, "base64"), {
+  await file.save(imageBuffer, {
     metadata: { contentType: "image/png", cacheControl: "public, max-age=31536000" },
   });
   return { url: await createDownloadUrl(storagePath), storagePath };

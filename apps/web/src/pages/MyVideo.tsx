@@ -11,6 +11,7 @@ import { Textarea } from "@shared/components/ui/textarea";
 import { Badge } from "@shared/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/components/ui/card";
 import { cn } from "@shared/lib/utils";
+import PhoneFrame from "../components/previews/PhoneFrame";
 import {
   Film,
   Sparkles,
@@ -110,7 +111,7 @@ const QUICK_PROMPTS = [
   "Highlight key punchlines and CTA",
 ];
 
-export default function MyVideo() {
+export default function MyVideo({ embedded = false }: { embedded?: boolean }) {
   const [selectedPreset, setSelectedStyle] = useState<PresetStyle>(PRESET_STYLES[0]);
   const [projectTitle, setProjectTitle] = useState("");
   const [prompt, setPrompt] = useState(PRESET_STYLES[0].prompt);
@@ -294,9 +295,17 @@ export default function MyVideo() {
       });
 
       if (mode === "now") {
-        toast.success("Video published successfully to selected channels!");
+        if (res.status === "draft") {
+          toast.warning("Saved as a draft — connect a channel in Settings to publish directly.");
+        } else {
+          toast.success("Video published successfully to selected channels!");
+        }
       } else if (mode === "schedule") {
-        toast.success("Video scheduled for the next best posting time!");
+        if (res.status === "draft") {
+          toast.warning("Saved as a draft — connect a channel in Settings to schedule directly.");
+        } else {
+          toast.success("Video scheduled for the next best posting time!");
+        }
       } else {
         toast.success("Video saved to drafts.");
       }
@@ -311,10 +320,15 @@ export default function MyVideo() {
   const currentVideoUrl = activeProject?.editedVideoUrl || (edl ? (activeProject?.rawVideoUrl || rawVideoUrl) : undefined);
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className={cn("space-y-8", !embedded && "pb-12")}>
       {/* Header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-border/60 pb-5">
-        <div>
+      <div
+        className={cn(
+          "flex flex-col gap-3 md:flex-row md:items-center md:justify-between border-b border-border/60 pb-5",
+          embedded && !activeProjectId && "hidden",
+        )}
+      >
+        <div className={cn(embedded && "hidden")}>
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl font-bold tracking-tight font-display text-foreground sm:text-3xl">
               My Video Module
@@ -564,13 +578,16 @@ export default function MyVideo() {
                 )}
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
-              <div className="relative aspect-[9/16] max-h-[480px] w-full bg-black/90 flex items-center justify-center overflow-hidden">
+            <CardContent className="p-4">
+              <PhoneFrame className="h-[520px]">
+              <div className="relative h-full w-full bg-black flex items-center justify-center overflow-hidden">
                 {currentVideoUrl ? (
                   <>
                     <video
                       src={currentVideoUrl}
                       controls
+                      autoPlay
+                      playsInline
                       className="h-full w-full object-contain"
                     />
                     {edl && (!activeProject?.editedVideoUrl || activeProject.editedVideoUrl === activeProject.rawVideoUrl) && (
@@ -597,6 +614,7 @@ export default function MyVideo() {
                   </div>
                 )}
               </div>
+              </PhoneFrame>
             </CardContent>
           </Card>
 

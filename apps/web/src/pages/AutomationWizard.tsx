@@ -31,6 +31,7 @@ import {
  writePersisted,
 } from"../lib/drafts";
 import PlatformPreview from "../components/previews/PlatformPreview";
+import PhoneFrame from "../components/previews/PhoneFrame";
 import CreativeImageLoader from "../components/common/CreativeImageLoader";
 import {
  ArrowLeft,
@@ -861,16 +862,20 @@ export default function AutomationWizard() {
                           className="max-w-sm w-full"
                         />
                       ) : currentPreview ? (
-                        <PlatformPreview
-                          platform={previewPlatform}
-                          content={{
-                            caption: currentPreview.caption,
-                            hashtags: currentPreview.hashtags,
-                            brandName: brand?.name ?? name,
-                            handle: brand?.name?.toLowerCase().replace(/\s+/g, "") ?? undefined,
-                            logoUrl: brand?.logoUrl,
-                          }}
-                        />
+                        <div className="h-[min(62vh,720px)] w-full">
+                          <PhoneFrame>
+                            <PlatformPreview
+                              platform={previewPlatform}
+                              content={{
+                                caption: currentPreview.caption,
+                                hashtags: currentPreview.hashtags,
+                                brandName: brand?.name ?? name,
+                                handle: brand?.name?.toLowerCase().replace(/\s+/g, "") ?? undefined,
+                                logoUrl: brand?.logoUrl,
+                              }}
+                            />
+                          </PhoneFrame>
+                        </div>
                       ) : (
                         <div className="flex h-full min-h-[250px] items-center justify-center text-sm text-muted-foreground">
                           Preview unavailable — you can still launch the automation.

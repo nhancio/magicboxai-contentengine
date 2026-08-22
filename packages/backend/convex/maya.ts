@@ -32,6 +32,7 @@ import {
 import {
   CONTENT_ENGINE_VERSION,
   auditEngineCandidate,
+  buildBrandImagePrompt,
   buildMayaContentEngineRules,
   type ClaimSafety,
   type ContentFormatId,
@@ -1053,13 +1054,21 @@ export const generateForUser = internalAction({
       // video-type suggestion gets an image preview here; the full Veo video is
       // rendered only if the user actually approves it (see `swipe`). The deck
       // query is reactive, so the card fills in the image the moment it lands.
-      if (c.mediaType && c.mediaType !== "none" && c.mediaPrompt) {
-        await ctx.scheduler.runAfter(0, internal.media.renderImageForSuggestion, {
-          suggestionId,
-          prompt: c.mediaPrompt,
-          aspectRatio: aspectForPlatform(c.platform),
-        });
-      }
+      const posterAspect = aspectForPlatform(c.platform);
+      await ctx.scheduler.runAfter(0, internal.media.renderImageForSuggestion, {
+        suggestionId,
+        prompt: buildBrandImagePrompt({
+          subject: c.mediaPrompt || c.openingVisual,
+          hook: c.hook,
+          brandName: brand?.name,
+          industry: brand?.industry,
+          audience: brand?.audience,
+          toneOfVoice: brand?.toneOfVoice,
+          colors: brand?.colors,
+          aspectRatio: posterAspect,
+        }),
+        aspectRatio: posterAspect,
+      });
     }
 
     await ctx.runMutation(internal.maya.markConfigRun, { userId, batchDate });

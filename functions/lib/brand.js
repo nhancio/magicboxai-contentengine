@@ -40,6 +40,7 @@ const promises_1 = require("node:dns/promises");
 const node_net_1 = require("node:net");
 const uuid_1 = require("uuid");
 const core_1 = require("./core");
+const image_1 = require("./image");
 const models_1 = require("./models");
 // ── URL safety ───────────────────────────────────────────────────────────────
 // Every URL in this feature comes from an untrusted website. Validate the
@@ -641,7 +642,7 @@ function parseBrandJson(text) {
     };
 }
 exports.extractBrandFromWebsite = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { timeoutSeconds: 60, memory: "512MiB" }), async (request) => {
-    var _a, _b, _c, _d, _e;
+    var _a, _b;
     const uid = (0, core_1.requireAuth)(request);
     const url = normalizeUrl((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.url) !== null && _b !== void 0 ? _b : "");
     await (0, core_1.enforceCallableRateLimit)(uid, "brand-extraction", core_1.AI_RATE_LIMITS.brandExtraction);
@@ -719,9 +720,9 @@ exports.extractBrandFromWebsite = (0, https_1.onCall)(Object.assign(Object.assig
         brandedImageSource = sourceBuffer ? "website" : "generated";
         if (!sourceBuffer) {
             await (0, core_1.enforceCallableRateLimit)(uid, "onboarding-branded-image", core_1.AI_RATE_LIMITS.imageGeneration);
-            const ai = (0, core_1.getAI)();
-            const response = await ai.models.generateImages({
-                model: "imagen-3.0-generate-001",
+            sourceBuffer = await (0, image_1.renderImageBuffer)({
+                ai: (0, core_1.getAI)(),
+                aspectRatio: "1:1",
                 prompt: [
                     "Create a polished square social media photograph or editorial illustration.",
                     `Brand: ${profile.companyName || new URL(finalUrl).hostname}.`,
@@ -729,11 +730,7 @@ exports.extractBrandFromWebsite = (0, https_1.onCall)(Object.assign(Object.assig
                     profile.sampleCaptions[0] ? `Post context: ${profile.sampleCaptions[0]}.` : "",
                     "Show a specific, credible subject relevant to the business. No logos, no text, no generic gradient background.",
                 ].filter(Boolean).join("\n"),
-                config: { numberOfImages: 1, outputMimeType: "image/png", aspectRatio: "1:1" },
             });
-            const bytes = (_e = (_d = (_c = response.generatedImages) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.image) === null || _e === void 0 ? void 0 : _e.imageBytes;
-            if (bytes)
-                sourceBuffer = Buffer.from(bytes, "base64");
         }
         if (sourceBuffer) {
             const logoBuffer = logoUrl ? await fetchBinary(logoUrl, 2000000, 8000) : null;
@@ -789,7 +786,7 @@ async function createBrandedSquare(sourceBuffer, logoBuffer, colors) {
  * server-side fetch as an arbitrary URL proxy.
  */
 exports.generateBrandedPostImage = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { invoker: "public", timeoutSeconds: 120, memory: "1GiB" }), async (request) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const uid = (0, core_1.requireAuth)(request);
     const websiteUrl = normalizeUrl((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.websiteUrl) !== null && _b !== void 0 ? _b : "");
     const brandName = String((_d = (_c = request.data) === null || _c === void 0 ? void 0 : _c.brandName) !== null && _d !== void 0 ? _d : "").trim().slice(0, 120);
@@ -808,9 +805,9 @@ exports.generateBrandedPostImage = (0, https_1.onCall)(Object.assign(Object.assi
     let source = "website";
     if (!sourceBuffer) {
         source = "generated";
-        const ai = (0, core_1.getAI)();
-        const response = await ai.models.generateImages({
-            model: "imagen-3.0-generate-001",
+        sourceBuffer = await (0, image_1.renderImageBuffer)({
+            ai: (0, core_1.getAI)(),
+            aspectRatio: "1:1",
             prompt: [
                 "Create a polished square social media photograph or editorial illustration.",
                 `Brand: ${brandName}.`,
@@ -818,15 +815,10 @@ exports.generateBrandedPostImage = (0, https_1.onCall)(Object.assign(Object.assi
                 ((_g = request.data) === null || _g === void 0 ? void 0 : _g.caption) ? `Post context: ${String(request.data.caption).slice(0, 500)}.` : "",
                 "Show a specific, credible subject relevant to the business. No logos, no text, no generic gradient background.",
             ].filter(Boolean).join("\n"),
-            config: { numberOfImages: 1, outputMimeType: "image/png", aspectRatio: "1:1" },
         });
-        const bytes = (_k = (_j = (_h = response.generatedImages) === null || _h === void 0 ? void 0 : _h[0]) === null || _j === void 0 ? void 0 : _j.image) === null || _k === void 0 ? void 0 : _k.imageBytes;
-        if (!bytes)
-            throw new https_1.HttpsError("internal", "No image was generated.");
-        sourceBuffer = Buffer.from(bytes, "base64");
     }
     const logoBuffer = logoUrl ? await fetchBinary(logoUrl, 2000000, 8000) : null;
-    const output = await createBrandedSquare(sourceBuffer, logoBuffer, (_l = request.data) === null || _l === void 0 ? void 0 : _l.colors);
+    const output = await createBrandedSquare(sourceBuffer, logoBuffer, (_h = request.data) === null || _h === void 0 ? void 0 : _h.colors);
     const storagePath = `users/${uid}/brand-creatives/${(0, uuid_1.v4)()}.png`;
     await (0, core_1.getBucket)().file(storagePath).save(output, {
         metadata: { contentType: "image/png", cacheControl: "private, max-age=31536000" },

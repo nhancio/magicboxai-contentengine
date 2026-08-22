@@ -2,7 +2,7 @@
 // Each mockup mirrors the real platform's post anatomy so an enterprise
 // buyer instantly recognizes how their content will land.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SocialPlatform } from "@shared/types";
 import CreativeImageLoader from "../common/CreativeImageLoader";
 import {
@@ -13,10 +13,13 @@ import {
   Heart,
   MessageCircle,
   MoreHorizontal,
+  Play,
   RefreshCw,
   Repeat2,
   Send,
   ThumbsUp,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 
 export interface PreviewContent {
@@ -75,32 +78,209 @@ function BrandAvatar({ content, className }: { content: PreviewContent; classNam
  * has no image, and swaps to the channel icon when the image fails to load.
  */
 function InlineMedia({
- content,
- imgClassName,
- fallbackClassName,
+  content,
+  imgClassName,
+  fallbackClassName,
 }: {
- content: PreviewContent;
- imgClassName: string;
- fallbackClassName: string;
+  content: PreviewContent;
+  imgClassName: string;
+  fallbackClassName: string;
 }) {
- const [imgFailed, setImgFailed] = useState(false);
- useEffect(() => setImgFailed(false), [content.imageUrl]);
- if (!content.imageUrl) return null;
- if (imgFailed) {
- return (
- <div className={`flex items-center justify-center bg-zinc-900 ${fallbackClassName}`}>
- <BrandAvatar content={content} className="h-14 w-14 rounded-2xl" />
- </div>
- );
- }
- return (
- <img
- src={content.imageUrl}
- alt=""
- className={imgClassName}
- onError={() => setImgFailed(true)}
- />
- );
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => setImgFailed(false), [content.imageUrl]);
+
+  if (content.videoUrl) {
+    return (
+      <div className="mt-3 overflow-hidden rounded-xl border border-zinc-700 bg-black">
+        <PreviewVideoPlayer
+          videoUrl={content.videoUrl}
+          posterUrl={content.imageUrl}
+          aspectClass="aspect-video"
+        />
+      </div>
+    );
+  }
+
+  if (!content.imageUrl) return null;
+  if (imgFailed) {
+    return (
+      <div className={`flex items-center justify-center bg-zinc-900 ${fallbackClassName}`}>
+        <BrandAvatar content={content} className="h-14 w-14 rounded-2xl" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={content.imageUrl}
+      alt=""
+      className={imgClassName}
+      onError={() => setImgFailed(true)}
+    />
+  );
+}
+
+/**
+ * Interactive preview video player with automatic playback and sound control.
+ *
+ * Tries unmuted playback first; if the browser's autoplay policy rejects unmuted
+ * playback without previous user gesture, it gracefully falls back to muted
+ * playback and displays a floating "Tap for audio" pill and sound toggle icon so
+ * the user can unmute in 1 tap.
+ */
+export function PreviewVideoPlayer({
+  videoUrl,
+  posterUrl,
+  aspectClass = "aspect-[9/16]",
+  className = "",
+}: {
+  videoUrl: string;
+  posterUrl?: string;
+  aspectClass?: string;
+  className?: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
+  const [showMutePrompt, setShowMutePrompt] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    setProgress(0);
+
+    // Attempt unmuted playback first
+    video.muted = false;
+    video.volume = 1.0;
+
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          setIsPlaying(true);
+          setIsMuted(false);
+          setShowMutePrompt(false);
+        })
+        .catch((err) => {
+          // Browser policy blocked unmuted autoplay -> fallback to muted
+          console.warn("[PreviewVideoPlayer] Unmuted autoplay blocked, falling back to muted:", err);
+          video.muted = true;
+          setIsMuted(true);
+          setShowMutePrompt(true);
+          video
+            .play()
+            .then(() => setIsPlaying(true))
+            .catch(() => setIsPlaying(false));
+        });
+    }
+  }, [videoUrl]);
+
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+
+    setShowMutePrompt(false);
+
+    if (video.paused) {
+      video
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {});
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const toggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+
+    setShowMutePrompt(false);
+    const nextMuted = !video.muted;
+    video.muted = nextMuted;
+    setIsMuted(nextMuted);
+
+    if (video.paused) {
+      video
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {});
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    const video = videoRef.current;
+    if (!video || !video.duration) return;
+    setProgress((video.currentTime / video.duration) * 100);
+  };
+
+  return (
+    <div
+      className={`group relative mx-auto flex w-full max-w-[340px] items-center justify-center overflow-hidden bg-black select-none cursor-pointer ${aspectClass} ${className}`}
+      onClick={togglePlay}
+    >
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        poster={posterUrl}
+        className="h-full w-full object-cover"
+        autoPlay
+        playsInline
+        loop
+        onTimeUpdate={handleTimeUpdate}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+      />
+
+      {/* Subtle bottom progress line */}
+      <div className="pointer-events-none absolute bottom-0 inset-x-0 h-[3px] bg-white/20 z-10">
+        <div
+          className="h-full bg-brand transition-all duration-100 ease-linear"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      {/* Floating Sound Toggle Button (Instagram / TikTok style) */}
+      <button
+        type="button"
+        onClick={toggleMute}
+        title={isMuted ? "Unmute audio" : "Mute audio"}
+        aria-label={isMuted ? "Unmute audio" : "Mute audio"}
+        className="absolute top-2.5 right-2.5 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 backdrop-blur-md text-white border border-white/20 shadow-md transition-transform hover:scale-110 active:scale-95"
+      >
+        {isMuted ? (
+          <VolumeX className="h-4 w-4 text-white/80" />
+        ) : (
+          <Volume2 className="h-4 w-4 text-brand animate-pulse" />
+        )}
+      </button>
+
+      {/* Tap for Sound pill if browser restricted unmuted autoplay */}
+      {isMuted && showMutePrompt && (
+        <button
+          type="button"
+          onClick={toggleMute}
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full bg-black/85 backdrop-blur-md px-3 py-1.5 text-[11px] font-medium text-white border border-white/20 shadow-xl transition-all hover:bg-black hover:scale-105 active:scale-95 animate-bounce"
+        >
+          <VolumeX className="h-3.5 w-3.5 text-amber-400" />
+          <span>Tap for audio</span>
+        </button>
+      )}
+
+      {/* Play/Pause Overlay Indicator when paused */}
+      {!isPlaying && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/80 text-white shadow-2xl border border-white/20">
+            <Play className="h-6 w-6 fill-white ml-0.5" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Centered channel icon shown when a provided image fails to render. */
@@ -262,21 +442,12 @@ function MediaSlot({
   if (content.videoUrl) {
     // Generated videos are always 9:16 — preview them vertically, not in the
     // platform's photo aspect, so the mobile preview matches the real output.
-    // The CONTAINER owns the 9:16 shape (a bare <video> with w-auto can collapse
-    // to 0 before metadata loads, showing nothing); the video just fills it.
     return (
-      <div className="mx-auto flex aspect-[9/16] w-full max-w-[300px] items-center justify-center overflow-hidden bg-black">
-        <video
-          src={content.videoUrl}
-          poster={content.imageUrl}
-          className="h-full w-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
-          controls={false}
-        />
-      </div>
+      <PreviewVideoPlayer
+        videoUrl={content.videoUrl}
+        posterUrl={content.imageUrl}
+        aspectClass="aspect-[9/16]"
+      />
     );
   }
   // Image provided but failed to load → show the channel icon instead of a broken image.

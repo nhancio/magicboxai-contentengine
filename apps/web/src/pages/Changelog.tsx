@@ -71,7 +71,7 @@ const HIGHLIGHTS_1_0 = [
     title: "Unified Credits & Enterprise Security",
     color: "text-cyan-500 bg-cyan-500/10",
     description:
-      "Transparent i-credits and v-credits ledger, 7-day free trial on signup, secure server-side token encryption, and Stripe billing.",
+      "Transparent i-credits and v-credits ledger, 7-day free trial on signup, secure server-side token encryption, and Dodo Payments billing.",
   },
 ];
 

@@ -22,14 +22,14 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 
 function callbackUrl(): string {
   // Convex injects CONVEX_SITE_URL; the OAuth callback is an httpAction on the
-  // .convex.site domain (see http.ts). Meta strictly requires HTTPS.
+  // backend domain (see http.ts). Meta strictly requires HTTPS.
   if (process.env.OAUTH_CALLBACK_BASE && process.env.OAUTH_CALLBACK_BASE.startsWith("https://")) {
     return `${process.env.OAUTH_CALLBACK_BASE}/oauth/callback`;
   }
   if (process.env.CONVEX_SITE_URL && process.env.CONVEX_SITE_URL.startsWith("https://")) {
     return `${process.env.CONVEX_SITE_URL}/oauth/callback`;
   }
-  return "https://beloved-lyrebird-288.convex.site/oauth/callback";
+  return "https://convex.magicboxai.in/oauth/callback";
 }
 
 function appBaseUrl(): string {
@@ -206,8 +206,7 @@ export const connectUrl = action({
     const returnTo = safeReturnTo(args.returnTo);
     const exp = Date.now() + STATE_TTL_MS;
 
-    const base = returnOrigin || process.env.APP_BASE_URL || "https://app.magicboxai.in";
-    const redirectUri = `${base}/oauth/callback`;
+    const redirectUri = callbackUrl();
 
     // Hard guard: never hand Google or Meta a Firebase callback from the Convex path.
     if (redirectUri.includes("cloudfunctions.net")) {
@@ -693,8 +692,6 @@ export const completeConnect = action({
 
     const redirectUri =
       args.redirectUri ||
-      (args.returnOrigin ? `${args.returnOrigin}/oauth/callback` : null) ||
-      (process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/oauth/callback` : null) ||
       callbackUrl();
 
     const profiles = await provider.exchangeCode({

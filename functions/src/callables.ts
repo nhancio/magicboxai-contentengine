@@ -32,7 +32,7 @@ const MAX_POST_ATTEMPTS = 3;
 
 /**
  * Synchronize the billing entitlement used by Convex. Firestore is the
- * authoritative Stripe/webhook store; the signed custom claims let Convex
+ * authoritative Dodo/webhook store; the signed custom claims let Convex
  * enforce the same entitlement without trusting client-supplied plan data.
  */
 export const syncBillingClaims = onCall(

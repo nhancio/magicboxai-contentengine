@@ -26,7 +26,6 @@ const BrandKit = lazy(() => import("./pages/BrandKit"));
 const Studio = lazy(() => import("./pages/Studio"));
 const Library = lazy(() => import("./pages/Library"));
 const Schedule = lazy(() => import("./pages/Schedule"));
-const MyVideo = lazy(() => import("./pages/MyVideo"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Integrations = lazy(() => import("./pages/Integrations"));
 const Pricing = lazy(() => import("./pages/Pricing"));
@@ -117,7 +116,6 @@ export default function App() {
                 <Route path="/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
                 <Route path="/analytics" element={<Navigate to="/" replace />} />
                 <Route path="/avatars" element={<Navigate to="/" replace />} />
-                <Route path="/my-video" element={<ProtectedRoute><MyVideo /></ProtectedRoute>} />
                 <Route path="/studio" element={<ProtectedRoute><Studio /></ProtectedRoute>} />
                 <Route path="/carousel" element={<Navigate to="/studio?mode=carousel" replace />} />
                 <Route path="/content-studio" element={<Navigate to="/studio?mode=post" replace />} />
