@@ -30,6 +30,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { DEFAULT_TRIAL_I, DEFAULT_TRIAL_V, trialClock } from "../lib/credits";
 import { captureEvent } from "@shared/lib/analytics";
 import { WhatsAppV2Modal, isWhatsAppV2Active } from "./Integrations";
+import { ComingSoonChannelModal } from "../components/channels/ComingSoonChannelModal";
 import {
   Settings as SettingsIcon,
   User,
@@ -57,14 +58,17 @@ import {
   Plus,
   Image as ImageIcon,
   Clapperboard,
+  Video,
 } from "lucide-react";
 
-const PLATFORM_ICON: Record<string, typeof Instagram> = {
+const PLATFORM_ICON: Record<string, any> = {
   instagram: Instagram,
   facebook: Facebook,
   linkedin: Linkedin,
   youtube: Youtube,
   twitter: Twitter,
+  tiktok: Video,
+  x: Twitter,
   reddit: MessageCircle,
   whatsapp: MessageCircle,
 };
@@ -76,6 +80,8 @@ const PLATFORM_BRAND: Record<string, string> = {
   linkedin: "#0A66C2",
   facebook: "#1877F2",
   twitter: "#000000",
+  x: "#000000",
+  tiktok: "#000000",
   whatsapp: "#25D366",
   reddit: "#FF4500",
 };
@@ -278,13 +284,15 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [showConnectPicker, setShowConnectPicker] = useState(false);
   const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
-  // Live Meta + Google channels. Deferred (twitter/reddit) stay in catalogue but
-  // only surface if we intentionally add them here later.
+  const [comingSoonPlatform, setComingSoonPlatform] = useState<string | null>(null);
+  // Live & deferred channel catalogue surfaces in the connect picker
   const launchPlatforms = new Set([
     "instagram",
     "linkedin",
     "youtube",
     "facebook",
+    "tiktok",
+    "twitter",
     "whatsapp",
   ]);
 
@@ -296,15 +304,14 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
     .filter((p: any) => launchPlatforms.has(p.id))
     .filter((p: any) => {
       const active = connected.some(
-        (a: any) => a.platform === p.id && a.status === "active",
+        (a: any) => (a.platform === p.id || (p.id === "twitter" && a.platform === "x")) && a.status === "active",
       );
       return !active;
     });
 
   async function handleConnect(provider: string) {
-    if (provider === "whatsapp" && isWhatsAppV2Active()) {
-      setShowConnectPicker(false);
-      setWhatsAppModalOpen(true);
+    if (provider === "tiktok" || provider === "twitter" || provider === "x" || provider === "whatsapp") {
+      setComingSoonPlatform(provider);
       return;
     }
     setBusy(provider);
@@ -478,26 +485,33 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
             const expired = connected.some(
               (a: any) => a.platform === p.id && a.status === "expired",
             );
+            const isComingSoon = !p.available || p.id === "tiktok" || p.id === "twitter" || p.id === "whatsapp";
+
             return (
               <Button
                 key={p.id}
                 variant="outline"
                 size="sm"
-                className="justify-start"
-                disabled={!p.available || busy !== null}
+                className="justify-between text-left"
+                disabled={busy !== null}
                 title={p.available ? undefined : p.reason}
                 onClick={() => handleConnect(p.id)}
               >
-                {busy === p.id ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Icon className="mr-2 h-4 w-4" />
+                <div className="flex items-center min-w-0">
+                  {busy === p.id ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                  ) : (
+                    <Icon className="mr-2 h-4 w-4 shrink-0" />
+                  )}
+                  <span className="truncate">
+                    {expired ? `Reconnect ${p.displayName}` : `Connect ${p.displayName}`}
+                  </span>
+                </div>
+                {isComingSoon && (
+                  <span className="rounded bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider shrink-0 ml-2">
+                    Soon
+                  </span>
                 )}
-                {!p.available
-                  ? `${p.displayName} — soon`
-                  : expired
-                    ? `Reconnect ${p.displayName}`
-                    : `Connect ${p.displayName}`}
               </Button>
             );
           })}
@@ -506,13 +520,23 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
 
       {!compact && (
         <p className="mt-1 text-xs text-muted-foreground">
-          Tap + to connect Instagram, LinkedIn, YouTube, Facebook, or WhatsApp.
+          Tap + to connect Instagram, LinkedIn, YouTube, Facebook, or explore upcoming channels.
         </p>
       )}
 
       <WhatsAppV2Modal
         open={whatsAppModalOpen}
         onOpenChange={setWhatsAppModalOpen}
+      />
+
+      <ComingSoonChannelModal
+        open={comingSoonPlatform !== null}
+        onOpenChange={(isOpen) => !isOpen && setComingSoonPlatform(null)}
+        platform={comingSoonPlatform}
+        onConnectActivePlatform={(p) => {
+          setComingSoonPlatform(null);
+          void handleConnect(p);
+        }}
       />
     </div>
   );

@@ -23,12 +23,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@shared/components/ui/
 import { cn } from "@shared/lib/utils";
 import { Link, useSearchParams } from "react-router-dom";
 import { captureEvent } from "@shared/lib/analytics";
+import { ComingSoonChannelModal } from "../components/channels/ComingSoonChannelModal";
 import {
   Instagram,
   Linkedin,
   Youtube,
   Facebook,
   MessageCircle,
+  Twitter,
+  Video,
   Link2,
   Check,
   CheckCircle2,
@@ -64,6 +67,9 @@ const PLATFORM_ICON: Record<string, any> = {
   facebook: Facebook,
   linkedin: Linkedin,
   youtube: Youtube,
+  twitter: Twitter,
+  x: Twitter,
+  tiktok: Video,
   whatsapp: MessageCircle,
 };
 
@@ -72,6 +78,9 @@ const PLATFORM_BRAND: Record<string, string> = {
   youtube: "#FF0000",
   linkedin: "#0A66C2",
   facebook: "#1877F2",
+  twitter: "#000000",
+  x: "#000000",
+  tiktok: "#000000",
   whatsapp: "#25D366",
 };
 
@@ -668,12 +677,15 @@ export default function Integrations() {
   const [busy, setBusy] = useState<string | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
+  const [comingSoonPlatform, setComingSoonPlatform] = useState<string | null>(null);
 
   const launchPlatforms = new Set([
     "instagram",
     "linkedin",
     "youtube",
     "facebook",
+    "tiktok",
+    "twitter",
     "whatsapp",
   ]);
 
@@ -685,14 +697,14 @@ export default function Integrations() {
     .filter((p: any) => launchPlatforms.has(p.id))
     .filter((p: any) => {
       const active = connected.some(
-        (a: any) => a.platform === p.id && a.status === "active",
+        (a: any) => (a.platform === p.id || (p.id === "twitter" && a.platform === "x")) && a.status === "active",
       );
       return !active;
     });
 
   const handleConnect = async (provider: string) => {
-    if (provider === "whatsapp") {
-      setWhatsAppModalOpen(true);
+    if (provider === "tiktok" || provider === "twitter" || provider === "x" || provider === "whatsapp") {
+      setComingSoonPlatform(provider);
       return;
     }
     setBusy(provider);
@@ -831,6 +843,7 @@ export default function Integrations() {
               const Icon = PLATFORM_ICON[provider.id] ?? Plus;
               const isBusy = busy === provider.id;
               const isWhatsApp = provider.id === "whatsapp";
+              const isComingSoon = !provider.available || provider.id === "tiktok" || provider.id === "twitter" || provider.id === "x" || provider.id === "whatsapp";
 
               return (
                 <Button
@@ -839,23 +852,30 @@ export default function Integrations() {
                   disabled={isBusy}
                   onClick={() => handleConnect(provider.id)}
                   className={cn(
-                    "h-auto py-3 px-4 justify-start border-border bg-card/60 hover:bg-card hover:border-brand/40 transition-all",
+                    "h-auto py-3 px-4 justify-between border-border bg-card/60 hover:bg-card hover:border-brand/40 transition-all text-left",
                     isWhatsApp && "border-emerald-500/30 hover:border-emerald-500/60 bg-emerald-500/[0.02]",
                   )}
                 >
-                  {isBusy ? (
-                    <Loader2 className="mr-2.5 h-4 w-4 animate-spin shrink-0" />
-                  ) : (
-                    <Icon className={cn("mr-2.5 h-4 w-4 shrink-0", isWhatsApp ? "text-[#25D366]" : "text-brand")} />
-                  )}
-                  <div className="text-left min-w-0 flex-1">
-                    <div className="text-xs font-semibold text-foreground truncate">
-                      Connect {provider.displayName}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground truncate">
-                      {isWhatsApp ? "Cloud API / Sandbox" : "OAuth Publishing"}
+                  <div className="flex items-center min-w-0 mr-2">
+                    {isBusy ? (
+                      <Loader2 className="mr-2.5 h-4 w-4 animate-spin shrink-0" />
+                    ) : (
+                      <Icon className={cn("mr-2.5 h-4 w-4 shrink-0", isWhatsApp ? "text-[#25D366]" : "text-brand")} />
+                    )}
+                    <div className="text-left min-w-0 flex-1">
+                      <div className="text-xs font-semibold text-foreground truncate">
+                        Connect {provider.displayName}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground truncate">
+                        {isWhatsApp ? "Cloud API / Sandbox" : isComingSoon ? "In Development" : "OAuth Publishing"}
+                      </div>
                     </div>
                   </div>
+                  {isComingSoon && (
+                    <span className="rounded bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider shrink-0">
+                      Soon
+                    </span>
+                  )}
                 </Button>
               );
             })}
@@ -889,10 +909,20 @@ export default function Integrations() {
         </Button>
       </div>
 
-      {/* Modal instance */}
+      {/* Modal instances */}
       <WhatsAppV2Modal
         open={whatsAppModalOpen}
         onOpenChange={setWhatsAppModalOpen}
+      />
+
+      <ComingSoonChannelModal
+        open={comingSoonPlatform !== null}
+        onOpenChange={(isOpen) => !isOpen && setComingSoonPlatform(null)}
+        platform={comingSoonPlatform}
+        onConnectActivePlatform={(p) => {
+          setComingSoonPlatform(null);
+          void handleConnect(p);
+        }}
       />
     </div>
   );

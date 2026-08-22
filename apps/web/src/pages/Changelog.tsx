@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   ExternalLink,
   MessageSquare,
+  Route,
 } from "lucide-react";
 
 const HIGHLIGHTS_1_0 = [
@@ -94,15 +95,12 @@ export default function Changelog() {
           </div>
 
           <div className="flex items-center gap-2">
-            <a
-              href="https://magicboxai.in/changelog"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary/50 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors"
-            >
-              <span>Public Changelog</span>
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
+            <Button asChild size="sm" variant="outline" className="text-xs">
+              <Link to="/roadmap">
+                <Route className="mr-1.5 h-3.5 w-3.5" />
+                Roadmap
+              </Link>
+            </Button>
             <Button asChild size="sm" variant="outline" className="text-xs">
               <Link to="/feedback">
                 <MessageSquare className="mr-1.5 h-3.5 w-3.5" />

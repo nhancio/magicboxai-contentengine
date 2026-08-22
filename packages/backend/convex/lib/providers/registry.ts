@@ -4,6 +4,7 @@ import { facebook } from "./facebook";
 import { linkedin } from "./linkedin";
 import { youtube } from "./youtube";
 import { twitter } from "./twitter";
+import { tiktok } from "./tiktok";
 import { reddit } from "./reddit";
 import { whatsapp } from "./whatsapp";
 
@@ -20,6 +21,7 @@ const REGISTRY: Record<PlatformId, SocialProvider> = {
   linkedin,
   youtube,
   twitter,
+  tiktok,
   reddit,
   whatsapp,
 };

@@ -29,6 +29,7 @@ import type * as lib_providers_instagram from "../lib/providers/instagram.js";
 import type * as lib_providers_linkedin from "../lib/providers/linkedin.js";
 import type * as lib_providers_reddit from "../lib/providers/reddit.js";
 import type * as lib_providers_registry from "../lib/providers/registry.js";
+import type * as lib_providers_tiktok from "../lib/providers/tiktok.js";
 import type * as lib_providers_twitter from "../lib/providers/twitter.js";
 import type * as lib_providers_types from "../lib/providers/types.js";
 import type * as lib_providers_whatsapp from "../lib/providers/whatsapp.js";
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   "lib/providers/linkedin": typeof lib_providers_linkedin;
   "lib/providers/reddit": typeof lib_providers_reddit;
   "lib/providers/registry": typeof lib_providers_registry;
+  "lib/providers/tiktok": typeof lib_providers_tiktok;
   "lib/providers/twitter": typeof lib_providers_twitter;
   "lib/providers/types": typeof lib_providers_types;
   "lib/providers/whatsapp": typeof lib_providers_whatsapp;

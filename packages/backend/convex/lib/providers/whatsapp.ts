@@ -50,6 +50,10 @@ class WhatsAppProvider extends BaseProvider implements SocialProvider {
     supportedFormats: ["image", "video", "post"] as PostFormat[],
   };
 
+  readonly deferred = {
+    reason: "Coming soon (WhatsApp Business integration)",
+  };
+
   buildAuthUrl(input: AuthUrlInput): string {
     const params = new URLSearchParams({
       client_id: input.clientId,

@@ -80,10 +80,8 @@ export default function Feedback() {
         </div>
 
         <div className="space-y-4 mb-8">
-          <a
-            href="https://roadmap.magicboxai.in" // Replace with actual roadmap link
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            to="/roadmap"
             className="flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:bg-secondary/50"
           >
             <div className="flex items-center gap-4">
@@ -98,7 +96,7 @@ export default function Feedback() {
               </div>
             </div>
             <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-          </a>
+          </Link>
 
           <Link
             to="/changelog"

@@ -4,7 +4,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { getPreset } from "@/lib/presets";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { doc, serverTimestamp, setDoc, collection } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc, collection } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@shared/lib/auth";
 import { api } from "@convex/_generated/api";
@@ -32,6 +32,8 @@ import {
   type CarouselPlatform,
 } from "../components/carousel/types";
 import WebsitePostCard from "../components/creative/WebsitePostCard";
+import IPhoneMockupShowcase from "../components/previews/IPhoneMockupShowcase";
+import { ComingSoonChannelModal } from "../components/channels/ComingSoonChannelModal";
 import { WhatsAppV2Modal, isWhatsAppV2Active } from "./Integrations";
 import {
   ArrowRight,
@@ -136,20 +138,39 @@ const PLATFORM_META: Record<
   instagram: { label: "Instagram", icon: Instagram, tint: "from-pink-500 to-orange-400", category: "Social & Visual" },
   linkedin: { label: "LinkedIn", icon: Linkedin, tint: "from-blue-600 to-cyan-500", category: "Professional" },
   youtube: { label: "YouTube", icon: Youtube, tint: "from-red-500 to-rose-600", category: "Video & Shorts" },
-  tiktok: { label: "TikTok", icon: Video, tint: "from-fuchsia-500 to-cyan-400", category: "Short-form Video" },
-  twitter: { label: "Twitter / X", icon: Twitter, tint: "from-sky-400 to-blue-500", category: "Real-time & News" },
-  x: { label: "X (Twitter)", icon: Twitter, tint: "from-slate-700 to-slate-900", category: "Real-time & News" },
   facebook: { label: "Facebook", icon: Facebook, tint: "from-blue-600 to-indigo-500", category: "Social & Community" },
+  tiktok: { label: "TikTok", icon: Video, tint: "from-fuchsia-500 to-cyan-400", category: "Short-form Video" },
+  x: { label: "X (Twitter)", icon: Twitter, tint: "from-slate-700 to-slate-900", category: "Real-time & News" },
+  twitter: { label: "Twitter / X", icon: Twitter, tint: "from-sky-400 to-blue-500", category: "Real-time & News" },
   whatsapp: { label: "WhatsApp", icon: MessageCircle, tint: "from-emerald-500 to-teal-500", category: "Messaging" },
+};
+
+const COMING_SOON_CHANNELS: Record<string, { label: string; note: string }> = {
+  tiktok: {
+    label: "TikTok",
+    note: "TikTok direct publishing integration is coming soon! ByteDance developer verification is underway.",
+  },
+  x: {
+    label: "X (Twitter)",
+    note: "X (Twitter) auto-posting & thread scheduler is coming soon!",
+  },
+  twitter: {
+    label: "Twitter / X",
+    note: "X (Twitter) auto-posting & thread scheduler is coming soon!",
+  },
+  whatsapp: {
+    label: "WhatsApp",
+    note: "WhatsApp direct broadcast and messaging integration is coming soon!",
+  },
 };
 
 const CONNECTABLE = [
   "instagram",
   "linkedin",
   "youtube",
+  "facebook",
   "tiktok",
   "x",
-  "facebook",
   "whatsapp",
 ] as const;
 
@@ -190,6 +211,41 @@ function supportingCopy(value: string, hook: string): string {
   return (rest || value).slice(0, 180);
 }
 
+function getFallbackIndustryImage(industry?: string, brandName?: string): string {
+  const text = `${industry || ""} ${brandName || ""}`.toLowerCase();
+  if (text.includes("food") || text.includes("restaurant") || text.includes("cafe") || text.includes("bakery") || text.includes("dining")) {
+    return "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1200&auto=format&fit=crop&q=80";
+  }
+  if (text.includes("fit") || text.includes("gym") || text.includes("sport") || text.includes("health") || text.includes("yoga") || text.includes("workout")) {
+    return "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=1200&auto=format&fit=crop&q=80";
+  }
+  if (text.includes("finance") || text.includes("bank") || text.includes("crypto") || text.includes("invest") || text.includes("money") || text.includes("wealth")) {
+    return "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1200&auto=format&fit=crop&q=80";
+  }
+  if (text.includes("design") || text.includes("art") || text.includes("creative") || text.includes("agency") || text.includes("studio") || text.includes("ux") || text.includes("ui")) {
+    return "https://images.unsplash.com/photo-1542744094-3a31f272c490?w=1200&auto=format&fit=crop&q=80";
+  }
+  if (text.includes("market") || text.includes("growth") || text.includes("ad") || text.includes("sales") || text.includes("lead")) {
+    return "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&auto=format&fit=crop&q=80";
+  }
+  if (text.includes("code") || text.includes("software") || text.includes("dev") || text.includes("app") || text.includes("saas")) {
+    return "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=1200&auto=format&fit=crop&q=80";
+  }
+  if (text.includes("ai") || text.includes("robot") || text.includes("intel") || text.includes("tech") || text.includes("data")) {
+    return "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=1200&auto=format&fit=crop&q=80";
+  }
+  if (text.includes("shop") || text.includes("store") || text.includes("ecommerce") || text.includes("retail") || text.includes("cloth") || text.includes("fashion")) {
+    return "https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=1200&auto=format&fit=crop&q=80";
+  }
+  if (text.includes("real") || text.includes("estate") || text.includes("home") || text.includes("house") || text.includes("property")) {
+    return "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1200&auto=format&fit=crop&q=80";
+  }
+  if (text.includes("travel") || text.includes("tour") || text.includes("hotel") || text.includes("flight") || text.includes("trip")) {
+    return "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1200&auto=format&fit=crop&q=80";
+  }
+  return "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&auto=format&fit=crop&q=80";
+}
+
 function buildBrandSamples(
   extracted: BrandExtractResult | null,
   brandName: string,
@@ -200,22 +256,18 @@ function buildBrandSamples(
     .filter(Boolean)
     .slice(0, 6);
   const fromSite = (extracted?.sampleCaptions ?? []).filter((c) => c?.trim());
-  const fallbacks = [
-    `${name} helps teams ship clearer marketing — without starting from a blank page every Monday.`,
-    extracted?.industry
-      ? `One take from ${extracted.industry}: consistency beats one-off campaigns. Show up with the same voice every week.`
-      : `Consistency beats one-off campaigns. Show up with the same voice every week.`,
-    extracted?.tone
-      ? `${name} voice check: ${extracted.tone.slice(0, 120)}${extracted.tone.length > 120 ? "…" : ""}`
-      : `Here's what ${name} is focused on this week — practical, on-brand, ready to publish.`,
+  const fallback = extracted?.industry
+    ? `How ${name} is rethinking ${extracted.industry} for fast-moving teams.`
+    : `${name} helps teams ship clearer marketing without starting from a blank page every Monday.`;
+  const caption = fromSite[0] || fallback;
+  return [
+    {
+      id: "sample-0",
+      hook: firstSentence(caption),
+      caption,
+      hashtags: tags.length ? tags : ["brand", "marketing", "growth"],
+    },
   ];
-  const captions = (fromSite.length >= 1 ? fromSite : fallbacks).slice(0, 3);
-  return captions.map((caption, i) => ({
-    id: `sample-${i}`,
-    hook: firstSentence(caption),
-    caption,
-    hashtags: tags.length ? tags : ["brand", "marketing", "growth"],
-  }));
 }
 
 const STEPS = [
@@ -235,8 +287,10 @@ export default function Onboarding() {
   const getInitialStep = () => {
     if (channelSetupOnly) return 1;
     try {
-      const saved = sessionStorage.getItem("magicbox_onboarding_step");
-      if (saved === "1" || saved === "2") return parseInt(saved, 10);
+      const saved =
+        localStorage.getItem("magicbox_onboarding_step") ??
+        sessionStorage.getItem("magicbox_onboarding_step");
+      if (saved === "0" || saved === "1" || saved === "2") return parseInt(saved, 10);
     } catch {}
     return 0;
   };
@@ -244,6 +298,7 @@ export default function Onboarding() {
   const setStep = (s: number) => {
     setStepState(s);
     try {
+      localStorage.setItem("magicbox_onboarding_step", String(s));
       sessionStorage.setItem("magicbox_onboarding_step", String(s));
     } catch {}
   };
@@ -252,6 +307,14 @@ export default function Onboarding() {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
+  const [comingSoonPlatform, setComingSoonPlatform] = useState<string | null>(null);
+
+  // Clear legacy completion cache flags that could interfere with navigation
+  useEffect(() => {
+    try {
+      localStorage.removeItem("magicbox_onboarding_completed");
+    } catch {}
+  }, []);
 
   // Convex queries and mutations
   const convexAccounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
@@ -260,6 +323,7 @@ export default function Onboarding() {
   const createPost = useAction(api.studio.createPost);
   const generateCopy = useAction(api.studio.generateCopy);
   const generateCarousel = useAction(api.carousel.generate);
+  const generateImage = useAction(api.media.generateImage);
   const uploadUrl = useMutation(api.studio.uploadUrl);
   const resolveUpload = useMutation(api.studio.resolveUpload);
   const upsertWebsiteBrand = useMutation(api.brands.upsertFromWebsite);
@@ -583,19 +647,11 @@ export default function Onboarding() {
   }, []);
 
   const handleConnect = async (provider: string) => {
-    if (provider === "tiktok") {
-      toast.info("TikTok OAuth is currently in verification with ByteDance. Connect Instagram, LinkedIn, or YouTube to publish live content today.", { duration: 5000 });
+    if (COMING_SOON_CHANNELS[provider] || provider === "tiktok" || provider === "x" || provider === "twitter" || provider === "whatsapp") {
+      setComingSoonPlatform(provider);
       return;
     }
-    if (provider === "x" || provider === "twitter") {
-      toast.info("Twitter / X direct posting requires a verified developer app. Instagram, LinkedIn, and YouTube are fully active.", { duration: 5000 });
-      return;
-    }
-    if (provider === "whatsapp" && isWhatsAppV2Active()) {
-      setWhatsAppModalOpen(true);
-      return;
-    }
-    const validProvider = provider as "instagram" | "linkedin" | "youtube" | "facebook" | "whatsapp";
+    const validProvider = provider as "instagram" | "linkedin" | "youtube" | "facebook";
     captureEvent(PRODUCT_EVENTS.channelConnectStarted, {
       channel: validProvider,
       source: "onboarding",
@@ -930,9 +986,6 @@ export default function Onboarding() {
 
   const deferOnboarding = async (section: "website" | "social") => {
     try {
-      sessionStorage.removeItem("magicbox_onboarding_step");
-    } catch {}
-    try {
       if (user && db) {
         await setDoc(
           doc(db, "users", user.uid),
@@ -974,7 +1027,11 @@ export default function Onboarding() {
     setSamples(local);
     setActiveSampleId(local[0]?.id ?? "sample-0");
     const discoveredImage = extracted?.websiteImages?.[0]?.url ?? "";
-    setPreviewImageUrl(extracted?.brandedImageUrl || discoveredImage);
+    const initialImage =
+      extracted?.brandedImageUrl ||
+      discoveredImage ||
+      getFallbackIndustryImage(extracted?.industry, brandName || extracted?.companyName);
+    setPreviewImageUrl(initialImage);
 
     if (!isConvexConfigured) return;
     setGenerating(true);
@@ -1026,8 +1083,22 @@ export default function Onboarding() {
         whyShare: polished.whyShare,
         trendUsed: polished.trendUsed,
       };
-      setSamples((prev) => [next, ...prev.filter((s) => s.id !== "ai-0")].slice(0, 3));
+      setSamples([next]);
       setActiveSampleId("ai-0");
+
+      // Auto-trigger AI Image Generation to ensure creative always has high quality visual
+      if (!extracted?.brandedImageUrl) {
+        const visualPrompt = `Professional commercial editorial photography for ${brandName || extracted?.companyName || "brand"} in ${extracted?.industry || "modern business"}, visual style: ${polished.hook || "modern high quality creative"}, clean studio lighting, minimalist composition, 4k ultra-realistic photo`;
+        generateImage({ prompt: visualPrompt, aspectRatio: "1:1" })
+          .then((res) => {
+            if (res?.url) {
+              setPreviewImageUrl(res.url);
+            }
+          })
+          .catch((e) => {
+            console.warn("[onboarding] AI image generation fallback to curated visual:", e);
+          });
+      }
     }
     if (carouselResult.status === "fulfilled") {
       const result = carouselResult.value;
@@ -1185,27 +1256,29 @@ export default function Onboarding() {
   };
 
   const finish = async (goToWizard: boolean) => {
-    if (!user || !db) return;
-    if (!brandProfileId) {
-      toast.error("Link your website before completing setup.");
-      setStep(0);
-      return;
-    }
+    // Persist completion in background without blocking navigation
     try {
-      sessionStorage.removeItem("magicbox_onboarding_step");
+      if (user && db) {
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            onboardingComplete: true,
+            onboardingDeferred: false,
+            onboardingCompletedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+    } catch (error) {
+      console.warn("[onboarding] Failed to persist user completion record", error);
+    }
+
+    try {
+      captureEvent(PRODUCT_EVENTS.onboardingCompleted, {
+        next: goToWizard ? "automation_wizard" : "dashboard",
+      });
     } catch {}
-    await setDoc(
-      doc(db, "users", user.uid),
-      {
-        onboardingComplete: true,
-        onboardingDeferred: false,
-        onboardingCompletedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-    captureEvent(PRODUCT_EVENTS.onboardingCompleted, {
-      next: goToWizard ? "automation_wizard" : "dashboard",
-    });
+
     navigate(goToWizard ? "/automations/new" : "/");
   };
 
@@ -1877,13 +1950,18 @@ export default function Onboarding() {
                     const linked = connectedByPlatform.get(provider);
                     const busy = connecting === provider;
                     const expired = linked?.status === "expired";
+                    const isComingSoon = Boolean(COMING_SOON_CHANNELS[provider]);
+
                     return (
                       <Button
                         key={provider}
                         onClick={() => handleConnect(provider)}
                         disabled={connecting !== null}
                         variant="outline"
-                        className="justify-between py-5 px-4 h-auto border-border/80 hover:border-brand/40 transition-all text-left"
+                        className={cn(
+                          "justify-between py-5 px-4 h-auto border-border/80 hover:border-brand/40 transition-all text-left",
+                          isComingSoon && "opacity-80 hover:opacity-100"
+                        )}
                       >
                         <div className="flex items-center gap-3">
                           {busy ? (
@@ -1895,19 +1973,29 @@ export default function Onboarding() {
                           )}
                           <div>
                             <div className="text-sm font-semibold text-foreground">
-                              {expired ? `Reconnect ${meta.label}` : `Connect ${meta.label}`}
+                              {isComingSoon
+                                ? `Connect ${meta.label}`
+                                : expired
+                                  ? `Reconnect ${meta.label}`
+                                  : `Connect ${meta.label}`}
                             </div>
                             <div className="text-[11px] text-muted-foreground">
                               {meta.category}
                             </div>
                           </div>
                         </div>
-                        <ArrowRight className="h-4 w-4 text-muted-foreground opacity-60" />
+                        {isComingSoon ? (
+                          <span className="rounded bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
+                            Soon
+                          </span>
+                        ) : (
+                          <ArrowRight className="h-4 w-4 text-muted-foreground opacity-60" />
+                        )}
                       </Button>
                     );
                   })}
                   <Button
-                    onClick={() => toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.")}
+                    onClick={() => setComingSoonPlatform("warmed_up")}
                     variant="outline"
                     className="justify-between py-5 px-4 h-auto border-dashed border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
                   >
@@ -1956,372 +2044,155 @@ export default function Onboarding() {
 
             {/* STEP 2: Review & Approve */}
             {step === 2 && (
-              <div
-                className={cn(
-                  "grid gap-5 lg:h-[calc(100vh-280px)]",
-                  previewCollapsed
-                    ? "lg:grid-cols-[minmax(0,1fr)_3.5rem]"
-                    : "lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]",
-                )}
-              >
-                <div
-                  className={cn(
-                    "min-w-0 space-y-5 lg:overflow-y-auto lg:pr-2 lg:pb-4 no-scrollbar",
-                    !previewCollapsed && "pb-[min(52vh,440px)] lg:pb-4",
-                  )}
-                >
-                  <div className="glass-card overflow-hidden">
-                    <div className="border-b border-border bg-secondary/35 p-6">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-brand">
-                            <ShieldCheck className="h-3.5 w-3.5" />
-                            Approval workspace
-                          </div>
-                          <h2 className="font-display text-3xl">{STEPS[2].title}</h2>
-                          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                            MagicBox used your brand imagery, logo, palette, audience, and
-                            voice. Review the hook and finished creative before granting permission to post.
-                          </p>
+              <div className="w-full space-y-6">
+                <div className="glass-card overflow-hidden">
+                  <div className="border-b border-border bg-secondary/35 p-6">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-brand">
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          Approval workspace
                         </div>
-                        {(safeExtracted?.logoUrl || brandName) && (
-                          <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 shadow-sm">
-                            {safeExtracted?.logoUrl && !logoLoadFailed ? (
-                              <img
-                                src={safeExtracted.logoUrl}
-                                alt=""
-                                className="h-7 w-7 rounded-full object-contain"
-                                onError={() => setLogoLoadFailed(true)}
-                              />
-                            ) : (
-                              <div
-                                className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm"
-                                style={{ background: safeExtracted?.colors?.primary || "#6366f1" }}
-                              >
-                                {(brandName || safeExtracted?.companyName || "?").slice(0, 1).toUpperCase()}
-                              </div>
-                            )}
-                            <span className="text-xs font-semibold">{brandName || safeExtracted?.companyName || "Your brand"}</span>
-                          </div>
-                        )}
+                        <h2 className="font-display text-3xl">{STEPS[2].title}</h2>
+                        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                          MagicBox used your brand imagery, logo, palette, audience, and
+                          voice. Review the hook and finished creative before granting permission to post.
+                        </p>
                       </div>
-                      <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                        {[
-                          ["Website grounded", "Copy follows the supplied site"],
-                          ["Logo locked", "Brand mark stays consistent"],
-                          ["Permission first", "No automatic publishing"],
-                        ].map(([label, detail]) => (
-                          <div key={label} className="rounded-lg border border-border bg-card px-3 py-2.5">
-                            <div className="flex items-center gap-1.5 text-xs font-semibold">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                              {label}
+                      {(safeExtracted?.logoUrl || brandName) && (
+                        <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 shadow-sm">
+                          {safeExtracted?.logoUrl && !logoLoadFailed ? (
+                            <img
+                              src={safeExtracted.logoUrl}
+                              alt=""
+                              className="h-7 w-7 rounded-full object-contain"
+                              onError={() => setLogoLoadFailed(true)}
+                            />
+                          ) : (
+                            <div
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm"
+                              style={{ background: safeExtracted?.colors?.primary || "#6366f1" }}
+                            >
+                              {(brandName || safeExtracted?.companyName || "?").slice(0, 1).toUpperCase()}
                             </div>
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">{detail}</p>
-                          </div>
-                        ))}
-                      </div>
+                          )}
+                          <span className="text-xs font-semibold">{brandName || safeExtracted?.companyName || "Your brand"}</span>
+                        </div>
+                      )}
                     </div>
-
-                    <div className="space-y-5 p-6">
-                      <div className="grid grid-cols-2 gap-2 rounded-xl bg-secondary p-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setCreativeMode("image")}
-                          className={cn(
-                            "flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-all",
-                            creativeMode === "image"
-                              ? "bg-card text-foreground shadow-sm ring-1 ring-border"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          <ImageIcon className="h-4 w-4" />
-                          Image post
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCreativeMode("carousel")}
-                          className={cn(
-                            "flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-all",
-                            creativeMode === "carousel"
-                              ? "bg-card text-foreground shadow-sm ring-1 ring-border"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          <Layers className="h-4 w-4" />
-                          Carousel {carouselPack ? `· ${carouselPack.slides.length} slides` : ""}
-                        </button>
-                      </div>
-
-                      {creativeMode === "image" && samples.length > 1 && (
-                        <div className="flex flex-wrap gap-2">
-                          {samples.map((sample, index) => (
-                            <button
-                              key={sample.id}
-                              type="button"
-                              onClick={() => setActiveSampleId(sample.id)}
-                              className={cn(
-                                "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-                                activeSampleId === sample.id
-                                  ? "border-foreground bg-foreground text-background"
-                                  : "border-border text-muted-foreground hover:bg-secondary",
-                              )}
-                            >
-                              Hook {index + 1}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {creativeMode === "carousel" && carouselPack && (
-                        <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-2">
-                          {carouselPack.slides.map((slide, index) => (
-                            <button
-                              key={`${slide.title}-${index}`}
-                              type="button"
-                              onClick={() => setActiveCarouselSlide(index)}
-                              className={cn(
-                                "snap-start rounded-lg border px-3 py-2 text-left transition-colors",
-                                activeCarouselSlide === index
-                                  ? "border-foreground bg-foreground text-background"
-                                  : "border-border bg-card text-muted-foreground hover:bg-secondary",
-                              )}
-                            >
-                              <span className="font-mono text-[9px] uppercase tracking-widest">
-                                {index + 1}/{carouselPack.slides.length}
-                              </span>
-                              <span className="mt-0.5 block max-w-36 truncate text-xs font-semibold">
-                                {slide.title}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {(generating || carouselGenerating) && (
-                        <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
-                          {generating && carouselGenerating
-                            ? "Writing the strongest hooks and building the carousel…"
-                            : carouselGenerating
-                            ? "Building the carousel…"
-                            : "Polishing the image-post copy…"}
-                        </div>
-                      )}
-
-                      {activeCaption ? (
-                        <div className="rounded-xl border border-border bg-card p-4">
-                          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                            {creativeMode === "carousel" ? "Carousel caption" : "Post copy"}
+                    <div className="mt-5 grid gap-2 sm:grid-cols-3">
+                      {[
+                        ["Website grounded", "Copy follows the supplied site"],
+                        ["Logo locked", "Brand mark stays consistent"],
+                        ["Multi-channel output", "Instagram, YouTube, and LinkedIn"],
+                      ].map(([label, detail]) => (
+                        <div key={label} className="rounded-lg border border-border bg-card px-3 py-2.5">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                            {label}
                           </div>
-                          <h3 className="mt-2 font-display text-xl leading-tight">{activeHook}</h3>
-                          <p className="mt-2 line-clamp-5 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
-                            {activeCaption}
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {activeHashtags.slice(0, 6).map((tag) => (
-                              <span key={tag} className="rounded-full bg-secondary px-2 py-1 text-[10px] text-muted-foreground">
-                                #{tag.replace(/^#/, "")}
-                              </span>
-                            ))}
-                          </div>
-                          {(activeTrend || activeShareReason) ? (
-                            <div className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
-                              {activeTrend ? (
-                                <p><span className="font-semibold text-foreground">Trend signal:</span> {activeTrend}</p>
-                              ) : null}
-                              {activeShareReason ? (
-                                <p className="mt-1">
-                                  <span className="font-semibold text-foreground">
-                                    {creativeMode === "carousel" ? "Why it earns a save:" : "Why it earns a share:"}
-                                  </span>{" "}
-                                  {activeShareReason}
-                                </p>
-                              ) : null}
-                            </div>
-                          ) : null}
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">{detail}</p>
                         </div>
-                      ) : !generating && !carouselGenerating ? (
-                        <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
-                          Generating your brand campaign drafts…
-                        </div>
-                      ) : null}
-
-                      {creativeMode === "carousel" && !["instagram", "linkedin"].includes(previewPlatform) && (
-                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-                          Multi-image publishing is currently available for Instagram and LinkedIn.
-                          Switch the preview platform to approve this carousel.
-                        </div>
-                      )}
-
-                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-foreground/15 bg-secondary/60 p-4">
-                        <input
-                          type="checkbox"
-                          checked={clientApproved}
-                          onChange={(event) => setClientApproved(event.target.checked)}
-                          className="mt-0.5 h-4 w-4 accent-black"
-                        />
-                        <span>
-                          <span className="block text-sm font-semibold text-foreground">
-                            I approve this copy and creative for {PLATFORM_META[previewPlatform]?.label || previewPlatform}
-                          </span>
-                          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-                            MagicBox will only post the version visible in the preview. Editing the hook,
-                            format, or platform clears this permission and asks again.
-                          </span>
-                        </span>
-                      </label>
-
-                      {activeAccountForPreview ? (
-                        <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2">
-                          <Button
-                            onClick={() => void handleQuickPost("now")}
-                            disabled={posting || !clientApproved || !activeCaption}
-                            className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm bg-brand hover:bg-brand/90 text-brand-foreground font-semibold"
-                          >
-                            {posting ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <Send className="mr-1.5 h-4 w-4 shrink-0" />}
-                            <span className="truncate">Approve &amp; post now</span>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => void handleQuickPost("schedule")}
-                            disabled={posting || !clientApproved || !activeCaption}
-                            className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm"
-                          >
-                            {posting ? <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" /> : <CalendarClock className="mr-1.5 h-4 w-4 shrink-0" />}
-                            <span className="truncate">Approve for next best time</span>
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button variant="outline" onClick={() => setStep(1)} className="w-full h-auto py-3.5 px-4 text-xs sm:text-sm">
-                          <span className="truncate">Connect {PLATFORM_META[previewPlatform]?.label || previewPlatform} to post after approval</span>
-                          <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
-                        </Button>
-                      )}
+                      ))}
                     </div>
                   </div>
 
-                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
-                    <Button
-                      variant="ghost"
-                      onClick={() => setStep(1)}
-                      className="w-full sm:w-auto text-muted-foreground"
-                    >
-                      ← Back to channels
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => finish(false)}
-                      className="w-full sm:flex-1 text-muted-foreground hover:text-foreground"
-                    >
-                      Explore the dashboard
-                    </Button>
-                    <Button
-                      onClick={() => finish(true)}
-                      className="w-full sm:flex-1 bg-brand h-auto py-3.5 px-4 text-xs sm:text-sm hover:bg-brand/90 font-semibold"
-                    >
-                      <span className="truncate">Create my first automation</span>
-                      <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
-                    </Button>
-                  </div>
-                  <p className="text-center text-xs text-muted-foreground">
-                    Posting timezone: {timezone}
-                  </p>
-                </div>
-
-                {/* Right preview rail — desktop sticky; mobile bottom sheet */}
-                <div
-                  className={cn(
-                    "z-20 border-border bg-background/95 backdrop-blur-md",
-                    "fixed inset-x-0 bottom-0 border-t p-3 shadow-[0_-8px_30px_rgba(0,0,0,0.12)]",
-                    previewCollapsed && "hidden lg:block",
-                    "lg:static lg:inset-auto lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none",
-                    "lg:sticky lg:top-6 lg:self-start",
-                  )}
-                >
-                  {!previewCollapsed && (
-                    <div className="mb-2 flex items-center justify-between lg:hidden">
-                      <span className="text-xs font-medium text-muted-foreground">Live preview</span>
+                  <div className="space-y-6 p-6">
+                    {/* Post Format Selector: Image post vs Carousel */}
+                    <div className="grid grid-cols-2 gap-2 rounded-xl bg-secondary p-1.5 max-w-md mx-auto">
                       <button
                         type="button"
-                        onClick={() => setPreviewCollapsed(true)}
-                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                        onClick={() => setCreativeMode("image")}
+                        className={cn(
+                          "flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all",
+                          creativeMode === "image"
+                            ? "bg-card text-foreground shadow-sm ring-1 ring-border"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
                       >
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                        Hide
+                        <ImageIcon className="h-4 w-4" />
+                        Image post
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCreativeMode("carousel")}
+                        className={cn(
+                          "flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all",
+                          creativeMode === "carousel"
+                            ? "bg-card text-foreground shadow-sm ring-1 ring-border"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        <Layers className="h-4 w-4" />
+                        Carousel {carouselPack ? `· ${carouselPack.slides.length} slides` : ""}
                       </button>
                     </div>
-                  )}
-                  <PreviewModule
-                    collapsible
-                    collapsed={previewCollapsed}
-                    onCollapsedChange={setPreviewCollapsed}
-                    className={cn(
-                      "h-full",
-                      previewCollapsed
-                        ? "min-h-[min(48vh,280px)] lg:min-h-0"
-                        : "max-h-[min(48vh,420px)] min-h-0 lg:max-h-none",
-                    )}
-                    title={clientApproved ? "Approved preview" : "Approval preview"}
-                    platform={previewPlatform}
-                    onPlatformChange={handlePreviewPlatform}
-                    allowedPlatforms={PREVIEW_PLATFORMS}
-                    content={
-                      activeCaption
-                        ? {
-                            caption: activeCaption,
-                            hashtags: activeHashtags,
-                            mediaAspect: creativeMode === "carousel" ? carouselAspect : "4:5",
-                            mediaNode:
-                              creativeMode === "carousel" && carouselPack ? (
-                                <BrandedSlide
-                                  slide={carouselPack.slides[activeCarouselSlide] ?? carouselPack.slides[0]}
-                                  brand={creativeBrand}
-                                  aspect={carouselAspect}
-                                  index={activeCarouselSlide}
-                                  total={carouselPack.slides.length}
-                                  scale={carouselPreviewScale}
-                                />
-                              ) : (
-                                <WebsitePostCard
-                                  brand={creativeBrand}
-                                  hook={activeHook}
-                                  supporting={activeSupporting}
-                                  eyebrow={safeExtracted?.industry || "From your website"}
-                                  imageUrl={previewImageUrl || undefined}
-                                  scale={340 / 1080}
-                                />
-                              ),
-                            brandName: brandName || safeExtracted?.companyName || "Your Brand",
-                            handle: (brandName || safeExtracted?.companyName)
-                              ? (brandName || safeExtracted?.companyName || "").toLowerCase().replace(/\s+/g, "")
-                              : "yourbrand",
-                            logoUrl: safeExtracted?.logoUrl,
-                            brandColors: safeExtracted?.colors,
-                          }
-                        : null
-                    }
-                    emptyHint={
-                      generating || carouselGenerating
-                        ? "Building website-grounded campaign drafts…"
-                        : "Go back and enter a website to unlock campaign drafts."
-                    }
-                    footer={
-                      <div className="flex items-center gap-2 text-xs">
-                        {clientApproved ? (
-                          <>
-                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                            <span className="font-medium text-emerald-700">Client permission confirmed for this version</span>
-                          </>
-                        ) : (
-                          <>
-                            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-muted-foreground">Waiting for explicit approval</span>
-                          </>
-                        )}
+
+                    {/* Single Hook Indicator */}
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-center">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 border border-brand/25 px-3 py-1 text-xs font-bold text-brand">
+                        <Sparkles className="h-3 w-3" />
+                        Hook 1
+                      </span>
+                      <p className="text-sm font-semibold text-foreground max-w-xl truncate">
+                        &quot;{activeHook}&quot;
+                      </p>
+                    </div>
+
+                    {(generating || carouselGenerating) && (
+                      <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary/50 p-2.5 text-xs text-muted-foreground max-w-md mx-auto">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
+                        <span>Polishing brand creative and channel previews…</span>
                       </div>
-                    }
-                  />
+                    )}
+
+                    {/* The New Output Preview iPhone Stage */}
+                    <IPhoneMockupShowcase
+                      creativeMode={creativeMode}
+                      activeHook={activeHook}
+                      activeSupporting={activeSupporting}
+                      activeCaption={activeCaption}
+                      activeHashtags={activeHashtags}
+                      brand={creativeBrand}
+                      brandName={brandName || safeExtracted?.companyName || "Your Brand"}
+                      brandHandle={(brandName || safeExtracted?.companyName || "yourbrand").toLowerCase().replace(/\s+/g, "")}
+                      imageUrl={previewImageUrl || undefined}
+                      eyebrow={safeExtracted?.industry || "From your website"}
+                      carouselSlides={carouselPack?.slides ?? []}
+                      carouselAspect={carouselAspect}
+                      isGenerating={generating || carouselGenerating}
+                    />
+                  </div>
                 </div>
+
+                {/* Bottom Navigation Buttons */}
+                <div className="relative z-10 flex flex-col-reverse gap-2 sm:flex-row sm:gap-3 max-w-3xl mx-auto pt-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setStep(1)}
+                    className="w-full sm:w-auto text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    ← Back to channels
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => void finish(false)}
+                    className="w-full sm:flex-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    Explore the dashboard
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void finish(true)}
+                    className="w-full sm:flex-1 bg-brand text-brand-foreground h-auto py-3.5 px-4 text-xs sm:text-sm hover:bg-brand/90 font-semibold cursor-pointer shadow-sm"
+                  >
+                    <span className="truncate">Create my first automation</span>
+                    <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
+                  </Button>
+                </div>
+
                 <div
                   aria-hidden
                   style={{
@@ -2382,6 +2253,16 @@ export default function Onboarding() {
       <WhatsAppV2Modal
         open={whatsAppModalOpen}
         onOpenChange={setWhatsAppModalOpen}
+      />
+
+      <ComingSoonChannelModal
+        open={comingSoonPlatform !== null}
+        onOpenChange={(isOpen) => !isOpen && setComingSoonPlatform(null)}
+        platform={comingSoonPlatform}
+        onConnectActivePlatform={(p) => {
+          setComingSoonPlatform(null);
+          void handleConnect(p);
+        }}
       />
     </div>
   );

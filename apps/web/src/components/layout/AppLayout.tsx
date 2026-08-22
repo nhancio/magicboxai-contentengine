@@ -17,7 +17,6 @@ import {
   Bot,
   CalendarDays,
   CreditCard,
-  FileText,
   Film,
   Flame,
   FolderOpen,
@@ -58,7 +57,6 @@ const NAV_SECTIONS = [
 const BOTTOM_NAV = [
   { label: "Pricing", path: "/pricing", icon: CreditCard },
   { label: "Feedback", path: "/feedback", icon: MessageSquare },
-  { label: "Changelog", path: "/changelog", icon: FileText },
   { label: "Settings", path: "/settings", icon: Settings },
 ] as const;
 

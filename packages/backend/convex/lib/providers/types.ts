@@ -19,7 +19,8 @@ export type PlatformId =
   | "linkedin"
   | "youtube"
   | "reddit"
-  | "whatsapp";
+  | "whatsapp"
+  | "tiktok";
 
 export type PostFormat =
   | "image"
