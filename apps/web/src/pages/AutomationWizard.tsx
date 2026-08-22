@@ -94,27 +94,23 @@ export default function AutomationWizard() {
  const updateConvex = useMutation(api.automations.update);
 
  const accounts: SocialAccount[] = useMemo(() => {
- const fromConvex: SocialAccount[] = (convexAccounts ?? [])
- .filter((a: any) => a.status ==="active"|| a.status ==="expired")
- .map((a: any) => ({
- id: String(a._id),
- userId: String(a.userId ??""),
- provider: a.platform as SocialAccount["provider"],
- platform: a.platform as SocialPlatform,
- externalId: String(a.externalId ??""),
- username: String(a.username ??""),
- displayName: String(a.displayName ?? a.username ?? a.platform),
- avatarUrl: a.avatarUrl,
- status: a.status as SocialAccount["status"],
- linkedAt: new Date(a.linkedAt ?? Date.now()),
- }));
- const seen = new Set(
- fromConvex.map((a) => `${a.platform}:${(a.username || a.displayName).toLowerCase()}`),
- );
- const fromLegacy = legacyAccounts.filter(
- (a) => !seen.has(`${a.platform}:${(a.username || a.displayName).toLowerCase()}`),
- );
- return [...fromConvex, ...fromLegacy];
+   if (isConvexConfigured) {
+     return (convexAccounts ?? [])
+       .filter((a: any) => a.status === "active" || a.status === "expired")
+       .map((a: any) => ({
+         id: String(a._id),
+         userId: String(a.userId ?? ""),
+         provider: a.platform as SocialAccount["provider"],
+         platform: a.platform as SocialPlatform,
+         externalId: String(a.externalId ?? ""),
+         username: String(a.username ?? ""),
+         displayName: String(a.displayName ?? a.username ?? a.platform),
+         avatarUrl: a.avatarUrl,
+         status: a.status as SocialAccount["status"],
+         linkedAt: new Date(a.linkedAt ?? Date.now()),
+       }));
+   }
+   return legacyAccounts.filter((a) => a.status === "active" || a.status === "expired");
  }, [convexAccounts, legacyAccounts]);
 
  // form state

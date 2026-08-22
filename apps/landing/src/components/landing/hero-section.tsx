@@ -86,10 +86,18 @@ export function HeroSection() {
               isVisible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
             }`}
           >
-            {/* Eyebrow */}
-            <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-[0.18em] text-[#64748b]">
-              <span className="h-px w-6 bg-[#94a3b8]" />
-              AI Vibe Marketing &amp; Automation Platform
+            {/* Eyebrow / 1.0 Release Badge */}
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href="/changelog"
+                className="inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand/5 px-3.5 py-1 text-xs font-mono text-brand transition-colors hover:bg-brand/10 hover:border-brand/30"
+              >
+                <span className="flex h-2 w-2 rounded-full bg-brand animate-pulse" />
+                <span className="font-semibold uppercase tracking-wider">v1.0 is Live</span>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-foreground/80 font-sans font-medium">Explore Release Notes</span>
+                <ChevronRight className="h-3 w-3 text-brand" />
+              </a>
             </div>
 
             {/* Main Headline */}

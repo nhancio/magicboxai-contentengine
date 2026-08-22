@@ -1,4 +1,4 @@
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
@@ -248,25 +248,149 @@ export const connectUrl = action({
   },
 });
 
+/**
+ * Background action to revoke tokens/permissions with the third-party platform.
+ * Logs out all remote sessions tied to the disconnected channel.
+ */
+export const revokeProviderSessions = internalAction({
+  args: {
+    provider: v.string(),
+    token: v.object({
+      accessToken: v.string(),
+      refreshToken: v.optional(v.string()),
+      expiresAt: v.optional(v.number()),
+      igUserId: v.optional(v.string()),
+      pageId: v.optional(v.string()),
+      channelId: v.optional(v.string()),
+      phoneNumberId: v.optional(v.string()),
+      wabaId: v.optional(v.string()),
+      scopes: v.optional(v.array(v.string())),
+    }),
+  },
+  handler: async (_ctx, { provider: providerId, token }) => {
+    try {
+      const provider = getProvider(providerId);
+      if (typeof provider.revoke === "function") {
+        const clientId = process.env[provider.credentialEnv.clientId];
+        const clientSecret = process.env[provider.credentialEnv.clientSecret];
+        await provider.revoke(token, clientId, clientSecret);
+      }
+    } catch (err) {
+      console.warn(`[social] Failed to revoke provider session for ${providerId}:`, err);
+    }
+  },
+});
+
 export const disconnect = mutation({
   args: { accountId: v.id("socialAccounts") },
+  returns: v.object({ success: v.boolean() }),
   handler: async (ctx, { accountId }) => {
     const uid = await requireUid(ctx);
     const account = await ctx.db.get(accountId);
     // not-found rather than permission-denied: don't leak existence.
     if (!account || account.userId !== uid) throw new Error("Account not found");
 
-    // socialAccountId is stored as a string; collect() so duplicate token rows
-    // can't make .unique() throw and abort the disconnect.
+    // 1. Query tokens and schedule remote session revocation for each token
     const tokens = await ctx.db
       .query("socialTokens")
       .withIndex("by_socialAccountId", (q) =>
         q.eq("socialAccountId", accountId as string),
       )
       .collect();
+
     for (const token of tokens) {
+      if (token.encryptedAccessToken) {
+        await ctx.scheduler.runAfter(0, internal.social.revokeProviderSessions, {
+          provider: token.provider,
+          token: {
+            accessToken: token.encryptedAccessToken,
+            refreshToken: token.encryptedRefreshToken,
+            expiresAt: token.expiresAt,
+            igUserId: token.igUserId,
+            pageId: token.pageId,
+            channelId: token.channelId,
+            phoneNumberId: token.phoneNumberId,
+            wabaId: token.wabaId,
+            scopes: token.scopes,
+          },
+        });
+      }
       await ctx.db.delete(token._id);
     }
+
+    // 2. Clean up any active/pending oauthStates for this user & provider
+    const oauthStates = await ctx.db
+      .query("oauthStates")
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("userId"), uid),
+          q.eq(q.field("provider"), account.provider),
+        ),
+      )
+      .collect();
+    for (const state of oauthStates) {
+      await ctx.db.delete(state._id);
+    }
+
+    // 3. Clean up automations referencing this account
+    const accountIdStr = String(accountId);
+    const automations = await ctx.db
+      .query("automations")
+      .withIndex("by_userId", (q) => q.eq("userId", uid))
+      .collect();
+    for (const auto of automations) {
+      if (auto.socialAccountIds.includes(accountIdStr)) {
+        const remainingAccounts = auto.socialAccountIds.filter((id) => id !== accountIdStr);
+        await ctx.db.patch(auto._id, {
+          socialAccountIds: remainingAccounts,
+          status: remainingAccounts.length === 0 ? "paused" : auto.status,
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    // 4. Clean up mayaConfig referencing this account
+    const mayaConfigs = await ctx.db
+      .query("mayaConfig")
+      .withIndex("by_userId", (q) => q.eq("userId", uid))
+      .collect();
+    for (const cfg of mayaConfigs) {
+      if (cfg.socialAccountIds && cfg.socialAccountIds.includes(accountIdStr)) {
+        const remainingAccounts = cfg.socialAccountIds.filter((id) => id !== accountIdStr);
+        await ctx.db.patch(cfg._id, {
+          socialAccountIds: remainingAccounts,
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    // 5. Clean up any posts referencing this account
+    const posts = await ctx.db
+      .query("posts")
+      .withIndex("by_userId", (q) => q.eq("userId", uid))
+      .collect();
+    for (const post of posts) {
+      if (post.socialAccountIds.includes(accountIdStr)) {
+        const remainingAccounts = post.socialAccountIds.filter((id) => id !== accountIdStr);
+        const updates: any = {
+          socialAccountIds: remainingAccounts,
+          updatedAt: Date.now(),
+        };
+        if (
+          remainingAccounts.length === 0 &&
+          (post.status === "scheduled" ||
+            post.status === "ready" ||
+            post.status === "generating" ||
+            post.status === "pending_approval")
+        ) {
+          updates.status = "draft";
+          updates.error = "Target channel was removed";
+        }
+        await ctx.db.patch(post._id, updates);
+      }
+    }
+
+    // 6. Delete the social account
     await ctx.db.delete(accountId);
     return { success: true };
   },

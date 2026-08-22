@@ -32,6 +32,7 @@ const Integrations = lazy(() => import("./pages/Integrations"));
 const Pricing = lazy(() => import("./pages/Pricing"));
 const WarmedUpAccounts = lazy(() => import("./pages/WarmedUpAccounts"));
 const Feedback = lazy(() => import("./pages/Feedback"));
+const Changelog = lazy(() => import("./pages/Changelog"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const OAuthCallback = lazy(() => import("./pages/OAuthCallback"));
 
@@ -134,6 +135,7 @@ export default function App() {
                 <Route path="/channels" element={<Navigate to="/settings?tab=integrations" replace />} />
                 <Route path="/pricing" element={<ProtectedRoute><Pricing /></ProtectedRoute>} />
                 <Route path="/feedback" element={<ProtectedRoute><Feedback /></ProtectedRoute>} />
+                <Route path="/changelog" element={<ProtectedRoute><Changelog /></ProtectedRoute>} />
                 <Route path="/warmed-up-accounts" element={<ProtectedRoute><WarmedUpAccounts /></ProtectedRoute>} />
                 <Route path="/oauth/callback" element={<OAuthCallback />} />
                 <Route path="*" element={<NotFound />} />

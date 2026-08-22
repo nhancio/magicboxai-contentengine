@@ -143,6 +143,27 @@ class TwitterProvider extends BaseProvider implements SocialProvider {
     // first line when the real implementation lands.
     throw new ProviderDeferredError(this.displayName, this.deferred.reason);
   }
+
+  async revoke(token: ProviderToken, clientId?: string, clientSecret?: string): Promise<void> {
+    const t = token.refreshToken || token.accessToken;
+    if (!t || !clientId || !clientSecret) return;
+    try {
+      await this.http("https://api.twitter.com/2/oauth2/revoke", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+        },
+        body: new URLSearchParams({
+          token: t,
+          token_type_hint: token.refreshToken ? "refresh_token" : "access_token",
+        }).toString(),
+        retries: 1,
+      });
+    } catch (err) {
+      console.warn("[twitter] revoke session error (ignored)", err);
+    }
+  }
 }
 
 export const twitter = new TwitterProvider();

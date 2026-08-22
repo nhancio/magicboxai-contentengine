@@ -140,23 +140,20 @@ export default function Dashboard() {
     loading || (isConvexConfigured && convexPostsRaw === undefined);
 
   const accounts: ChannelRow[] = useMemo(() => {
-    const fromConvex: ChannelRow[] = (convexAccounts ?? [])
-      .filter((a: any) => a.status === "active" || a.status === "expired")
-      .map((a: any) => ({
-        id: String(a._id),
-        platform: String(a.platform),
-        username: String(a.username || ""),
-        displayName: String(a.displayName || a.username || a.platform),
-        status: String(a.status),
-      }));
+    if (isConvexConfigured) {
+      return (convexAccounts ?? [])
+        .filter((a: any) => a.status === "active" || a.status === "expired")
+        .map((a: any) => ({
+          id: String(a._id),
+          platform: String(a.platform),
+          username: String(a.username || ""),
+          displayName: String(a.displayName || a.username || a.platform),
+          status: String(a.status),
+        }));
+    }
 
-    const seen = new Set(
-      fromConvex.map((a) => channelKey(a.platform, a.username, a.displayName)),
-    );
-
-    const fromLegacy: ChannelRow[] = legacyAccounts
+    return legacyAccounts
       .filter((a) => a.status === "active" || a.status === "expired")
-      .filter((a) => !seen.has(channelKey(a.platform, a.username, a.displayName)))
       .map((a) => ({
         id: a.id,
         platform: a.platform,
@@ -164,8 +161,6 @@ export default function Dashboard() {
         displayName: a.displayName || a.username || a.platform,
         status: a.status,
       }));
-
-    return [...fromConvex, ...fromLegacy];
   }, [convexAccounts, legacyAccounts]);
 
   const channelsLoading =

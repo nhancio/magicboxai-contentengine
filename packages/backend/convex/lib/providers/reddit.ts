@@ -101,6 +101,27 @@ class RedditProvider extends BaseProvider implements SocialProvider {
   async publish(_token: ProviderToken, _input: PublishInput): Promise<PublishResult> {
     throw new ProviderDeferredError("Reddit", this.deferred.reason);
   }
+
+  async revoke(token: ProviderToken, clientId?: string, clientSecret?: string): Promise<void> {
+    const t = token.refreshToken || token.accessToken;
+    if (!t || !clientId || !clientSecret) return;
+    try {
+      await this.http("https://www.reddit.com/api/v1/revoke_token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+        },
+        body: new URLSearchParams({
+          token: t,
+          token_type_hint: token.refreshToken ? "refresh_token" : "access_token",
+        }).toString(),
+        retries: 1,
+      });
+    } catch (err) {
+      console.warn("[reddit] revoke session error (ignored)", err);
+    }
+  }
 }
 
 export const reddit = new RedditProvider();
