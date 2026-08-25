@@ -31,6 +31,7 @@ import {
  writePersisted,
 } from"../lib/drafts";
 import PlatformPreview from "../components/previews/PlatformPreview";
+import PhoneFrame from "../components/previews/PhoneFrame";
 import CreativeImageLoader from "../components/common/CreativeImageLoader";
 import {
  ArrowLeft,
@@ -62,6 +63,7 @@ const PLATFORM_META: Record<
  youtube: { label:"YouTube", icon: Youtube, tint:"from-red-500 to-rose-500" },
  facebook: { label:"Facebook", icon: Globe2, tint:"from-blue-600 to-blue-400" },
  whatsapp: { label:"WhatsApp", icon: MessageCircle, tint:"from-emerald-500 to-green-400" },
+ reddit: { label:"Reddit", icon: MessageCircle, tint:"from-orange-500 to-amber-500" },
 };
 
 const PRESETS = [
@@ -860,16 +862,20 @@ export default function AutomationWizard() {
                           className="max-w-sm w-full"
                         />
                       ) : currentPreview ? (
-                        <PlatformPreview
-                          platform={previewPlatform}
-                          content={{
-                            caption: currentPreview.caption,
-                            hashtags: currentPreview.hashtags,
-                            brandName: brand?.name ?? name,
-                            handle: brand?.name?.toLowerCase().replace(/\s+/g, "") ?? undefined,
-                            logoUrl: brand?.logoUrl,
-                          }}
-                        />
+                        <div className="h-[min(62vh,720px)] w-full">
+                          <PhoneFrame>
+                            <PlatformPreview
+                              platform={previewPlatform}
+                              content={{
+                                caption: currentPreview.caption,
+                                hashtags: currentPreview.hashtags,
+                                brandName: brand?.name ?? name,
+                                handle: brand?.name?.toLowerCase().replace(/\s+/g, "") ?? undefined,
+                                logoUrl: brand?.logoUrl,
+                              }}
+                            />
+                          </PhoneFrame>
+                        </div>
                       ) : (
                         <div className="flex h-full min-h-[250px] items-center justify-center text-sm text-muted-foreground">
                           Preview unavailable — you can still launch the automation.

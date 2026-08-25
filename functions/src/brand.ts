@@ -25,6 +25,7 @@ import {
   requireAuth,
   stringifyError,
 } from "./core";
+import { renderImageBuffer } from "./image";
 import { MODELS } from "./models";
 
 type ExtractReq = { url: string };
@@ -753,9 +754,9 @@ export const extractBrandFromWebsite = onCall(
       brandedImageSource = sourceBuffer ? "website" : "generated";
       if (!sourceBuffer) {
         await enforceCallableRateLimit(uid, "onboarding-branded-image", AI_RATE_LIMITS.imageGeneration);
-        const ai = getAI();
-        const response = await ai.models.generateImages({
-          model: "imagen-3.0-generate-001",
+        sourceBuffer = await renderImageBuffer({
+          ai: getAI(),
+          aspectRatio: "1:1",
           prompt: [
             "Create a polished square social media photograph or editorial illustration.",
             `Brand: ${profile.companyName || new URL(finalUrl).hostname}.`,
@@ -763,10 +764,7 @@ export const extractBrandFromWebsite = onCall(
             profile.sampleCaptions[0] ? `Post context: ${profile.sampleCaptions[0]}.` : "",
             "Show a specific, credible subject relevant to the business. No logos, no text, no generic gradient background.",
           ].filter(Boolean).join("\n"),
-          config: { numberOfImages: 1, outputMimeType: "image/png", aspectRatio: "1:1" },
         });
-        const bytes = response.generatedImages?.[0]?.image?.imageBytes;
-        if (bytes) sourceBuffer = Buffer.from(bytes, "base64");
       }
       if (sourceBuffer) {
         const logoBuffer = logoUrl ? await fetchBinary(logoUrl, 2_000_000, 8_000) : null;
@@ -865,9 +863,9 @@ export const generateBrandedPostImage = onCall(
 
     if (!sourceBuffer) {
       source = "generated";
-      const ai = getAI();
-      const response = await ai.models.generateImages({
-        model: "imagen-3.0-generate-001",
+      sourceBuffer = await renderImageBuffer({
+        ai: getAI(),
+        aspectRatio: "1:1",
         prompt: [
           "Create a polished square social media photograph or editorial illustration.",
           `Brand: ${brandName}.`,
@@ -875,11 +873,7 @@ export const generateBrandedPostImage = onCall(
           request.data?.caption ? `Post context: ${String(request.data.caption).slice(0, 500)}.` : "",
           "Show a specific, credible subject relevant to the business. No logos, no text, no generic gradient background.",
         ].filter(Boolean).join("\n"),
-        config: { numberOfImages: 1, outputMimeType: "image/png", aspectRatio: "1:1" },
       });
-      const bytes = response.generatedImages?.[0]?.image?.imageBytes;
-      if (!bytes) throw new HttpsError("internal", "No image was generated.");
-      sourceBuffer = Buffer.from(bytes, "base64");
     }
 
     const logoBuffer = logoUrl ? await fetchBinary(logoUrl, 2_000_000, 8_000) : null;

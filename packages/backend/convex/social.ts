@@ -22,14 +22,14 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 
 function callbackUrl(): string {
   // Convex injects CONVEX_SITE_URL; the OAuth callback is an httpAction on the
-  // .convex.site domain (see http.ts). Meta strictly requires HTTPS.
+  // backend domain (see http.ts). Meta strictly requires HTTPS.
   if (process.env.OAUTH_CALLBACK_BASE && process.env.OAUTH_CALLBACK_BASE.startsWith("https://")) {
     return `${process.env.OAUTH_CALLBACK_BASE}/oauth/callback`;
   }
   if (process.env.CONVEX_SITE_URL && process.env.CONVEX_SITE_URL.startsWith("https://")) {
     return `${process.env.CONVEX_SITE_URL}/oauth/callback`;
   }
-  return "https://beloved-lyrebird-288.convex.site/oauth/callback";
+  return "https://convex.magicboxai.in/oauth/callback";
 }
 
 function appBaseUrl(): string {
@@ -206,8 +206,7 @@ export const connectUrl = action({
     const returnTo = safeReturnTo(args.returnTo);
     const exp = Date.now() + STATE_TTL_MS;
 
-    const base = returnOrigin || process.env.APP_BASE_URL || "https://app.magicboxai.in";
-    const redirectUri = `${base}/oauth/callback`;
+    const redirectUri = callbackUrl();
 
     // Hard guard: never hand Google or Meta a Firebase callback from the Convex path.
     if (redirectUri.includes("cloudfunctions.net")) {
@@ -393,6 +392,83 @@ export const disconnect = mutation({
     // 6. Delete the social account
     await ctx.db.delete(accountId);
     return { success: true };
+  },
+});
+
+const syncPlatform = v.union(
+  v.literal("instagram"),
+  v.literal("facebook"),
+  v.literal("twitter"),
+  v.literal("linkedin"),
+  v.literal("youtube"),
+  v.literal("reddit"),
+  v.literal("whatsapp"),
+);
+
+/**
+ * Dual-write helper: upsert a socialAccounts row from a legacy Firestore account.
+ * Metadata only — OAuth tokens stay in Firestore until the user reconnects.
+ */
+export const syncAccount = mutation({
+  args: {
+    legacyId: v.string(),
+    provider: syncPlatform,
+    platform: syncPlatform,
+    externalId: v.string(),
+    username: v.string(),
+    displayName: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("disconnected"),
+      v.literal("expired"),
+    ),
+  },
+  returns: v.id("socialAccounts"),
+  handler: async (ctx, args) => {
+    const uid = await requireUid(ctx);
+    const now = Date.now();
+
+    const byLegacy = await ctx.db
+      .query("socialAccounts")
+      .withIndex("by_legacyId", (q) => q.eq("legacyId", args.legacyId))
+      .unique();
+
+    const existing =
+      byLegacy ??
+      (
+        await ctx.db
+          .query("socialAccounts")
+          .withIndex("by_userId", (q) => q.eq("userId", uid))
+          .collect()
+      ).find(
+        (a) =>
+          a.platform === args.platform && a.externalId === args.externalId,
+      );
+
+    const doc = {
+      legacyId: args.legacyId,
+      userId: uid,
+      provider: args.provider,
+      platform: args.platform,
+      externalId: args.externalId,
+      username: args.username,
+      displayName: args.displayName,
+      avatarUrl: args.avatarUrl,
+      status: args.status,
+      lastSyncedAt: now,
+    };
+
+    if (existing) {
+      if (existing.userId !== uid) throw new Error("Account not found");
+      await ctx.db.patch(existing._id, doc);
+      return existing._id;
+    }
+
+    return await ctx.db.insert("socialAccounts", {
+      ...doc,
+      linkedAt: now,
+    });
   },
 });
 
@@ -616,8 +692,6 @@ export const completeConnect = action({
 
     const redirectUri =
       args.redirectUri ||
-      (args.returnOrigin ? `${args.returnOrigin}/oauth/callback` : null) ||
-      (process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/oauth/callback` : null) ||
       callbackUrl();
 
     const profiles = await provider.exchangeCode({

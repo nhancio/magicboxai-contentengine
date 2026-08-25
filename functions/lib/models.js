@@ -11,5 +11,12 @@ exports.MODELS = void 0;
 exports.MODELS = {
     /** Captions, brand fetch, scripts — GA Flash on Vertex us-central1. */
     text: "gemini-2.5-flash",
+    /**
+     * Image generation. Nano Banana 2 — replaces `imagen-3.0-generate-001`,
+     * since Imagen is deprecated and shuts down 2026-08-17. Note this is a
+     * `generateContent` model, not a `generateImages` one: use
+     * `renderImageBuffer` in `image.ts`, never `ai.models.generateImages`.
+     */
+    image: "gemini-3.1-flash-image",
 };
 //# sourceMappingURL=models.js.map

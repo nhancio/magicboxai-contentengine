@@ -35,7 +35,12 @@ const convexClient = new ConvexHttpClient(CONVEX_URL);
 const TARGET_USERS = [
   {
     email: "nithindidigam@nhancio.com",
-    knownUids: ["YmdwrjAUP0bVJy5BNwsvy7mt9vD3", "7lpDTFAJ9HU0uGYwK8H1LiF1GNA3"],
+    knownUids: [
+      "LJHDqdtjaEbUOI6V9TrVXFMuous2",
+      "IibGJhhp1mRY5zQwyO5494Q2sj42",
+      "YmdwrjAUP0bVJy5BNwsvy7mt9vD3",
+      "7lpDTFAJ9HU0uGYwK8H1LiF1GNA3",
+    ],
   },
   {
     email: "nithindidigam@gmail.com",
@@ -216,13 +221,14 @@ async function main() {
     console.log(`    ✔ Storage deleted: ${userReport.storage.deletedFiles} total files`);
 
     // =========================================================================
-    // 4. FIREBASE AUTH PURGE
+    // 4. FIREBASE AUTH PURGE (REVOKE SESSIONS & DELETE)
     // =========================================================================
-    console.log(`\n  [4/4] Purging Firebase Auth record...`);
+    console.log(`\n  [4/4] Purging Firebase Auth record and revoking sessions...`);
     for (const uid of uidList) {
       try {
+        await auth.revokeRefreshTokens(uid).catch(() => {});
         await auth.deleteUser(uid);
-        console.log(`    ✔ Deleted Auth user with UID: ${uid}`);
+        console.log(`    ✔ Revoked sessions & deleted Auth user with UID: ${uid}`);
         userReport.auth.deleted = true;
         userReport.auth.uid = uid;
       } catch (e) {
@@ -237,8 +243,9 @@ async function main() {
     try {
       const authUser = await auth.getUserByEmail(email);
       if (authUser) {
+        await auth.revokeRefreshTokens(authUser.uid).catch(() => {});
         await auth.deleteUser(authUser.uid);
-        console.log(`    ✔ Deleted Auth user by email: ${authUser.uid}`);
+        console.log(`    ✔ Revoked sessions & deleted Auth user by email: ${authUser.uid}`);
         userReport.auth.deleted = true;
         userReport.auth.uid = authUser.uid;
       }

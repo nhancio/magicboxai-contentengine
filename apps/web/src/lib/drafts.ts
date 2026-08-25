@@ -84,7 +84,39 @@ const STUDIO_FIELDS = [
 
 export type StudioField = (typeof STUDIO_FIELDS)[number];
 
-export const studioKey = (uid: string, field: StudioField) => `${NS}:studio:${uid}:${field}`;
+/**
+ * Studio sessions — one saved post-in-progress each, like chat threads.
+ *
+ * Every field is stored per session, so switching sessions is just a remount
+ * against a different key prefix. The active session id is itself persisted, so
+ * a reload lands back where the user left off.
+ *
+ * ponytail: sessions live in localStorage (per browser, like the rest of drafts);
+ * move them to a Convex table when they need to follow the user across devices.
+ */
+export type StudioSession = { id: string; title: string; updatedAt: number };
+
+export const studioSessionsKey = (uid: string) => `${NS}:studio-sessions:${uid}`;
+export const studioActiveSessionKey = (uid: string) => `${NS}:studio-active:${uid}`;
+
+export const studioKey = (uid: string, field: StudioField, sessionId?: string) =>
+  sessionId ? `${NS}:studio:${uid}:${sessionId}:${field}` : `${NS}:studio:${uid}:${field}`;
+
+export function readStudioSessions(uid: string): StudioSession[] {
+  return readPersisted<StudioSession[]>(studioSessionsKey(uid), []);
+}
+
+export function writeStudioSessions(uid: string, sessions: StudioSession[]): void {
+  writePersisted(studioSessionsKey(uid), sessions);
+}
+
+export function deleteStudioSession(uid: string, sessionId: string): void {
+  for (const field of STUDIO_FIELDS) clearPersisted(studioKey(uid, field, sessionId));
+  writeStudioSessions(
+    uid,
+    readStudioSessions(uid).filter((s) => s.id !== sessionId),
+  );
+}
 
 export type StudioDraftSummary = {
   channel: string;
@@ -96,13 +128,15 @@ export type StudioDraftSummary = {
 
 /** The in-progress Studio post, or null when there's nothing worth resuming. */
 export function readStudioDraft(uid: string): StudioDraftSummary | null {
-  const prompt = readPersisted(studioKey(uid, "prompt"), "");
-  const caption = readPersisted(studioKey(uid, "caption"), "");
-  const media = readPersisted<{ url: string } | null>(studioKey(uid, "media"), null);
+  const sid = readPersisted<string>(studioActiveSessionKey(uid), "");
+  const at = (field: StudioField) => studioKey(uid, field, sid || undefined);
+  const prompt = readPersisted(at("prompt"), "");
+  const caption = readPersisted(at("caption"), "");
+  const media = readPersisted<{ url: string } | null>(at("media"), null);
   if (!prompt.trim() && !caption.trim() && !media) return null;
   return {
-    channel: readPersisted(studioKey(uid, "channel"), "instagram"),
-    postType: readPersisted(studioKey(uid, "postType"), "image"),
+    channel: readPersisted(at("channel"), "instagram"),
+    postType: readPersisted(at("postType"), "image"),
     prompt,
     caption,
     hasMedia: Boolean(media),
@@ -110,7 +144,8 @@ export function readStudioDraft(uid: string): StudioDraftSummary | null {
 }
 
 export function clearStudioDraft(uid: string): void {
-  for (const field of STUDIO_FIELDS) clearPersisted(studioKey(uid, field));
+  const sid = readPersisted<string>(studioActiveSessionKey(uid), "");
+  for (const field of STUDIO_FIELDS) clearPersisted(studioKey(uid, field, sid || undefined));
 }
 
 /* -------------------------------- Automation ------------------------------- */

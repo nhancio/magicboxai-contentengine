@@ -226,7 +226,13 @@ export function ReelsShowcaseSection() {
     if (!el) return;
     const first = el.children[0] as HTMLElement | undefined;
     const cardStep = first ? first.getBoundingClientRect().width + 16 : 240;
+    // The drift loop writes scrollLeft every frame, which cancels a smooth
+    // scroll mid-flight — hold it off until the animation lands.
+    isMouseDownRef.current = true;
     el.scrollBy({ left: direction * cardStep, behavior: "smooth" });
+    window.setTimeout(() => {
+      isMouseDownRef.current = false;
+    }, 600);
   };
 
   // Mouse Drag-to-Scroll Handlers for Desktop

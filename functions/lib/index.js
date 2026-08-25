@@ -39,6 +39,7 @@ const admin = __importStar(require("firebase-admin"));
 const genai_1 = require("@google/genai");
 const uuid_1 = require("uuid");
 const core_1 = require("./core");
+const image_1 = require("./image");
 const googleVeo_1 = require("./video/googleVeo");
 const models_1 = require("./models");
 if (!admin.apps.length) {
@@ -548,7 +549,7 @@ exports.renderRemotionVideo = (0, https_1.onCall)(Object.assign(Object.assign({}
     }
 });
 exports.generateImage = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { timeoutSeconds: 120, memory: "512MiB" }), async (request) => {
-    var _a, _b, _c, _d;
+    var _a, _b;
     const uid = requireAuth(request);
     const prompt = requireBoundedText((_a = request.data) === null || _a === void 0 ? void 0 : _a.prompt, "Prompt", 4000);
     const type = (_b = request.data) === null || _b === void 0 ? void 0 : _b.type;
@@ -557,23 +558,13 @@ exports.generateImage = (0, https_1.onCall)(Object.assign(Object.assign({}, core
     }
     await (0, core_1.enforceCallableRateLimit)(uid, "legacy-image-generation", core_1.AI_RATE_LIMITS.imageGeneration);
     try {
-        const ai = getAI();
-        const response = await ai.models.generateImages({
-            model: "imagen-3.0-generate-001",
+        const imageBuffer = await (0, image_1.renderImageBuffer)({
+            ai: getAI(),
             prompt,
-            config: {
-                numberOfImages: 1,
-                outputMimeType: "image/png",
-                aspectRatio: "1:1",
-            },
+            aspectRatio: "1:1",
         });
-        const generatedImage = (_c = response.generatedImages) === null || _c === void 0 ? void 0 : _c[0];
-        const imageBytes = (_d = generatedImage === null || generatedImage === void 0 ? void 0 : generatedImage.image) === null || _d === void 0 ? void 0 : _d.imageBytes;
-        if (!imageBytes) {
-            throw new Error("No image returned from Imagen");
-        }
         const fileName = `users/${uid}/${type}s/${(0, uuid_1.v4)()}.png`;
-        await getBucket().file(fileName).save(Buffer.from(imageBytes, "base64"), {
+        await getBucket().file(fileName).save(imageBuffer, {
             metadata: {
                 contentType: "image/png",
                 cacheControl: "public, max-age=31536000",

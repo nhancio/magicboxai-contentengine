@@ -591,9 +591,11 @@ export const createPost = action({
     }
 
     // Paid entitlement + monthly post quota first. Drafts stay free.
-    // Credits: 1 i-credit, or N v-credits for video uploads. Veo clips were
-    // already billed at generate time.
-    if (args.mode !== "draft") {
+    // If no channel is connected for the selected platforms, automatically save as draft
+    // without requiring paid plan or burning credits.
+    const effectiveMode = accountIds.length === 0 ? "draft" : args.mode;
+
+    if (effectiveMode !== "draft") {
       await ctx.runMutation(internal.credits.ensure, { userId: uid });
       await ctx.runMutation(internal.credits.reservePublish, { userId: uid });
       try {
@@ -637,7 +639,7 @@ export const createPost = action({
       media,
       brief: args.brief ?? args.caption.slice(0, 120),
       brandProfileId: args.brandProfileId,
-      mode: args.mode,
+      mode: effectiveMode,
       scheduledFor: args.scheduledFor,
       timezone,
       whatsapp: args.platforms.includes("whatsapp")

@@ -193,35 +193,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (firebaseUser && db) {
         try {
           const userRef = doc(db, "users", firebaseUser.uid);
-          const userSnap = await getDoc(userRef);
-          if (!userSnap.exists() || !userSnap.data()?.credits) {
-            await setDoc(
-              userRef,
-              {
-                email: firebaseUser.email,
-                displayName: firebaseUser.displayName,
-                photoURL: firebaseUser.photoURL,
-                credits: {
-                  iCredits: 50,
-                  vCredits: 100,
-                  trialClaimed: true,
-                },
-                lastLoginAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-          } else {
-            await setDoc(
-              userRef,
-              {
-                email: firebaseUser.email,
-                displayName: firebaseUser.displayName,
-                photoURL: firebaseUser.photoURL,
-                lastLoginAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-          }
+          // Credits live in Convex (`credits.claimTrial` grants the trial
+          // server-side). Writing a `credits` blob here is denied by
+          // firestore.rules, which took the whole write — and therefore the
+          // user document itself — down with it.
+          await setDoc(
+            userRef,
+            {
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName,
+              photoURL: firebaseUser.photoURL,
+              lastLoginAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
         } catch (e) {
           console.warn("Failed to update user doc:", e);
         }
