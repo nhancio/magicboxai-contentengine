@@ -41,3 +41,26 @@ export function requireGeminiKey(): string {
   }
   return key;
 }
+
+/** Base URL for the Monid (TikHub proxy) REST API. */
+export const MONID_API_BASE = "https://api.monid.ai/v1";
+
+export function requireMonidKey(): string {
+  const key = process.env.MONID_API_KEY;
+  if (!key) {
+    throw new Error(
+      "MONID_API_KEY is not set on this Convex deployment. Set it with: npx convex env set MONID_API_KEY <key>",
+    );
+  }
+  return key;
+}
+
+export function requireFalKey(): string {
+  const key = process.env.FAL_API_KEY;
+  if (!key) {
+    throw new Error(
+      "FAL_API_KEY is not set on this Convex deployment. Set it with: npx convex env set FAL_API_KEY <key>",
+    );
+  }
+  return key;
+}

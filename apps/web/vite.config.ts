@@ -17,7 +17,19 @@ export default defineConfig({
       "lottie-web": "lottie-web/build/player/lottie_light",
     },
   },
-  server: { port: 8174, host: true, strictPort: true },
+  server: {
+    port: 8174,
+    host: true,
+    strictPort: true,
+    proxy: {
+      "/api/google-ai": {
+        target: "https://generativelanguage.googleapis.com/v1beta",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/google-ai/, ""),
+        secure: true,
+      },
+    },
+  },
   build: {
     // Split heavy vendors into their own cacheable chunks so the entry stays
     // small and route-only libs (charts/remotion/lottie) load on demand.

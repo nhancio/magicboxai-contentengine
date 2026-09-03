@@ -35,6 +35,8 @@ const Roadmap = lazy(() => import("./pages/Roadmap"));
 const Changelog = lazy(() => import("./pages/Changelog"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const OAuthCallback = lazy(() => import("./pages/OAuthCallback"));
+const PromptEnhanceTest = lazy(() => import("./pages/PromptEnhanceTest"));
+const MayaTemplatesTest = lazy(() => import("./pages/MayaTemplatesTest"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   return (
@@ -137,6 +139,11 @@ export default function App() {
                 <Route path="/feedback" element={<ProtectedRoute><Feedback /></ProtectedRoute>} />
                 <Route path="/changelog" element={<ProtectedRoute><Changelog /></ProtectedRoute>} />
                 <Route path="/warmed-up-accounts" element={<ProtectedRoute><WarmedUpAccounts /></ProtectedRoute>} />
+                <Route path="/prompt-enhance-test" element={<PromptEnhanceTest />} />
+                <Route path="/engine-test" element={<Navigate to="/prompt-enhance-test" replace />} />
+                <Route path="/maya-templates" element={<ProtectedRoute><MayaTemplatesTest /></ProtectedRoute>} />
+                <Route path="/trending-reels" element={<Navigate to="/maya-templates" replace />} />
+                <Route path="/templates-test" element={<Navigate to="/maya-templates" replace />} />
                 <Route path="/oauth/callback" element={<OAuthCallback />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

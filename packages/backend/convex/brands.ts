@@ -7,10 +7,13 @@ import { geminiJson } from "./lib/gemini";
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const uid = await requireUid(ctx);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
     return await ctx.db
       .query("brandProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", uid))
+      .withIndex("by_userId", (q) => q.eq("userId", identity.subject))
       .collect();
   },
 });

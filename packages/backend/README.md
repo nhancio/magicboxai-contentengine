@@ -42,6 +42,23 @@ npx convex env set FIREBASE_PROJECT_ID magicboxai-50927
 - `convex/lib/auth.ts` — `requireUid()`; every tenant function fails closed.
 - `convex/users.ts`, `brands.ts`, `posts.ts` — read-only prototype queries.
 
+## Maya meme templates (`convex/mayaTemplates.ts`)
+
+Brand-adapts viral meme templates and generates video: ingest (Monid, curated
+fallback) -> adapt (Gemini) -> TTS + lip-sync onto the original clip -> Remotion
+composite. Set these on the Convex deployment:
+
+```bash
+npx convex env set MONID_API_KEY <key>     # trending reel ingestion; falls back to curated templates if unset
+npx convex env set FAL_API_KEY <key>       # lip-sync (fal-ai/sync-lipsync); falls back to a synthetic Veo render if unset
+npx convex env set RENDERER_URL <url>      # apps/renderer deployment, e.g. https://renderer.example.com/api/render
+npx convex env set RENDERER_TOKEN <secret> # must match apps/renderer's RENDERER_TOKEN
+```
+
+`GEMINI_API_KEY` (already required for the rest of the app) covers both the
+script adaptation and the TTS voiceover — no separate ElevenLabs account needed.
+`apps/renderer` isn't deployed anywhere by default; see `apps/renderer/Dockerfile`.
+
 ## Next (Month 3)
 
 - Firestore export → JSONL transform → `convex import` backfill tooling.

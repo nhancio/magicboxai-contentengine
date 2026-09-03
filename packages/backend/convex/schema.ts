@@ -696,6 +696,129 @@ export default defineSchema({
     .index("by_status", ["status"]),
 
   /**
+   * A meme template adapted to one brand: the persisted output of
+   * mayaTemplates.adaptTemplate. `sourceVideoUrl` is the original viral/curated
+   * clip — the lip-sync leg re-syncs THAT footage to `adaptedScript`, it never
+   * generates a new video by itself. See mayaVideoJobs for the render pipeline.
+   */
+  mayaAdaptations: defineTable({
+    userId: v.string(),
+    sourceTemplateId: v.string(),
+    sourceVideoUrl: v.string(),
+    sourceTitle: v.string(),
+    brandId: v.optional(v.string()),
+    brandSnapshot: v.object({
+      name: v.string(),
+      logoUrl: v.optional(v.string()),
+      colors: v.optional(
+        v.object({
+          primary: v.string(),
+          secondary: v.optional(v.string()),
+          accent: v.optional(v.string()),
+        }),
+      ),
+    }),
+    hookText: v.string(),
+    adaptedScript: v.string(),
+    textOverlays: v.array(
+      v.object({
+        slotId: v.string(),
+        text: v.string(),
+        placement: v.string(),
+        color: v.string(),
+        bgColor: v.optional(v.string()),
+        startSec: v.optional(v.number()),
+        endSec: v.optional(v.number()),
+      }),
+    ),
+    lipSyncScript: v.array(
+      v.object({
+        speakerId: v.string(),
+        startSec: v.number(),
+        endSec: v.number(),
+        spokenDialogue: v.string(),
+        deliveryTone: v.string(),
+        facialExpression: v.optional(v.string()),
+      }),
+    ),
+    videoModelPrompts: v.object({
+      googleVeoPrompt: v.string(),
+      negativePrompt: v.string(),
+    }),
+    // Optional so rows written before these fields existed still validate on
+    // deploy — new writes always populate them (see saveAdaptation).
+    // Mute-friendly caption cards — Reels are mostly watched with sound off.
+    subtitleCues: v.optional(
+      v.array(
+        v.object({
+          startSec: v.number(),
+          endSec: v.number(),
+          text: v.string(),
+        }),
+      ),
+    ),
+    // Sound-effect timing cues — data only for now, not yet mixed into rendered audio.
+    sfxCues: v.optional(
+      v.array(
+        v.object({
+          timestampSec: v.number(),
+          sfxName: v.string(),
+          volumeMultiplier: v.optional(v.number()),
+        }),
+      ),
+    ),
+    instagramCaption: v.optional(v.string()),
+    hashtags: v.optional(v.array(v.string())),
+    adaptationNote: v.optional(v.string()),
+    durationSec: v.number(),
+    createdAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
+  /**
+   * The generation pipeline for one mayaAdaptations row: TTS -> (lip-sync onto
+   * the source clip, OR a synthetic Veo render as fallback) -> Remotion
+   * composite (text overlays + brand logo). Mirrors mediaJobs' durable-job
+   * shape (start -> record a handle -> scheduled poller resumes from the row)
+   * but split out because the multi-stage shape and source-video/audio
+   * references genuinely diverge from a single Veo/image job.
+   */
+  mayaVideoJobs: defineTable({
+    userId: v.string(),
+    adaptationId: v.id("mayaAdaptations"),
+    // "dub" = keep the ORIGINAL reel footage, replace its audio with the
+    // adapted script's voiceover + burn in overlays (no external video model,
+    // works with the Google key alone). "lipsync" additionally re-syncs the
+    // speaker's mouth via Fal. "veo_synthetic" discards the original footage.
+    mode: v.union(v.literal("dub"), v.literal("lipsync"), v.literal("veo_synthetic")),
+    stage: v.union(v.literal("tts"), v.literal("generate"), v.literal("compose"), v.literal("done")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("rendering"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    ttsAudioStorageId: v.optional(v.id("_storage")),
+    ttsAudioUrl: v.optional(v.string()),
+    // Fal.ai async queue request id (lipsync mode) or Convex mediaJobs _id
+    // (veo_synthetic mode, stored as a string so this table stays provider-agnostic).
+    falRequestId: v.optional(v.string()),
+    veoMediaJobId: v.optional(v.string()),
+    generatedVideoStorageId: v.optional(v.id("_storage")),
+    generatedVideoUrl: v.optional(v.string()),
+    finalVideoStorageId: v.optional(v.id("_storage")),
+    finalVideoUrl: v.optional(v.string()),
+    error: v.optional(v.string()),
+    attempts: v.number(),
+    /** v-credits charged for this job (for refunds on failure). */
+    billedSeconds: v.optional(v.number()),
+    target: v.optional(v.object({ kind: v.literal("post"), id: v.string() })),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_status", ["status"]),
+
+  /**
    * Spendable credit balances. Free trial seeds 50 i-credits + 100 v-credits once,
    * spendable for 7 days from trialGrantedAt (then frozen until upgrade).
    *   i-credit → 1 text / image / text+image post (or 1 AI image generation)

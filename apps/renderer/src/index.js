@@ -128,8 +128,8 @@ app.get('/health', async (_req, res) => {
   });
 });
 
-app.post('/api/render', async (req, res) => {
-  const { templateId, props, videoId, userId } = req.body;
+app.post('/api/render', requireInternalRendererToken, async (req, res) => {
+  const { templateId, props, videoId } = req.body;
 
   if (!templateId || !props) {
     return res.status(400).json({ error: 'templateId and props are required' });
@@ -137,7 +137,7 @@ app.post('/api/render', async (req, res) => {
 
   try {
     console.log(`[Renderer] Starting render for template: ${templateId}`);
-    
+
     // 1. Bundle the Remotion project
     const bundled = await bundle({
       entryPoint: remotionRoot,
@@ -156,7 +156,8 @@ app.post('/api/render', async (req, res) => {
     console.log(`[Renderer] Composition selected: ${composition.id}`);
 
     // 3. Render the video
-    const outputLocation = path.join(outputDir, `${videoId || 'video'}.mp4`);
+    const fileName = `${videoId || 'video'}-${crypto.randomUUID()}.mp4`;
+    const outputLocation = path.join(outputDir, fileName);
 
     await renderMedia({
       composition,
@@ -171,12 +172,14 @@ app.post('/api/render', async (req, res) => {
 
     console.log(`[Renderer] Render complete: ${outputLocation}`);
 
-    // 4. Respond with success (In a real app, upload to GCS/S3 here)
-    res.json({ 
-      success: true, 
+    // 4. Respond with a servable URL (same /outputs static mount + public-base
+    // construction /api/compose already uses) instead of a bare local path.
+    const publicBase = process.env.RENDERER_PUBLIC_BASE_URL?.replace(/\/+$/, '');
+    res.json({
+      success: true,
       status: 'completed',
-      videoPath: outputLocation, 
-      duration: composition.durationInFrames / composition.fps 
+      videoUrl: publicBase ? `${publicBase}/outputs/${fileName}` : undefined,
+      duration: composition.durationInFrames / composition.fps,
     });
 
   } catch (err) {
