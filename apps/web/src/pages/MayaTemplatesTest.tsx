@@ -1029,62 +1029,20 @@ export default function MayaTemplatesTest() {
                     <div className="relative z-20 p-4 pt-0">
                       <button
                         onClick={async () => {
-                          // ONE-CLICK REMIX: Fetch brand kit and generate script automatically
-                          if (allBrands.length > 0) {
-                            const b = allBrands[0];
-                            setIsAdapting(true);
-                            setActiveTab("preview");
-                            toast.info(`Auto-remixing for ${b.name}...`);
-                            try {
-                              const adaptation = await adaptTemplateAction({
-                                template: activeTemplate,
-                                brand: {
-                                  name: b.name || "Your Brand",
-                                  industry: b.industry || "",
-                                  audience: b.audience || "",
-                                  productOffering: b.productOffering || "",
-                                  toneOfVoice: b.toneOfVoice || "",
-                                  colors: {
-                                    primary: b.colors?.primary || "#FFE600",
-                                    secondary: "#0F172A",
-                                    accent: b.colors?.accent || "#38BDF8",
-                                  },
-                                },
-                                humorIntensity: "unhinged_brainrot",
-                                customProductAngle: "", // Empty so AI generates a unique, fresh angle every time
-                              });
-
-                              setAdaptedVideo({
-                                ...adaptation,
-                                brandName: b.name,
-                                templateTitle: activeTemplate.title,
-                                aspectRatio: activeTemplate.aspectRatio,
-                              } as AdaptedMemeVideo);
-                              setVideoJobId(null);
-                              
-                              // Sync state in case they open the modal later
-                              setBrandName(b.name || "Your Brand");
-                              setBrandIndustry(b.industry || "");
-                              setBrandAudience(b.audience || "");
-                              setBrandProduct(b.productOffering || "");
-                              setBrandTone(b.toneOfVoice || "");
-                              setBrandPrimaryColor(b.colors?.primary || "#FFE600");
-                              setBrandAccentColor(b.colors?.accent || "#38BDF8");
-                              setCustomAngle("");
-                              
-                              toast.success(`Meme magically adapted for ${b.name}!`);
-                            } catch (err: any) {
-                              toast.error("Adaptation error: " + err.message);
-                            } finally {
-                              setIsAdapting(false);
-                            }
-                          } else {
-                            // Fallback to manual setup if they have no Brand Kit saved
+                          // One-click remix for the CURRENTLY SELECTED brand.
+                          // This used to inline its own adapt call against
+                          // allBrands[0], which ignored the dropdown and then
+                          // overwrote the brand fields without updating
+                          // selectedBrandId — that's how the form could read
+                          // "Ownly" while the reel was built for another brand.
+                          // Routing through handleAdaptTemplate keeps one code
+                          // path and one source of truth for brand state.
+                          if (!allBrands.length) {
                             setIsRemixOpen(true);
-                            if (!adaptedVideo) {
-                              handleAdaptTemplate();
-                            }
+                            return;
                           }
+                          setActiveTab("preview");
+                          await handleAdaptTemplate(true);
                         }}
                         className="w-full py-3 px-4 rounded-2xl font-bold text-sm text-white bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition-all transform active:scale-98 border border-white/20"
                       >
