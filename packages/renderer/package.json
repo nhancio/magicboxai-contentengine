@@ -9,9 +9,9 @@
     "render": "remotion render src/index.ts HelloWorld out/video.mp4"
   },
   "dependencies": {
-    "remotion": "^4.0.0",
-    "@remotion/cli": "^4.0.0",
-    "@remotion/bundler": "^4.0.0",
+    "remotion": "^4.0.519",
+    "@remotion/cli": "^4.0.519",
+    "@remotion/bundler": "^4.0.519",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
