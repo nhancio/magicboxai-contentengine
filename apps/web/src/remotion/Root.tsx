@@ -1,9 +1,10 @@
 import React from "react";
 import { Composition } from "remotion";
-import { videoPropsSchema, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS } from "./schema";
+import { videoPropsSchema, mayaMemeCompositionSchema, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS } from "./schema";
 import { ProductShowcase } from "./compositions/ProductShowcase";
 import { TestimonialStyle } from "./compositions/TestimonialStyle";
 import { BeforeAfter } from "./compositions/BeforeAfter";
+import { MayaMemeComposition } from "./compositions/MayaMemeComposition";
 
 /**
  * Remotion Root — registers all video compositions.
@@ -72,6 +73,26 @@ export const RemotionRoot: React.FC = () => {
           platform: "TikTok" as const,
           tone: "Bold",
         }}
+      />
+      <Composition
+        id="MayaMemeComposition"
+        component={MayaMemeComposition}
+        durationInFrames={240}
+        fps={VIDEO_FPS}
+        width={VIDEO_WIDTH}
+        height={VIDEO_HEIGHT}
+        schema={mayaMemeCompositionSchema}
+        defaultProps={{
+          baseVideoUrl: "https://assets.mixkit.co/videos/preview/mixkit-hands-holding-a-smartphone-playing-a-video-41584-large.mp4",
+          durationInFrames: 240,
+          fps: VIDEO_FPS,
+          textOverlays: [],
+          subtitleCues: [],
+        }}
+        calculateMetadata={async ({ props }) => ({
+          durationInFrames: props.durationInFrames,
+          fps: props.fps,
+        })}
       />
     </>
   );

@@ -11,6 +11,7 @@ const core_1 = require("./core");
 const marketingPrompts_1 = require("./prompts/marketingPrompts");
 const googleVeo_1 = require("./video/googleVeo");
 const models_1 = require("./models");
+const image_1 = require("./image");
 function parseJsonBlock(text) {
     var _a;
     const cleaned = text
@@ -45,28 +46,16 @@ async function generateCaptionForPlatform(args) {
     return parseJsonBlock((_a = result.text) !== null && _a !== void 0 ? _a : "");
 }
 async function generatePostImage(args) {
-    var _a, _b, _c;
     const ai = (0, core_1.getAI)();
     const prompt = (0, marketingPrompts_1.buildImagePrompt)({
         brand: args.brand,
         brief: args.brief,
         caption: args.caption,
     });
-    const response = await ai.models.generateImages({
-        model: "imagen-3.0-generate-001",
-        prompt: prompt.slice(0, 4000),
-        config: {
-            numberOfImages: 1,
-            outputMimeType: "image/png",
-            aspectRatio: "1:1",
-        },
-    });
-    const imageBytes = (_c = (_b = (_a = response.generatedImages) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.image) === null || _c === void 0 ? void 0 : _c.imageBytes;
-    if (!imageBytes)
-        throw new Error("No image returned from Imagen");
+    const imageBuffer = await (0, image_1.renderImageBuffer)({ ai, prompt, aspectRatio: "1:1" });
     const storagePath = `posts/${args.postId}/${(0, uuid_1.v4)()}.png`;
     const file = (0, core_1.getBucket)().file(storagePath);
-    await file.save(Buffer.from(imageBytes, "base64"), {
+    await file.save(imageBuffer, {
         metadata: { contentType: "image/png", cacheControl: "public, max-age=31536000" },
     });
     return { url: await (0, core_1.createDownloadUrl)(storagePath), storagePath };

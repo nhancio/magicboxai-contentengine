@@ -412,6 +412,25 @@ class LinkedInProvider extends BaseProvider implements SocialProvider {
     }
     return postUrn;
   }
+
+  async revoke(token: ProviderToken, clientId?: string, clientSecret?: string): Promise<void> {
+    if (!token.accessToken || !clientId || !clientSecret) return;
+    try {
+      await this.http("https://www.linkedin.com/oauth/v2/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          token: token.accessToken,
+          token_type_hint: "access_token",
+        }).toString(),
+        retries: 1,
+      });
+    } catch (err) {
+      console.warn("[linkedin] revoke token error (ignored)", err);
+    }
+  }
 }
 
 export const linkedin = new LinkedInProvider();

@@ -1,0 +1,17 @@
+{
+  "name": "maya-templates",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MAYA meme-template engine: trending AI reel ingestion, brand script adaptation, TTS + lip-sync/dub dispatch.",
+  "scripts": {
+    "demo": "tsx examples/demo.ts",
+    "test": "tsx test/engine.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.0"
+  }
+}

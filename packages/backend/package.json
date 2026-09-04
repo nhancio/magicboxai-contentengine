@@ -1,6 +1,6 @@
 {
   "name": "@magicbox/backend",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "description": "Convex backend for MagicBox (Firebase -> Convex migration, Month 2 foundation).",
   "type": "module",
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.47.0",
-    "convex": "^1.17.0"
+    "convex": "^1.43.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

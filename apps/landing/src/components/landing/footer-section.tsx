@@ -8,6 +8,7 @@ const footerLinks = {
     { name: "How it works", href: "#how-it-works" },
     { name: "Features", href: "#features" },
     { name: "Pricing", href: "#pricing" },
+    { name: "Changelog", href: "/changelog" },
   ],
   "Use cases": [
     { name: "Founders", href: "#use-cases" },
@@ -17,11 +18,12 @@ const footerLinks = {
   ],
   Company: [
     { name: "FAQ", href: "#faq" },
-    { name: "Contact", href: "mailto:support@magicboxai.in" },
+    { name: "Changelog", href: "/changelog" },
+    { name: "Contact", href: "mailto:hello@nhancio.com" },
   ],
   Legal: [
-    { name: "Privacy", href: "/privacy.html" },
-    { name: "Terms", href: "/terms.html" },
+    { name: "Privacy", href: "/privacy" },
+    { name: "Terms", href: "/terms" },
   ],
 };
 
@@ -37,12 +39,21 @@ export function FooterSection() {
           <div className="grid grid-cols-2 md:grid-cols-6 gap-12 lg:gap-8">
             <div className="col-span-2">
               <a href="/" className="inline-flex items-center gap-2 mb-6">
-                <img src="/logo-128.webp" alt="MagicBox" width={32} height={32} className="h-8 w-8 rounded-lg object-contain" />
+                <img
+                  src="/logo.svg"
+                  alt="MagicBox"
+                  width={32}
+                  height={32}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-8 w-8 rounded-lg object-contain"
+                />
                 <span className="text-2xl font-display">MagicBox</span>
               </a>
               <p className="text-muted-foreground leading-relaxed mb-8 max-w-xs">
-                MagicBox is AI marketing automation software for creating, approving,
-                scheduling, and publishing social posts to Instagram, LinkedIn, and YouTube.
+                MagicBox is an AI vibe marketing platform and automated UGC distribution engine for
+                creating, approving, scheduling, and publishing on-brand social content to Instagram,
+                LinkedIn, and YouTube.
               </p>
               <p className="mb-6 max-w-sm text-xs leading-relaxed text-muted-foreground">
                 You connect each channel yourself. Google/YouTube access is requested only for
@@ -50,20 +61,20 @@ export function FooterSection() {
               </p>
               <div className="mb-6 flex flex-wrap gap-4 text-sm">
                 <a
-                  href="/privacy.html"
+                  href="/privacy"
                   className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/80"
                 >
                   Privacy Policy
                 </a>
                 <a
-                  href="/terms.html"
+                  href="/terms"
                   className="font-medium text-foreground underline underline-offset-4 hover:text-foreground/80"
                 >
                   Terms of Service
                 </a>
               </div>
-              <a href="mailto:support@magicboxai.in" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-                support@magicboxai.in
+              <a href="mailto:hello@nhancio.com" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+                hello@nhancio.com
               </a>
             </div>
 

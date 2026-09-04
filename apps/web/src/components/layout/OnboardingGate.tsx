@@ -17,7 +17,14 @@ export default function OnboardingGate({ children }: { children: React.ReactNode
 
   useEffect(() => {
     let cancelled = false;
-    if (!user || !db) return;
+    if (!user) {
+      setAccessGranted(true);
+      return;
+    }
+    if (!db) {
+      setAccessGranted(true);
+      return;
+    }
     setAccessGranted(null);
     getDoc(doc(db, "users", user.uid))
       .then((snap) => {

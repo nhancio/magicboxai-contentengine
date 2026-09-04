@@ -50,10 +50,11 @@ export function Navigation() {
         >
           <a href="/" className="flex items-center gap-2 group">
             <img
-              src="/logo-128.webp"
+              src="/logo.svg"
               alt="MagicBox"
               width={36}
               height={36}
+              decoding="async"
               className={`rounded-lg object-contain transition-all duration-500 ${isScrolled ? "h-7 w-7" : "h-9 w-9"}`}
             />
             <span className={`font-display tracking-tight transition-all duration-500 ${isScrolled ? "text-xl" : "text-2xl"}`}>

@@ -14,7 +14,7 @@ import {
   type User,
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db, googleProvider, isAuthDomainFirstParty } from "./firebase";
 
 /**
@@ -192,8 +192,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionHint(!!firebaseUser);
       if (firebaseUser && db) {
         try {
+          const userRef = doc(db, "users", firebaseUser.uid);
+          // Credits live in Convex (`credits.claimTrial` grants the trial
+          // server-side). Writing a `credits` blob here is denied by
+          // firestore.rules, which took the whole write — and therefore the
+          // user document itself — down with it.
           await setDoc(
-            doc(db, "users", firebaseUser.uid),
+            userRef,
             {
               email: firebaseUser.email,
               displayName: firebaseUser.displayName,

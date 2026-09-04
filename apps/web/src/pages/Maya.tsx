@@ -1,288 +1,47 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { motion, useMotionValue, useTransform, type PanInfo } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform, type PanInfo } from "framer-motion";
 import { toast } from "sonner";
 import { api } from "@convex/_generated/api";
 import { Button } from "@shared/components/ui/button";
 import { captureEvent, PRODUCT_EVENTS } from "@shared/lib/analytics";
 import { cn } from "@shared/lib/utils";
-import type { SocialPlatform } from "@shared/types";
 import { isConvexConfigured } from "../lib/convex";
 import { trialClock } from "../lib/credits";
 import { useMayaActivation } from "../hooks/useMayaActivation";
-import PlatformPreview, { type PreviewContent } from "../components/previews/PlatformPreview";
+import PhoneFrame from "../components/previews/PhoneFrame";
 import {
   ArrowRight,
   CheckCircle2,
+  Check,
   Globe2,
   LockKeyhole,
   Sparkles,
   X,
-  Instagram,
-  Linkedin,
-  Youtube,
-  Facebook,
-  MessageCircle,
-  TrendingUp,
   Loader2,
   CalendarClock,
   Clock,
   Calendar,
   Link2,
-  Send,
   ChevronLeft,
   ChevronRight,
-  Video,
+  TrendingUp,
+  VolumeX,
+  Volume2,
+  Pencil,
+  Settings,
+  Library
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@shared/components/ui/dialog";
 
-/**
- * MAYA — the daily swipe deck.
- *
- * Approve with Post (next best time) or Now. Left / Skip = not for me.
- */
-
-const PLATFORM_ICON: Record<string, typeof Instagram> = {
-  instagram: Instagram,
-  linkedin: Linkedin,
-  youtube: Youtube,
-  facebook: Facebook,
-  whatsapp: MessageCircle,
-};
-
-const SWIPE_THRESHOLD = 110;
-
-type MayaActivation = {
-  hasWebsite: boolean;
-  hasChannel: boolean;
-  ready: boolean;
-  websiteUrl?: string;
-  brandName?: string;
-  activePlatforms: string[];
-  channelCount: number;
-};
-
-function formatSlot(ms: number) {
-  return new Date(ms).toLocaleString(undefined, {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-type Suggestion = {
-  _id: string;
-  slot: number;
-  scheduledAt?: number;
-  platforms: string[];
-  hook?: string;
-  angle?: string;
-  caption: string;
-  hashtags: string[];
-  mediaPlan?: { type: string; prompt?: string };
-  creativePlan?: { templateId?: string; hookFamily?: string; formatId?: string };
-  media?: { type: string; url: string }[];
-  trendRefs?: string[];
-};
-
-function Card({
-  s,
-  accounts,
-  brand,
-  onDecide,
-  isTop,
-  depth,
-}: {
-  s: Suggestion;
-  accounts?: any[];
-  brand?: any;
-  onDecide: (d: "right" | "left", dwellMs: number, publishMode?: "now" | "schedule") => void;
-  isTop: boolean;
-  depth: number;
-}) {
-  const x = useMotionValue(0);
-  const rotate = useTransform(x, [-260, 260], [-14, 14]);
-  const approveOpacity = useTransform(x, [40, 150], [0, 1]);
-  const rejectOpacity = useTransform(x, [-150, -40], [1, 0]);
-  const shownAt = useRef(Date.now());
-
-  const platform = s.platforms[0] ?? "instagram";
-  const Icon = PLATFORM_ICON[platform] ?? Sparkles;
-
-  const connectedAccount = (accounts ?? []).find(
-    (a) => a.platform === platform && a.status === "active",
-  );
-
-  const brandName =
-    connectedAccount?.displayName || connectedAccount?.username || brand?.name || "Your Brand";
-  const handle = connectedAccount?.username
-    ? connectedAccount.username
-    : brand?.name
-      ? brand.name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24)
-      : undefined;
-  const logoUrl = connectedAccount?.avatarUrl || brand?.logoUrl;
-
-  const asset = s.media?.[0];
-  const templateName = s.creativePlan?.templateId
-    ?.split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-  const isRendering = !asset && !!s.mediaPlan && s.mediaPlan.type !== "none";
-  const previewContent: PreviewContent = {
-    caption: s.caption,
-    hashtags: s.hashtags,
-    imageUrl: asset?.type === "image" ? asset.url : undefined,
-    videoUrl: asset?.type === "video" ? asset.url : undefined,
-    brandName,
-    handle,
-    logoUrl,
-    brandColors: brand?.colors
-      ? {
-          primary: brand.colors.primary,
-          secondary: brand.colors.secondary,
-          accent: brand.colors.accent,
-        }
-      : undefined,
-  };
-
-  const slotNum = (s.slot ?? 0) + 1;
-  let dayLabelStr = `Day ${slotNum} of 7`;
-  let timeLabelStr = "9:00 AM";
-
-  if (s.scheduledAt) {
-    const scheduledDate = new Date(s.scheduledAt);
-    const dayName = scheduledDate.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-    const timeName = scheduledDate.toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    dayLabelStr = `Day ${slotNum} of 7 · ${dayName}`;
-    timeLabelStr = timeName;
-  }
-
-  function handleDragEnd(_: unknown, info: PanInfo) {
-    if (Math.abs(info.offset.x) < SWIPE_THRESHOLD) return;
-    onDecide(info.offset.x > 0 ? "right" : "left", Date.now() - shownAt.current, "schedule");
-  }
-
-  return (
-    <motion.div
-      className={cn(
-        "relative w-full rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-6",
-        isTop ? "cursor-grab active:cursor-grabbing" : "pointer-events-none",
-      )}
-      style={{ x, rotate, zIndex: 10 - depth }}
-      drag={isTop ? "x" : false}
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.7}
-      onDragEnd={handleDragEnd}
-      initial={{ scale: 0.96, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-    >
-      {/* Swipe intent overlays — feedback before the user commits. */}
-      <motion.div
-        style={{ opacity: approveOpacity }}
-        className="pointer-events-none absolute right-5 top-5 rounded-md border-2 border-emerald-500 px-3 py-1 font-mono text-xs uppercase tracking-widest text-emerald-600"
-      >
-        Post
-      </motion.div>
-      <motion.div
-        style={{ opacity: rejectOpacity }}
-        className="pointer-events-none absolute left-5 top-5 rounded-md border-2 border-red-500 px-3 py-1 font-mono text-xs uppercase tracking-widest text-red-600"
-      >
-        Skip
-      </motion.div>
-
-      {/* Day & Scheduled Time Header */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 border border-brand/20 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-brand">
-            <Calendar className="h-3 w-3" />
-            {dayLabelStr}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-            <Clock className="h-3 w-3 text-muted-foreground" />
-            Scheduled: {timeLabelStr}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
-          <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-            {platform}
-          </span>
-        </div>
-      </div>
-
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {s.mediaPlan?.type === "video" && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-brand/15 border border-brand/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-brand font-semibold">
-            <Video className="h-3 w-3" />
-            {platform === "youtube" || platform === "instagram" ? "Reel / Short" : "Reel / Video"}
-          </span>
-        )}
-        {s.mediaPlan?.type === "image" && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">
-            <Sparkles className="h-3 w-3" />
-            Image Post
-          </span>
-        )}
-        {(!s.mediaPlan || s.mediaPlan.type === "none") && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-secondary border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            Standard Post
-          </span>
-        )}
-        {templateName && (
-          <span className="hidden rounded-full border border-border bg-secondary/60 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:inline-flex">
-            {templateName}
-          </span>
-        )}
-        {s.trendRefs && s.trendRefs.length > 0 && (
-          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            <TrendingUp className="h-3 w-3" />
-            on-trend
-          </span>
-        )}
-      </div>
-
-      {/* Hook / angle are Maya's internal strategy notes for the reviewer —
-          not part of the post itself, so they sit above the preview rather
-          than inside it. */}
-      {(s.hook || s.angle) && (
-        <div className="mb-4 space-y-1">
-          {s.hook && (
-            <p className="font-display text-lg leading-tight text-foreground sm:text-xl">
-              {s.hook}
-            </p>
-          )}
-          {s.angle && <p className="text-sm italic text-muted-foreground">{s.angle}</p>}
-        </div>
-      )}
-
-      {isRendering && (
-        <p className="mb-3 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          rendering {s.mediaPlan?.type}…
-        </p>
-      )}
-
-      {/* Platform-accurate preview: exactly the caption, hashtags, and media
-          that will actually publish — as if scrolling the real feed. */}
-      <div className="flex justify-center">
-        <PlatformPreview platform={platform as SocialPlatform} content={previewContent} />
-      </div>
-    </motion.div>
-  );
-}
-
-function ActivationGate({ activation }: { activation: MayaActivation }) {
+function ActivationGate({ activation }: { activation: any }) {
   const nextPath = activation.hasWebsite ? "/onboarding/channels" : "/onboarding";
-
   return (
     <div className="mx-auto max-w-3xl py-4 sm:py-10">
       <div className="relative overflow-hidden rounded-[1.75rem] border border-border bg-card">
@@ -302,10 +61,6 @@ function ActivationGate({ activation }: { activation: MayaActivation }) {
           <h1 className="max-w-xl font-display text-4xl leading-[1.02] tracking-tight text-foreground sm:text-5xl">
             Give Maya a brand to understand and somewhere to publish.
           </h1>
-          <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-            Your website teaches Maya the offer, audience, voice, logo, and visual language.
-            A connected channel tells her where the finished work can go.
-          </p>
         </div>
 
         <div className="relative grid gap-px bg-border sm:grid-cols-2">
@@ -325,11 +80,6 @@ function ActivationGate({ activation }: { activation: MayaActivation }) {
               )}
             </div>
             <h2 className="mt-6 font-display text-2xl text-foreground">Link your website</h2>
-            <p className="mt-2 min-h-10 text-sm leading-relaxed text-muted-foreground">
-              {activation.hasWebsite
-                ? `${activation.brandName || "Your brand"} is ready for Maya.`
-                : "We will extract your brand kit and content evidence before Maya writes anything."}
-            </p>
             {!activation.hasWebsite && (
               <Button asChild className="mt-6 w-full">
                 <Link to="/onboarding">
@@ -355,13 +105,6 @@ function ActivationGate({ activation }: { activation: MayaActivation }) {
               )}
             </div>
             <h2 className="mt-6 font-display text-2xl text-foreground">Connect a social channel</h2>
-            <p className="mt-2 min-h-10 text-sm leading-relaxed text-muted-foreground">
-              {activation.hasChannel
-                ? `${activation.channelCount} active ${activation.channelCount === 1 ? "channel" : "channels"} connected.`
-                : activation.hasWebsite
-                  ? "Connect at least one destination. Nothing is posted without your approval."
-                  : "This unlocks after your website is linked."}
-            </p>
             {activation.hasWebsite && !activation.hasChannel && (
               <Button asChild className="mt-6 w-full">
                 <Link to="/onboarding/channels">
@@ -370,18 +113,6 @@ function ActivationGate({ activation }: { activation: MayaActivation }) {
               </Button>
             )}
           </div>
-        </div>
-
-        <div className="relative flex items-center justify-between gap-4 bg-foreground px-6 py-4 text-background sm:px-10">
-          <p className="text-xs leading-relaxed text-background/70">
-            Maya activates automatically when both steps are complete.
-          </p>
-          <Link
-            to={nextPath}
-            className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-background underline decoration-background/35 underline-offset-4"
-          >
-            Continue setup
-          </Link>
         </div>
       </div>
     </div>
@@ -394,9 +125,6 @@ function PaidPlanGate() {
       <div className="rounded-[1.75rem] border border-brand/25 bg-brand/[0.06] p-8 text-center sm:p-12">
         <Sparkles className="mx-auto h-8 w-8 text-brand" />
         <h1 className="mt-5 font-display text-3xl text-foreground">Maya is ready when you are.</h1>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-          Your trial has ended. Choose a paid plan to review, schedule, and publish Maya's posts.
-        </p>
         <Button asChild className="mt-7 rounded-full px-6">
           <Link to="/pricing?plan=pro">Choose a paid plan</Link>
         </Button>
@@ -405,22 +133,223 @@ function PaidPlanGate() {
   );
 }
 
+/** A neighbouring suggestion, angled behind the active one — tap to bring it forward. */
+function NeighbourPhone({
+  s,
+  side,
+  onClick,
+}: {
+  s: any;
+  side: "left" | "right";
+  onClick: () => void;
+}) {
+  const asset = s?.media?.[0];
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      aria-label={side === "left" ? "Previous suggestion" : "Next suggestion"}
+      onPointerDown={(e) => e.stopPropagation()}
+      className={cn(
+        "pointer-events-auto hidden shrink-0 opacity-45 transition-all duration-300 hover:opacity-80 sm:block",
+        side === "left" ? "-mr-14 -rotate-[9deg] origin-bottom-right" : "-ml-14 rotate-[9deg] origin-bottom-left",
+      )}
+    >
+      <PhoneFrame className="h-[540px] w-[260px]">
+        <div className="absolute inset-0">
+          {asset?.type === "image" ? (
+            <img src={asset.url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          ) : asset?.type === "video" ? (
+            <video src={asset.url} muted loop playsInline className="absolute inset-0 h-full w-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-[#E2D4F0] to-[#E9DFCA]" />
+          )}
+          <div className="absolute inset-0 bg-black/25" />
+          <p className="absolute inset-x-0 bottom-0 line-clamp-2 p-3 text-[10px] font-semibold leading-snug text-white/90">
+            {s?.hook || s?.angle || ""}
+          </p>
+        </div>
+      </PhoneFrame>
+    </button>
+  );
+}
+
+// Swipable Card Group (contains both Remixed and Main Card)
+function SwipableGroup({
+  s,
+  pending,
+  activePendingIndex,
+  onDecide,
+  isEditing,
+  setIsEditing,
+  editedCaption,
+  setEditedCaption,
+  isMuted,
+  setIsMuted,
+  onPrev,
+  onNext,
+  exitDir
+}: any) {
+  const x = useMotionValue(0);
+  const rotate = useTransform(x, [-200, 200], [-5, 5]);
+  const shownAt = useRef(Date.now());
+
+  const asset = s.media?.[0];
+  const isRendering = !asset && !!s.mediaPlan && s.mediaPlan.type !== "none";
+  
+  // Remixed from text
+  const remixedText = s.angle || s.hook || "";
+  // Cyclic deck: the suggestion on either side of the active one.
+  const prevSuggestion =
+    pending.length > 1 ? pending[(activePendingIndex - 1 + pending.length) % pending.length] : null;
+  const nextSuggestion =
+    pending.length > 1 ? pending[(activePendingIndex + 1) % pending.length] : null;
+  // The creative the card actually shows, and the short line written over it.
+  const overlayText = s.hook || s.angle || "";
+
+  function handleDragEnd(_: unknown, info: PanInfo) {
+    if (isEditing) return;
+    if (Math.abs(info.offset.x) < 100) return;
+    onDecide(s, info.offset.x > 0 ? "right" : "left", Date.now() - shownAt.current, "schedule");
+  }
+
+  return (
+    <motion.div
+      className="absolute top-0 left-0 right-0 mx-auto w-full h-full flex items-center justify-center cursor-grab active:cursor-grabbing"
+      style={{ x, rotate, zIndex: 10, willChange: "transform" }}
+      drag={!isEditing ? "x" : false}
+      dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+      dragElastic={0.6}
+      onDragEnd={handleDragEnd}
+      initial={{ scale: 0.95, opacity: 0, y: 15 }}
+      animate={{ scale: 1, opacity: 1, y: 0 }}
+      exit={{ 
+        x: exitDir === "right" ? 800 : -800, 
+        opacity: 0, 
+        rotate: exitDir === "right" ? 12 : -12, 
+        transition: { duration: 0.2, ease: "easeOut" } 
+      }}
+      transition={{ type: "spring", stiffness: 400, damping: 20, mass: 0.8 }}
+    >
+      {/* Previous suggestion, angled behind */}
+      {prevSuggestion && <NeighbourPhone s={prevSuggestion} side="left" onClick={onPrev} />}
+
+      {/* Active suggestion, in the iPhone 14 Pro Max frame */}
+      <div className="pointer-events-auto relative z-10 flex w-[340px] shrink-0 flex-col items-center gap-2">
+        {remixedText && (
+          <p className="pointer-events-none flex items-start gap-1.5 px-1 text-[11px] leading-snug text-muted-foreground">
+            <TrendingUp className="mt-[1px] h-3 w-3 shrink-0 text-brand" />
+            <span className="line-clamp-1">Remixed from: {remixedText}</span>
+          </p>
+        )}
+        <PhoneFrame className="h-[700px] w-full">
+        <div className="absolute inset-0 bg-black">
+          {asset?.type === "video" ? (
+            <video src={asset.url} autoPlay loop muted={isMuted} playsInline className="absolute inset-0 w-full h-full object-cover" />
+          ) : asset?.type === "image" ? (
+            <img src={asset.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-[#E2D4F0] to-[#E9DFCA] flex items-center justify-center">
+              {isRendering ? <Loader2 className="w-8 h-8 animate-spin text-brand" /> : <Sparkles className="w-8 h-8 text-black/20" />}
+            </div>
+          )}
+          
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent pointer-events-none" />
+
+          {/* Top Left Mute Button */}
+          <button 
+            onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }}
+            className="absolute top-3 left-3 h-7 w-7 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center z-20 pointer-events-auto border border-white/10 text-white hover:bg-black/60 transition-colors"
+          >
+            {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+          </button>
+
+          {/* Caption Editing Overlay / Display */}
+          <div className="absolute bottom-14 left-0 right-0 px-5 z-20 text-center flex flex-col items-center justify-center pointer-events-auto">
+            {isEditing ? (
+              <div className="w-full bg-black/70 backdrop-blur-md p-3 rounded-xl border border-white/20">
+                <textarea 
+                  value={editedCaption}
+                  onChange={(e) => setEditedCaption(e.target.value)}
+                  className="w-full h-28 bg-transparent text-white text-xs focus:outline-none resize-none text-center"
+                  autoFocus
+                />
+                <div className="flex justify-between mt-2">
+                  <button onClick={() => setIsEditing(false)} className="text-white/70 text-[10px] px-2 py-1 hover:text-white">Cancel</button>
+                  <button onClick={() => setIsEditing(false)} className="bg-white text-black text-[10px] font-semibold px-3 py-1 rounded hover:bg-gray-200">Save</button>
+                </div>
+              </div>
+            ) : (
+              <p
+                onPointerDown={(e) => e.stopPropagation()} // Prevent drag when selecting text
+                className="text-white font-bold text-[16px] drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] leading-tight line-clamp-3 cursor-text"
+              >
+                {overlayText}
+              </p>
+            )}
+          </div>
+          
+          {/* Left / Right Nav Arrows inside card */}
+          {!isEditing && (
+            <>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onPrev(); }}
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/10 backdrop-blur flex items-center justify-center text-white hover:bg-white/30 transition border border-white/20 z-20 pointer-events-auto"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onNext(); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/10 backdrop-blur flex items-center justify-center text-white hover:bg-white/30 transition border border-white/20 z-20 pointer-events-auto"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </>
+          )}
+
+          {/* Pagination Dots */}
+          <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5 z-20 pointer-events-none">
+            {pending.map((_: any, i: number) => (
+              <div 
+                key={i} 
+                className={cn("h-1 rounded-full transition-all duration-300", i === activePendingIndex ? "w-3 bg-white" : "w-1 bg-white/40")}
+              />
+            ))}
+          </div>
+        </div>
+        </PhoneFrame>
+
+      </div>
+
+      {/* Next suggestion, angled behind */}
+      {nextSuggestion && <NeighbourPhone s={nextSuggestion} side="right" onClick={onNext} />}
+    </motion.div>
+  );
+}
+
+
 export default function Maya() {
   const [generating, setGenerating] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedCaption, setEditedCaption] = useState("");
+  const [isMuted, setIsMuted] = useState(true); // Default muted for autoplay policies
+  
   const activation = useMayaActivation();
   const trackedActivationState = useRef<string | null>(null);
+  const [exitDir, setExitDir] = useState<"left" | "right">("right");
 
-  // Convex is optional at runtime (the client is null when unconfigured), so
-  // skip the queries entirely rather than crash the route.
   const deck = useQuery(api.maya.deck, isConvexConfigured ? {} : "skip");
-  const accounts = useQuery(api.social.accounts, isConvexConfigured ? {} : "skip");
-  const brands = useQuery(api.brands.list, isConvexConfigured ? {} : "skip");
-  const primaryBrand = brands?.[0];
   const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const ensureConfig = useMutation(api.maya.ensureConfig);
   const swipe = useMutation(api.maya.swipe);
+  const resetTrial = useMutation(api.credits.resetTrial);
   const generateNow = useAction(api.maya.generateNow);
+  const tClock = trialClock(credits as any);
 
   useEffect(() => {
     if (activation === undefined) return;
@@ -429,19 +358,8 @@ export default function Maya() {
       : `blocked:${activation.hasWebsite}:${activation.hasChannel}`;
     if (trackedActivationState.current === state) return;
     trackedActivationState.current = state;
-    if (activation.ready) {
-      captureEvent(PRODUCT_EVENTS.mayaActivated, {
-        channel_count: activation.channelCount,
-      });
-    } else {
-      captureEvent(PRODUCT_EVENTS.mayaActivationBlocked, {
-        missing_website: !activation.hasWebsite,
-        missing_channel: !activation.hasChannel,
-      });
-    }
   }, [activation]);
 
-  // Idempotent bootstrap: config + pillars + seeded best-time slots.
   useEffect(() => {
     if (!isConvexConfigured || !activation?.ready) return;
     ensureConfig({
@@ -449,34 +367,39 @@ export default function Maya() {
     }).catch((e) => console.warn("[maya] ensureConfig failed", e));
   }, [activation?.ready, ensureConfig]);
 
-  const pending = useMemo(() => (deck?.pending ?? []) as unknown as Suggestion[], [deck]);
-
-  // Navigation never decides a card. It only changes the review cursor and
-  // wraps in both directions so the deck behaves like a real carousel.
+  const pending = useMemo(() => (deck?.pending ?? []) as any[], [deck]);
   const activePendingIndex = pending.length ? ((activeIndex % pending.length) + pending.length) % pending.length : 0;
-  const activeSuggestion = pending[activePendingIndex]!;
-  const moveCursor = (direction: 1 | -1) => {
-    if (!pending.length) return;
-    setActiveIndex((current) => current + direction);
-  };
+  const topSuggestion = pending[activePendingIndex];
+
+  useEffect(() => {
+    setEditedCaption(topSuggestion?.caption || "");
+    setIsEditing(false);
+  }, [topSuggestion?._id, topSuggestion?.caption]);
 
   async function decide(
-    s: Suggestion,
+    s: any,
     decision: "right" | "left",
-    dwellMs: number,
+    dwellMs: number = 0,
     publishMode: "now" | "schedule" = "schedule",
   ) {
+    setExitDir(decision);
     try {
-      const r: any = await swipe({
+      const args: any = {
         suggestionId: s._id as any,
         decision,
         dwellMs,
-        publishMode: decision === "right" ? publishMode : undefined,
-      });
+      };
+      if (decision === "right") args.publishMode = publishMode;
+      const r: any = await swipe(args);
+      
+      setApprovalModalOpen(false);
+      setIsEditing(false);
+      
       if (decision === "left") {
         toast("Skipped — Maya will show less like this.");
         return;
       }
+      
       if (r?.needsChannel) {
         toast.warning("Saved as a draft — connect a channel to publish.", {
           action: { label: "Connect", onClick: () => (window.location.href = "/settings") },
@@ -485,21 +408,34 @@ export default function Maya() {
         toast.success(
           publishMode === "now"
             ? "Rendering video — it'll post as soon as it's ready."
-            : `Rendering your video — it'll publish ${r.scheduledAt ? formatSlot(r.scheduledAt) : "at the next slot"} once ready.`,
+            : `Rendering your video — it'll publish ${r.scheduledAt ? new Date(r.scheduledAt).toLocaleTimeString() : "at the next slot"} once ready.`,
         );
       } else if (publishMode === "now") {
         toast.success("Posting now — check Posts in a moment.");
       } else if (r?.scheduledAt) {
-        toast.success(`Queued for next best time · ${formatSlot(r.scheduledAt)}`);
+        toast.success(`Queued for next best time · ${new Date(r.scheduledAt).toLocaleTimeString()}`);
       } else {
         toast.success("Queued for next best time.");
       }
     } catch (e) {
       const message = String(e);
       if (/TrialExpired|free trial has ended|trial.*expired/i.test(message)) {
-        toast.error("Your free trial has ended. Upgrade to post from Maya.", {
-          action: { label: "View plans", onClick: () => (window.location.href = "/pricing?plan=pro") },
-        });
+        if (credits?.canRefreshTrial) {
+          toast.error("Your 7-day trial ended.", {
+            action: {
+              label: "Refresh 7 Days",
+              onClick: () => {
+                resetTrial({})
+                  .then(() => toast.success("Trial refreshed for 7 days! You can swipe now."))
+                  .catch((err) => toast.error(`Refresh failed: ${String(err)}`));
+              },
+            },
+          });
+        } else {
+          toast.error("Your free trial has ended. Upgrade to post from Maya.", {
+            action: { label: "View plans", onClick: () => (window.location.href = "/pricing?plan=pro") },
+          });
+        }
       } else {
         toast.error(`Couldn't save that swipe: ${message.slice(0, 90)}`);
       }
@@ -512,7 +448,7 @@ export default function Maya() {
       await ensureConfig({
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
-      const r = await generateNow({ force: true });
+      const r: any = await generateNow({ force: true });
       if (r.created > 0) toast.success(`Maya wrote ${r.created} new posts.`);
       else toast(`Nothing new to add (${r.reason ?? "no changes"}).`);
     } catch (e) {
@@ -521,6 +457,33 @@ export default function Maya() {
       setGenerating(false);
     }
   }
+
+  const handleNext = useCallback(() => {
+    setActiveIndex((prev) => prev + 1);
+  }, []);
+
+  const handlePrev = useCallback(() => {
+    setActiveIndex((prev) => prev - 1);
+  }, []);
+
+  const handleSkip = useCallback(() => {
+    if (topSuggestion) decide(topSuggestion, "left");
+  }, [topSuggestion]);
+
+  const handleApprove = useCallback(() => {
+    if (topSuggestion) setApprovalModalOpen(true);
+  }, [topSuggestion]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "ArrowLeft") handlePrev();
+      if (e.key === "ArrowRight") handleNext();
+      if (e.key === "Escape") setApprovalModalOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleNext, handlePrev, topSuggestion]);
 
   if (!isConvexConfigured) {
     return (
@@ -532,9 +495,9 @@ export default function Maya() {
     );
   }
 
-  if (activation === undefined) {
+  if (activation === undefined || credits === undefined) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="flex min-h-[100vh] items-center justify-center">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
     );
@@ -544,228 +507,152 @@ export default function Maya() {
     return <ActivationGate activation={activation} />;
   }
 
-  if (credits === undefined) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!credits.hasPaidPlan && trialClock(credits)?.expired) {
+  if (!credits.hasPaidPlan && tClock?.expired) {
     return <PaidPlanGate />;
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      <header className="mb-4 sm:mb-6">
-        <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-          7-Day Social Deck · {deck?.batchDate ?? "—"}
-        </p>
-        <h1 className="mt-2 font-display text-3xl text-foreground sm:text-4xl">Maya</h1>
-        <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Post</span> for the scheduled time or{" "}
-          <span className="font-medium text-foreground">Now</span> to publish immediately
-          <span className="hidden sm:inline">
-            {" "}— swipe right to post / left to skip
-          </span>
-          <span className="sm:hidden">. Use the buttons below on mobile.</span>
-        </p>
-      </header>
-
-      {/* 9:00 AM Schedule Banner */}
-      <div className="mb-5 flex items-center gap-3 rounded-2xl border border-brand/25 bg-brand/[0.06] p-3.5 sm:p-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/15 text-brand">
-          <Clock className="h-5 w-5" />
-        </div>
-        <div className="flex-1 text-xs sm:text-sm">
-          <p className="font-semibold text-foreground">
-            Maya generates your 7-day social deck every morning at 9:00 AM
-          </p>
-          <p className="text-muted-foreground text-[11px] sm:text-xs">
-            1 post per day for the upcoming week. Review and approve below.
-          </p>
+    <div className="flex flex-col h-[100vh] w-full overflow-hidden bg-[#FAFAFA] dark:bg-background relative">
+      
+      {/* Top Bar - Cleaned up per request (removed Trial Pill and Configure button) */}
+      <div className="flex justify-end p-4 z-20 shrink-0">
+        <div className="flex items-center gap-3">
+          {!credits.hasPaidPlan && (
+            <Button asChild variant="outline" size="sm" className="rounded-full bg-[#FFF0E6] text-[#E06611] border-none hover:bg-[#FFE4D6] shadow-sm">
+              <Link to="/pricing?plan=pro">Upgrade</Link>
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* 7-Day Week Navigation Bar */}
-      {pending.length > 0 && (
-        <div className="mb-4 overflow-x-auto pb-1">
-          <div className="flex min-w-max items-center gap-1.5 sm:gap-2">
-            {Array.from({ length: 7 }).map((_, slotIdx) => {
-              const [y, m, d] = (deck?.batchDate ?? "2026-08-04").split("-").map(Number);
-              const targetDate = new Date(y, m - 1, d + slotIdx);
-              const dayName = targetDate.toLocaleDateString("en-US", { weekday: "short" });
-              const dateNum = targetDate.getDate();
-
-              const suggestion = pending.find((p) => p.slot === slotIdx);
-              const isSelected = activeSuggestion?.slot === slotIdx;
-              const isPending = !!suggestion;
-
-              return (
-                <button
-                  key={slotIdx}
-                  type="button"
-                  onClick={() => {
-                    if (suggestion) {
-                      const idx = pending.findIndex((p) => p._id === suggestion._id);
-                      if (idx !== -1) setActiveIndex(idx);
-                    }
-                  }}
-                  disabled={!isPending}
-                  className={cn(
-                    "flex flex-col items-center justify-center rounded-xl px-3 py-2 transition-all min-w-[4.25rem]",
-                    isSelected
-                      ? "bg-brand text-brand-foreground shadow-md ring-2 ring-brand/30"
-                      : isPending
-                        ? "bg-card border border-border hover:border-brand/40 text-foreground cursor-pointer"
-                        : "bg-secondary/40 border border-transparent text-muted-foreground/50 opacity-60 cursor-not-allowed"
-                  )}
-                >
-                  <span className="font-mono text-[10px] uppercase tracking-wider opacity-80">
-                    Day {slotIdx + 1}
-                  </span>
-                  <span className="text-xs font-bold leading-tight">
-                    {dayName} {dateNum}
-                  </span>
-                  {isSelected ? (
-                    <span className="mt-1 h-1 w-1 rounded-full bg-brand-foreground" />
-                  ) : isPending ? (
-                    <span className="mt-1 h-1 w-1 rounded-full bg-emerald-500" />
-                  ) : (
-                    <span className="mt-1 text-[9px] uppercase tracking-tight text-muted-foreground">Done</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Deck — only the top card is in flow so action buttons stay visible below */}
-      <div className="relative">
+      {/* Main Content Area - Reduced sizes and fixed height to prevent scrolling */}
+      <div className="flex-1 flex flex-col items-center justify-center px-4 pb-6 relative z-10 w-full overflow-hidden">
         {deck === undefined ? (
-          <div className="flex h-72 items-center justify-center sm:h-80">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <div className="flex flex-col items-center">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
         ) : pending.length === 0 ? (
-          <div className="flex h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border px-4 text-center sm:h-80">
-            <Sparkles className="mb-3 h-6 w-6 text-muted-foreground" />
-            <p className="font-display text-xl text-foreground">
-              {deck.decided > 0 ? "Deck cleared" : "No deck yet"}
-            </p>
-            <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-              {deck.decided > 0
-                ? `You reviewed all ${deck.total} today. Maya writes a fresh deck each morning.`
-                : "Maya writes a deck each morning — or generate one now."}
-            </p>
-            <Button onClick={handleGenerate} disabled={generating} className="mt-5">
-              {generating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Writing…
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" /> Generate today's deck
-                </>
-              )}
+          <div className="flex flex-col items-center justify-center rounded-[2rem] bg-white border border-border/50 text-center p-10 shadow-[0_15px_40px_rgba(0,0,0,0.05)] max-w-sm w-full relative">
+            <Sparkles className="mb-4 h-8 w-8 text-brand" />
+            <h2 className="font-display text-xl text-foreground">Deck cleared</h2>
+            <p className="text-muted-foreground mt-2 text-xs">You've reviewed all suggestions for today.</p>
+            <Button onClick={handleGenerate} disabled={generating} className="mt-6 rounded-full px-5 text-sm shadow-md bg-brand hover:bg-brand/90 text-white">
+              {generating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {generating ? "Writing..." : "Generate today's deck"}
             </Button>
           </div>
         ) : (
-          <div className="relative">
-            {/* Peek cards behind — decorative only */}
-            {pending.slice(1, 3).map((s, i) => (
-              <div
-                key={`peek-${s._id}`}
-                aria-hidden
-                className="pointer-events-none absolute inset-x-2 rounded-2xl border border-border bg-card shadow-sm"
-                style={{
-                  top: (i + 1) * 8,
-                  bottom: -(i + 1) * 8,
-                  zIndex: 1,
-                  opacity: 0.55 - i * 0.15,
-                  transform: `scale(${1 - (i + 1) * 0.02})`,
-                }}
-              />
-            ))}
-            <div className="relative z-10 px-5 sm:px-7">
-              <button
-                type="button"
-                onClick={() => moveCursor(-1)}
-                aria-label="Previous post"
-                className="absolute left-0 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-md transition hover:border-foreground/30 hover:text-foreground"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => moveCursor(1)}
-                aria-label="Next post"
-                className="absolute right-0 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background/95 text-muted-foreground shadow-md transition hover:border-foreground/30 hover:text-foreground"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              <Card
-                key={activeSuggestion._id}
-                s={activeSuggestion}
-                accounts={accounts}
-                brand={primaryBrand}
-                depth={0}
-                isTop
-                onDecide={(d, dwell, mode) => decide(activeSuggestion, d, dwell, mode)}
-              />
+          <div className="flex flex-col items-center w-full max-w-5xl relative h-[86vh] max-h-[900px]">
+            
+            {/* The Cards Area */}
+            <div className="relative w-full h-[88%] mb-4">
+              <AnimatePresence mode="popLayout">
+                {topSuggestion && (
+                  <SwipableGroup
+                    key={topSuggestion._id}
+                    s={topSuggestion}
+                    pending={pending}
+                    activePendingIndex={activePendingIndex}
+                    onDecide={decide}
+                    isEditing={isEditing}
+                    setIsEditing={setIsEditing}
+                    editedCaption={editedCaption}
+                    setEditedCaption={setEditedCaption}
+                    isMuted={isMuted}
+                    setIsMuted={setIsMuted}
+                    onPrev={handlePrev}
+                    onNext={handleNext}
+                    exitDir={exitDir}
+                  />
+                )}
+              </AnimatePresence>
             </div>
+
+            {/* Action Buttons Row */}
+            <div className="flex flex-col items-center mt-2 z-20 w-full max-w-[280px]">
+              <div className="flex items-center justify-between w-full px-2">
+                {/* Reject Button */}
+                <div className="flex flex-col items-center gap-1">
+                  <button
+                    onClick={handleSkip}
+                    className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-[0_5px_15px_rgba(0,0,0,0.06)] border border-gray-100 hover:scale-110 transition-transform text-[#FF4B4B]"
+                  >
+                    <X className="h-5 w-5" strokeWidth={2.5} />
+                  </button>
+
+                </div>
+                
+                {/* Edit Button */}
+                <button
+                  onClick={() => setIsEditing(!isEditing)}
+                  className="flex h-9 px-4 items-center justify-center rounded-full bg-white shadow-[0_5px_15px_rgba(0,0,0,0.06)] border border-gray-100 hover:scale-105 transition-transform text-gray-700 text-xs font-medium gap-1.5"
+                >
+                  <Pencil className="h-3 w-3" /> Edit
+                </button>
+                
+                {/* Approve Button */}
+                <div className="flex flex-col items-center gap-1">
+                  <button
+                    onClick={handleApprove}
+                    className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-[0_5px_15px_rgba(0,0,0,0.06)] border border-gray-100 hover:scale-110 transition-transform text-[#27CE65]"
+                  >
+                    <Check className="h-6 w-6" strokeWidth={2.5} />
+                  </button>
+
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
       </div>
 
-      {/* Always-visible post actions */}
-      {pending.length > 0 && (
-        <div className="sticky bottom-3 z-20 mt-5 rounded-2xl border border-border bg-background/95 p-2.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:bottom-4 sm:mt-6 sm:p-3">
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-11 flex-1 gap-2 rounded-full border-red-500/30 hover:bg-red-500/10 sm:h-12 sm:min-w-[6.5rem] sm:flex-none"
-              onClick={() => decide(activeSuggestion, "left", 0)}
-              aria-label="Skip this post"
-            >
-              <X className="h-4 w-4 text-red-500" />
-              <span>Skip</span>
-            </Button>
-            <span className="order-first w-full text-center font-mono text-[11px] text-muted-foreground sm:order-none sm:w-auto sm:px-1">
-              {pending.length} left
-            </span>
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-11 flex-1 gap-1.5 rounded-full px-3 sm:h-12 sm:min-w-[7.5rem] sm:flex-none"
-              onClick={() => decide(activeSuggestion, "right", 0, "schedule")}
-              aria-label="Post at the next best time"
-            >
-              <CalendarClock className="h-4 w-4 shrink-0" />
-              <span className="truncate">
-                Post
-              </span>
-            </Button>
-            <Button
-              size="lg"
-              className="h-11 flex-[1.2] gap-2 rounded-full sm:h-12 sm:min-w-[7.5rem] sm:flex-none"
-              onClick={() => decide(activeSuggestion, "right", 0, "now")}
-              aria-label="Post now"
-            >
-              <Send className="h-4 w-4" />
-              Now
-            </Button>
+      {/* Approval Modal */}
+      <Dialog open={approvalModalOpen} onOpenChange={setApprovalModalOpen}>
+        <DialogContent className="max-w-md rounded-[1.5rem] p-0 border-none bg-white overflow-hidden shadow-2xl">
+          <div className="px-6 pt-5 pb-3">
+            <p className="text-[11px] font-bold tracking-widest text-[#8B5CF6] uppercase mb-3">Step 1 of 3</p>
+            <div className="w-full bg-gray-100 h-1.5 rounded-full mb-6 overflow-hidden">
+               <div className="bg-[#8B5CF6] h-full w-1/3 rounded-full"></div>
+            </div>
+            <DialogHeader className="mb-2">
+              <DialogTitle className="text-2xl font-display text-gray-900 text-left">What would you like to do?</DialogTitle>
+            </DialogHeader>
           </div>
-        </div>
-      )}
-
-      <div className="mt-6 flex items-center justify-center gap-4 pb-2 text-xs text-muted-foreground sm:mt-8">
-        <Link to="/schedule" className="inline-flex items-center gap-1.5 hover:text-foreground">
-          <CalendarClock className="h-3.5 w-3.5" /> See what's scheduled
-        </Link>
-      </div>
+          <div className="px-4 pb-4">
+            <button 
+              onClick={() => decide(topSuggestion, "right", 0, "schedule")}
+              className="w-full text-left p-4 hover:bg-gray-50 rounded-xl transition-colors border border-transparent hover:border-gray-100 flex gap-4 items-start group"
+            >
+              <div className="bg-[#F3E8FF] text-[#8B5CF6] p-3 rounded-full mt-1 group-hover:scale-110 transition-transform">
+                <Library className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-900 text-[14px]">Save to Library</h4>
+                <p className="text-gray-500 text-xs mt-1">Save this content for later</p>
+              </div>
+            </button>
+            <div className="h-px w-full bg-gray-100 my-1"></div>
+            <button 
+              onClick={() => decide(topSuggestion, "right", 0, "now")}
+              className="w-full text-left p-4 hover:bg-gray-50 rounded-xl transition-colors border border-transparent hover:border-gray-100 flex gap-4 items-start group"
+            >
+              <div className="bg-[#E0F2FE] text-[#0284C7] p-3 rounded-full mt-1 group-hover:scale-110 transition-transform">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-900 text-[14px]">Schedule Post</h4>
+                <p className="text-gray-500 text-xs mt-1">Post or schedule to your platforms</p>
+              </div>
+            </button>
+          </div>
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-center">
+            <button onClick={() => setApprovalModalOpen(false)} className="text-gray-500 hover:text-gray-900 text-sm font-medium">
+              Cancel
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

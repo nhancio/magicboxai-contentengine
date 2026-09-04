@@ -25,7 +25,11 @@ const COPY_SCHEMA = {
   properties: {
     hook: { type: "string" },
     caption: { type: "string" },
-    hashtags: { type: "array", items: { type: "string" } },
+    hashtags: {
+      type: "array",
+      items: { type: "string" },
+      description: "3-8 relevant hashtags, each MUST start with #",
+    },
     mediaPrompt: { type: "string" },
     hookFamily: { type: "string" },
     trendUsed: { type: "string" },
@@ -54,8 +58,23 @@ function trustedMediaUrl(raw: string): string {
   } catch {
     throw new Error("Media URL is invalid");
   }
+  // Convex storage: match the deployment's own origin so this works on both the
+  // cloud product (*.convex.cloud) and a self-hosted backend (which may be
+  // http://host:port). CONVEX_CLOUD_URL / CONVEX_SITE_URL are injected by the
+  // backend at runtime and point at this deployment.
+  const deploymentOrigins = [process.env.CONVEX_CLOUD_URL, process.env.CONVEX_SITE_URL]
+    .filter((o): o is string => Boolean(o))
+    .map((o) => {
+      try {
+        return new URL(o).origin;
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((o): o is string => Boolean(o));
   const convexStorage =
-    url.hostname.endsWith(".convex.cloud") && url.pathname.startsWith("/api/storage/");
+    (url.hostname.endsWith(".convex.cloud") || deploymentOrigins.includes(url.origin)) &&
+    url.pathname.startsWith("/api/storage/");
   const firebaseBrandCreative =
     url.hostname === "firebasestorage.googleapis.com" &&
     /^\/v0\/b\/magicboxai-50927\.(?:firebasestorage\.app|appspot\.com)\/o\/users%2F[^/]+%2Fbrand-creatives%2F/i.test(
@@ -63,16 +82,19 @@ function trustedMediaUrl(raw: string): string {
     ) &&
     url.searchParams.get("alt") === "media" &&
     Boolean(url.searchParams.get("token"));
-  if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    url.port ||
-    (!convexStorage && !firebaseBrandCreative)
-  ) {
+  if (url.username || url.password) {
     throw new Error("Media must be uploaded to MagicBox storage");
   }
-  return url.toString();
+  // Convex storage is pinned to this deployment's exact origin above, so a
+  // self-hosted http origin with a port is acceptable. Any other (Firebase)
+  // source must still be plain https with no port.
+  if (convexStorage) {
+    return url.toString();
+  }
+  if (firebaseBrandCreative && url.protocol === "https:" && !url.port) {
+    return url.toString();
+  }
+  throw new Error("Media must be uploaded to MagicBox storage");
 }
 
 function assertTextLength(value: string | undefined, label: string, maxLength: number): void {
@@ -255,7 +277,7 @@ export const generateCopy = action({
         `- caption's first line MUST be the hook, then begin the payoff immediately.\n` +
         `- caption MUST be under ${provider.limits.maxCaptionLength} characters.\n` +
         `- Ready to publish. No placeholders like [insert X].\n` +
-        `- 3-8 relevant hashtags, no spam walls.\n` +
+        `- 3-8 relevant hashtags, each MUST start with '#' (e.g. #DigitalMarketing), no spam walls.\n` +
         `- hookFamily: the selected hook mechanism id.\n` +
         `- trendUsed: the exact trend value above, or an empty string when no trend genuinely fits.\n` +
         `- whyShare: one short sentence naming why a specific reader would pass this on.\n` +
@@ -265,6 +287,12 @@ export const generateCopy = action({
           : `- No media; omit mediaPrompt.\n`),
       schema: COPY_SCHEMA as unknown as Record<string, unknown>,
     });
+
+    if (result.hashtags && Array.isArray(result.hashtags)) {
+      result.hashtags = result.hashtags
+        .map((h) => (h.startsWith("#") ? h : `#${h.replace(/^[#\s]+/, "")}`))
+        .filter(Boolean);
+    }
 
     // Enforce the platform limit rather than trusting the model to obey it.
     if (result.caption.length > provider.limits.maxCaptionLength) {
@@ -562,33 +590,42 @@ export const createPost = action({
       }
     }
 
-    // Credits: drafts are free. Posts cost 1 i-credit, or N v-credits for video
-    // uploads. Veo-generated clips were already billed at generate time.
-    if (args.mode !== "draft") {
+    // Paid entitlement + monthly post quota first. Drafts stay free.
+    // If no channel is connected for the selected platforms, automatically save as draft
+    // without requiring paid plan or burning credits.
+    const effectiveMode = accountIds.length === 0 ? "draft" : args.mode;
+
+    if (effectiveMode !== "draft") {
       await ctx.runMutation(internal.credits.ensure, { userId: uid });
-      if (args.mediaType === "video") {
-        const source = args.mediaSource ?? "upload";
-        const isOwnedVeoMedia =
-          source === "veo" && media?.[0]?.url
-            ? await ctx.runQuery(internal.media.isOwnedCompletedVideo, {
-                userId: uid,
-                url: media[0].url,
-              })
-            : false;
-        if (!isOwnedVeoMedia) {
-          const seconds = Math.max(1, Math.ceil(args.durationSeconds ?? DEFAULT_VEO_SECONDS));
-          await ctx.runMutation(internal.credits.spendV, {
+      await ctx.runMutation(internal.credits.reservePublish, { userId: uid });
+      try {
+        if (args.mediaType === "video") {
+          const source = args.mediaSource ?? "upload";
+          const isOwnedVeoMedia =
+            source === "veo" && media?.[0]?.url
+              ? await ctx.runQuery(internal.media.isOwnedCompletedVideo, {
+                  userId: uid,
+                  url: media[0].url,
+                })
+              : false;
+          if (!isOwnedVeoMedia) {
+            const seconds = Math.max(1, Math.ceil(args.durationSeconds ?? DEFAULT_VEO_SECONDS));
+            await ctx.runMutation(internal.credits.spendV, {
+              userId: uid,
+              amount: seconds,
+              reason: "post_video",
+            });
+          }
+        } else {
+          await ctx.runMutation(internal.credits.spendI, {
             userId: uid,
-            amount: seconds,
-            reason: "post_video",
+            amount: 1,
+            reason: "post_image_or_text",
           });
         }
-      } else {
-        await ctx.runMutation(internal.credits.spendI, {
-          userId: uid,
-          amount: 1,
-          reason: "post_image_or_text",
-        });
+      } catch (error) {
+        await ctx.runMutation(internal.credits.releasePublish, { userId: uid });
+        throw error;
       }
     }
 
@@ -602,7 +639,7 @@ export const createPost = action({
       media,
       brief: args.brief ?? args.caption.slice(0, 120),
       brandProfileId: args.brandProfileId,
-      mode: args.mode,
+      mode: effectiveMode,
       scheduledFor: args.scheduledFor,
       timezone,
       whatsapp: args.platforms.includes("whatsapp")

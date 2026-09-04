@@ -30,7 +30,7 @@ Google sign-in
   → Instagram, LinkedIn, or YouTube
 ```
 
-The repository also contains an older avatar/UGC/ad product. Those routes are behind `VITE_ENABLE_LEGACY_TOOLS` and are off by default, but the source and Cloud Functions still exist. They are not part of the launch-safe core until a product and data-retention decision is made.
+The repository also contains an older avatar/UGC/ad product. Those routes now redirect into Studio, My Video, and Avatars. Video creation and scheduling live in Studio / My Video; the unused `VITE_ENABLE_LEGACY_TOOLS` flag was removed rather than resurrecting VideoCreator without Post/Schedule.
 
 The `marketing-agent/` directory is a standalone GitAgent knowledge pack. It contains 88 operational Markdown skill files and is not dynamically invoked by the current product. Marketing prompts in `functions/src/prompts/marketingPrompts.ts` were distilled from it.
 
@@ -38,9 +38,9 @@ The `marketing-agent/` directory is a standalone GitAgent knowledge pack. It con
 
 ```text
 apps/
-  landing/       Public marketing site, magicboxai.in, Vite/React, port 5173
-  web/           Authenticated product, app.magicboxai.in, port 5174
-  admin/         Admin console, admin.magicboxai.in, port 5175
+  landing/       Public marketing site, magicboxai.in, Vite/React, port 8173
+  web/           Authenticated product, app.magicboxai.in, port 8174
+  admin/         Admin console, admin.magicboxai.in, port 8175
 functions/       Firebase Functions v2, Node 20, TypeScript
 shared/          Shared UI, Firebase client, auth, types, and API wrappers
 marketing-agent/ Vendored/reference marketing knowledge pack
@@ -115,7 +115,7 @@ The active and legacy code references approximately these Firestore collections:
 - `brandProfiles`
 - `automations`
 - `posts`
-- `pendingEntitlements` (legacy guest-payment path; no new anonymous checkout)
+- `pendingEntitlements` (guest checkout: Dodo webhook stores a paid plan keyed by paying email; claimed on Google sign-in when emails match)
 - `studioGenerations`
 - `influencers`, `photoAvatars`, `avatars`
 - `videos`, `ads`, `templates`
@@ -167,8 +167,9 @@ The Settings screen currently offers an honest account-summary download and a su
 
 Implemented payment design:
 
-- Checkout is created only for an authenticated Firebase uid.
-- The old anonymous checkout endpoint redirects to sign-in before money is accepted.
+- Authenticated checkout (`createDodoCheckout`) is created for a signed-in Firebase uid.
+- Guest checkout (`createGuestCheckout`) is still live on the landing Pro/Max CTAs: the visitor pays on Dodo without an account. The webhook writes `pendingEntitlements/{email}`. Entitlement attaches only when they later sign in with the **same Google-verified email**. A mismatch is surfaced on `/pricing?checkout=returned`.
+- `claimGuestEntitlement` (callable) plus `welcome.ts` user-doc triggers claim that pending row into `subscriptions/{uid}` and refresh billing custom claims. Do not treat this as “anonymous checkout was removed.”
 - `DODO_API_KEY` and `DODO_WEBHOOK_SECRET` are bound with Firebase `defineSecret`.
 - Webhooks verify the Standard Webhooks HMAC, require a fresh timestamp, and store `webhook-id` transactionally for idempotency.
 - Subscription events validate configured Dodo product IDs before mapping to Pro/Max.
@@ -176,7 +177,7 @@ Implemented payment design:
 - Customer, subscription, payment, product, period, and status identifiers are persisted when present.
 - `on_hold`, active, renewal, plan-change, cancelled, failed, and expired states fail closed or update entitlement without duplicate quota resets.
 - Paid users can create an authenticated Dodo customer-portal session.
-- A checkout return URL displays “verification pending”; it is not treated as proof of payment.
+- A checkout return URL is not proof of payment. `/pricing?checkout=returned` retries `claimGuestEntitlement`, refreshes billing claims, and toasts success or an email-mismatch / webhook-lag error.
 
 The local ignored Functions environment was detected as `DODO_MODE=live`. No provider request or transaction was sent during this audit. Product prices, business/KYC activation, live webhook registration, test/live secret separation, provider reconciliation, upgrades/downgrades, refunds/disputes, and the full sandbox matrix are external release gates.
 

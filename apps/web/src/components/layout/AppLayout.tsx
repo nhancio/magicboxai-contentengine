@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
 import { getUserSubscription, type SubscriptionRecord } from "@shared/lib/firestore";
@@ -14,7 +14,6 @@ import { CreditsTrialCard } from "@/components/CreditsTrialCard";
 import { useMayaActivation } from "@/hooks/useMayaActivation";
 import { trialClock } from "@/lib/credits";
 import {
-  BarChart3,
   Bot,
   CalendarDays,
   CreditCard,
@@ -25,11 +24,10 @@ import {
   LockKeyhole,
   LogOut,
   Menu,
+  MessageSquare,
   Palette,
   Settings,
   Sparkles,
-  User,
-  Video,
   X,
 } from "lucide-react";
 
@@ -39,26 +37,19 @@ const NAV_SECTIONS = [
     items: [
       { label: "Maya", path: "/maya", icon: Sparkles },
       { label: "Dashboard", path: "/", icon: LayoutDashboard },
-      { label: "Calendar", path: "/calendar", icon: CalendarDays },
       { label: "Studio", path: "/studio", icon: Film },
-      { label: "Library", path: "/posts", icon: FolderOpen },
-      { label: "Analytics", path: "/analytics", icon: BarChart3 },
       { label: "Automations", path: "/automations", icon: Bot },
+      { label: "Calendar", path: "/calendar", icon: CalendarDays },
+      { label: "Library", path: "/posts", icon: FolderOpen },
       { label: "Brand Kit", path: "/brand", icon: Palette },
       { label: "Warmed-Up Accounts", path: "/warmed-up-accounts", icon: Flame, badge: "NEW" },
-    ],
-  },
-  {
-    heading: "AI Video",
-    items: [
-      { label: "Avatar", path: "/avatars", icon: User },
-      { label: "My Video", path: "/my-video", icon: Video },
     ],
   },
 ] as const;
 
 const BOTTOM_NAV = [
   { label: "Pricing", path: "/pricing", icon: CreditCard },
+  { label: "Feedback", path: "/feedback", icon: MessageSquare },
   { label: "Settings", path: "/settings", icon: Settings },
 ] as const;
 
@@ -78,6 +69,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const claimTrial = useMutation(api.credits.claimTrial);
+  const syncPlan = useMutation(api.credits.syncPlan);
   const mayaActivation = useMayaActivation();
 
   // Firestore/Dodo is the billing source of truth. Refresh the signed claim
@@ -97,18 +89,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       });
     void syncBillingClaims({})
       .then(() => user.getIdToken(true))
+      .then(() => (isConvexConfigured ? syncPlan({}) : undefined))
       .catch((error) => console.warn("[billing] claim sync failed", error));
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, syncPlan]);
 
   useEffect(() => {
-    if (!isConvexConfigured || !credits?.needsTrialClaim) return;
-    claimTrial({}).catch(() => {
-      /* trial claim is best-effort on layout load */
-    });
-  }, [credits?.needsTrialClaim, claimTrial]);
+    if (!isConvexConfigured || !user) return;
+    if (credits?.needsTrialClaim) {
+      claimTrial({}).catch(() => {
+        /* trial claim is best-effort on layout load */
+      });
+    }
+  }, [isConvexConfigured, user, credits?.needsTrialClaim, claimTrial]);
 
   // Close drawer on route change (mobile).
   useEffect(() => {
@@ -123,6 +118,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         .slice(0, 2)
         .toUpperCase()
     : "U";
+
+  const isCalendarRoute =
+    location.pathname === "/calendar" || location.pathname === "/schedule";
+
+  useEffect(() => {
+    if (!isCalendarRoute) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [isCalendarRoute]);
 
   const closeSidebar = () => setSidebarOpen(false);
   const billingPaid = billingSubscription
@@ -143,14 +150,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 sm:h-16 sm:px-5">
         <img
-          src="/logo.png"
+          src="/logo.svg"
           alt="Magic Box AI"
           className="h-8 w-8 shrink-0 rounded-lg object-contain sm:h-9 sm:w-9"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = "/favicon.svg";
+          }}
         />
         <div className="min-w-0">
           <div className="truncate text-sm font-display text-foreground">Magic Box</div>
-          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-            AI
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+              AI
+            </span>
+            <span className="rounded bg-brand/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-brand border border-brand/20">
+              v1.0
+            </span>
           </div>
         </div>
         <button
@@ -259,16 +274,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           />
         )}
         <div className="flex items-center gap-2.5">
-          <Avatar className="h-9 w-9 shrink-0 border border-border">
-            <AvatarImage src={user?.photoURL ?? undefined} />
-            <AvatarFallback className="bg-brand/10 text-xs text-brand">{initials}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-foreground">
-              {user?.displayName ?? "User"}
-            </p>
-            <p className="truncate text-[10px] text-muted-foreground">{user?.email}</p>
-          </div>
+          <Link
+            to="/settings"
+            onClick={closeSidebar}
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1 -m-1 transition-colors hover:bg-accent"
+          >
+            <Avatar className="h-9 w-9 shrink-0 border border-border">
+              <AvatarImage src={user?.photoURL ?? undefined} />
+              <AvatarFallback className="bg-brand/10 text-xs text-brand">{initials}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground">
+                {user?.displayName ?? "User"}
+              </p>
+              <p className="truncate text-[10px] text-muted-foreground">{user?.email}</p>
+            </div>
+          </Link>
           <Button
             variant="ghost"
             size="icon"
@@ -318,9 +339,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </button>
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <img
-                src="/logo.png"
+                src="/logo.svg"
                 alt=""
                 className="h-7 w-7 shrink-0 rounded-lg object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "/favicon.svg";
+                }}
               />
               <span className="truncate text-sm font-display text-foreground">Magic Box AI</span>
             </div>
@@ -334,7 +358,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-5 sm:py-6 md:px-8 lg:py-8">
+        <main
+          className={cn(
+            "mx-auto w-full max-w-[1600px] px-3 py-3 sm:px-5 sm:py-4 md:px-8 lg:py-5",
+            isCalendarRoute && "overflow-hidden",
+            location.pathname === "/studio" && "h-[calc(100dvh-3.5rem)] lg:h-dvh flex flex-col py-2 px-3 sm:px-6 overflow-hidden max-w-none",
+          )}
+        >
           {children}
         </main>
       </div>

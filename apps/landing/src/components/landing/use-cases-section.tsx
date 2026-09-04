@@ -18,14 +18,14 @@ type UseCase = {
 const USE_CASES: UseCase[] = [
   {
     id: "solo-founder",
-    title: "Solo founders",
-    blurb: "Turn one weekly update into a reviewable LinkedIn and Instagram plan.",
+    title: "Solo founders & creators",
+    blurb: "Turn one weekly vibe or update into a viral, reviewable LinkedIn and Instagram plan.",
     channels: ["linkedin", "instagram"],
   },
   {
     id: "lean-team",
-    title: "Lean marketing teams",
-    blurb: "Keep a small team on-brand with a shared brief, approval step, and publishing cadence.",
+    title: "Brands & marketing teams",
+    blurb: "Keep your brand aesthetic on-vibe with automated UGC videos, approval workflows, and multi-channel publishing.",
     channels: ["linkedin", "instagram", "youtube"],
   },
 ];

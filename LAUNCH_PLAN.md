@@ -172,7 +172,7 @@ Live channel OAuth is on **Convex**, not Firebase Functions. Register this exact
 | Task | Owner | Status |
 | --- | --- | --- |
 | Register the exact Convex callback URL in Google, Meta, LinkedIn | 👤 | 🔴 |
-| **Google/YouTube:** enable YouTube Data API v3; consent-screen branding (name `MagicBox`, homepage, privacy, terms, `support@magicboxai.in`); scopes `youtube.upload` + `youtube.readonly` only; remove all other scopes; submit verification | 👤 | 🔴 |
+| **Google/YouTube:** enable YouTube Data API v3; consent-screen branding (name `MagicBox`, homepage, privacy, terms, `hello@nhancio.com`); scopes `youtube.upload` + `youtube.readonly` only; remove all other scopes; submit verification | 👤 | 🔴 |
 | **Instagram:** Instagram Login; request `instagram_business_basic` + `instagram_business_content_publish`; complete Meta App Review | 👤 | 🔴 |
 | **LinkedIn:** create/link company app; enable Sign In w/ OIDC + Share on LinkedIn; scopes `openid profile w_member_social` | 👤 | 🔴 |
 | Set channel secrets on Convex (`GOOGLE_OAUTH_*`, `META_APP_*`, `META_IG_APP_*`, `LINKEDIN_*`, `APP_BASE_URL`) | 👤 | 🔴 |
@@ -191,12 +191,12 @@ receipt/status → paid entitlement, per channel + a failure/retry path.
 | --- | --- | --- |
 | Run production-preview browser smoke suite | 🤖 (local) / CI | 🟡 |
 | Manual end-to-end walkthrough on live consoles with real test accounts | 👤 | 🔴 |
-| Enforce quota/entitlement on the **Convex** publish path before charging | 🤖 | 🔴 |
+| Enforce quota/entitlement on the **Convex** publish path before charging | 🤖 | ✅ complete |
 | Fix Instagram double-post idempotency (persist `creationId` per destination) | 🤖 | ✅ complete |
 | Add `httpRaw()`/`fetchBytes()` to `base.ts`; collapse provider duplication | 🤖 | 🔴 |
 | Implement LinkedIn video via Videos API (currently text+image only) | 🤖 | ✅ complete |
-| Wire Veo generation into Convex (durable polling) | 🤖 | 🔴 |
-| Add Post/Schedule button to VideoCreator UI (bridge `studio.createPost` exists) | 🤖 | 🔴 |
+| Wire Veo generation into Convex (durable polling) | 🤖 | ✅ complete (`media.renderVideo` + Studio/My Video) |
+| Add Post/Schedule button to VideoCreator UI (bridge `studio.createPost` exists) | 🤖 | ✅ complete via Studio / My Video (`/video-creator` redirects to Studio; VideoCreator is not the product path) |
 | Decide + execute Firestore↔Convex publish cutover so only one system publishes | 🤝 | 🔴 |
 | Confirm crons fire on schedule (trends daily, maya hourly, publish 1-min) | 🤖 | 🟡 |
 | Publishing recovery: stuck claims, partial success, idempotency, quota, OAuth expiry, operator replay runbook | 🤖 | 🔴 |

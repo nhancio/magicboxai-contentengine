@@ -45,6 +45,80 @@ function requireInternalRendererToken(req, res, next) {
   return next();
 }
 
+const openapiSpec = {
+  openapi: '3.0.3',
+  info: {
+    title: 'Magicbox AI Video Renderer API',
+    version: '1.0.0',
+    description: 'Remotion & FFmpeg Video Generation, Composition, and Export Engine',
+  },
+  servers: [{ url: '/', description: 'Renderer Server' }],
+  tags: [
+    { name: 'Health', description: 'Renderer health and capabilities' },
+    { name: 'Render', description: 'Remotion video rendering jobs' },
+    { name: 'Compose', description: 'FFmpeg multi-track video composition' },
+  ],
+  paths: {
+    '/health': {
+      get: {
+        tags: ['Health'],
+        summary: 'Renderer Health & Capability Status',
+        responses: { 200: { description: 'Health status' } },
+      },
+    },
+    '/api/render': {
+      post: {
+        tags: ['Render'],
+        summary: 'Execute Remotion Video Render Job',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object' } } },
+        },
+        responses: { 200: { description: 'Render completed' } },
+      },
+    },
+    '/api/compose-video': {
+      post: {
+        tags: ['Compose'],
+        summary: 'Compose Multi-track Video with FFmpeg',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object' } } },
+        },
+        responses: { 200: { description: 'Composition completed' } },
+      },
+    },
+  },
+};
+
+const swaggerHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Magicbox AI Video Renderer API - Swagger UI</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+<style>body { margin: 0; padding: 0; }</style>
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+window.ui = SwaggerUIBundle({
+  url: '/openapi.json',
+  dom_id: '#swagger-ui',
+  layout: 'BaseLayout',
+  deepLinking: true,
+  showExtensions: true,
+  showCommonExtensions: true,
+  presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset]
+});
+</script>
+</body>
+</html>`;
+
+app.get('/openapi.json', (_req, res) => res.json(openapiSpec));
+app.get(['/api/docs', '/api/docs/'], (_req, res) => res.send(swaggerHtml));
+
 app.get('/health', async (_req, res) => {
   res.json({
     ok: true,
@@ -54,8 +128,8 @@ app.get('/health', async (_req, res) => {
   });
 });
 
-app.post('/api/render', async (req, res) => {
-  const { templateId, props, videoId, userId } = req.body;
+app.post('/api/render', requireInternalRendererToken, async (req, res) => {
+  const { templateId, props, videoId } = req.body;
 
   if (!templateId || !props) {
     return res.status(400).json({ error: 'templateId and props are required' });
@@ -63,7 +137,7 @@ app.post('/api/render', async (req, res) => {
 
   try {
     console.log(`[Renderer] Starting render for template: ${templateId}`);
-    
+
     // 1. Bundle the Remotion project
     const bundled = await bundle({
       entryPoint: remotionRoot,
@@ -82,7 +156,8 @@ app.post('/api/render', async (req, res) => {
     console.log(`[Renderer] Composition selected: ${composition.id}`);
 
     // 3. Render the video
-    const outputLocation = path.join(outputDir, `${videoId || 'video'}.mp4`);
+    const fileName = `${videoId || 'video'}-${crypto.randomUUID()}.mp4`;
+    const outputLocation = path.join(outputDir, fileName);
 
     await renderMedia({
       composition,
@@ -97,12 +172,14 @@ app.post('/api/render', async (req, res) => {
 
     console.log(`[Renderer] Render complete: ${outputLocation}`);
 
-    // 4. Respond with success (In a real app, upload to GCS/S3 here)
-    res.json({ 
-      success: true, 
+    // 4. Respond with a servable URL (same /outputs static mount + public-base
+    // construction /api/compose already uses) instead of a bare local path.
+    const publicBase = process.env.RENDERER_PUBLIC_BASE_URL?.replace(/\/+$/, '');
+    res.json({
+      success: true,
       status: 'completed',
-      videoPath: outputLocation, 
-      duration: composition.durationInFrames / composition.fps 
+      videoUrl: publicBase ? `${publicBase}/outputs/${fileName}` : undefined,
+      duration: composition.durationInFrames / composition.fps,
     });
 
   } catch (err) {

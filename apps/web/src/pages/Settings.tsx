@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { isConvexConfigured } from "../lib/convex";
+import { deleteSocialAccount, deleteSocialAccountsForPlatform } from "@shared/lib/automations";
 import { Button } from "@shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@shared/components/ui/card";
 import { Label } from "@shared/components/ui/label";
@@ -25,9 +26,11 @@ import {
   DialogTrigger,
 } from "@shared/components/ui/dialog";
 import { cn } from "@shared/lib/utils";
-import { Link } from "react-router-dom";
-import { trialClock } from "../lib/credits";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { DEFAULT_TRIAL_I, DEFAULT_TRIAL_V, trialClock } from "../lib/credits";
 import { captureEvent } from "@shared/lib/analytics";
+import { WhatsAppV2Modal, isWhatsAppV2Active } from "./Integrations";
+import { ComingSoonChannelModal } from "../components/channels/ComingSoonChannelModal";
 import {
   Settings as SettingsIcon,
   User,
@@ -55,15 +58,17 @@ import {
   Plus,
   Image as ImageIcon,
   Clapperboard,
-  Flame,
+  Video,
 } from "lucide-react";
 
-const PLATFORM_ICON: Record<string, typeof Instagram> = {
+const PLATFORM_ICON: Record<string, any> = {
   instagram: Instagram,
   facebook: Facebook,
   linkedin: Linkedin,
   youtube: Youtube,
   twitter: Twitter,
+  tiktok: Video,
+  x: Twitter,
   reddit: MessageCircle,
   whatsapp: MessageCircle,
 };
@@ -75,6 +80,8 @@ const PLATFORM_BRAND: Record<string, string> = {
   linkedin: "#0A66C2",
   facebook: "#1877F2",
   twitter: "#000000",
+  x: "#000000",
+  tiktok: "#000000",
   whatsapp: "#25D366",
   reddit: "#FF4500",
 };
@@ -276,35 +283,45 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [showConnectPicker, setShowConnectPicker] = useState(false);
+  const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
+  const [comingSoonPlatform, setComingSoonPlatform] = useState<string | null>(null);
   // Live Meta + Google channels. Deferred (twitter/reddit) stay in catalogue but
   // only surface if we intentionally add them here later.
-  const launchPlatforms = new Set([
+  // Channel order shown across the app.
+  const launchPlatforms = [
     "instagram",
-    "linkedin",
     "youtube",
+    "linkedin",
     "facebook",
+    "tiktok",
+    "twitter",
     "whatsapp",
-  ]);
+  ];
 
   const connected = (accounts ?? []).filter(
     (a: any) => a.status === "active" || a.status === "expired",
   );
 
   const connectable = (catalogue ?? [])
-    .filter((p: any) => launchPlatforms.has(p.id))
+    .filter((p: any) => launchPlatforms.includes(p.id))
     .filter((p: any) => {
       const active = connected.some(
-        (a: any) => a.platform === p.id && a.status === "active",
+        (a: any) => (a.platform === p.id || (p.id === "twitter" && a.platform === "x")) && a.status === "active",
       );
       return !active;
-    });
+    })
+    .sort((a: any, b: any) => launchPlatforms.indexOf(a.id) - launchPlatforms.indexOf(b.id));
 
   async function handleConnect(provider: string) {
+    if (provider === "tiktok" || provider === "twitter" || provider === "x" || provider === "whatsapp") {
+      setComingSoonPlatform(provider);
+      return;
+    }
     setBusy(provider);
     try {
       const { url, redirectUri } = await connectUrl({
         provider,
-        returnTo: "/settings",
+        returnTo: "/settings?tab=integrations",
         returnOrigin: window.location.origin,
         loginHint: user?.email ?? undefined,
       });
@@ -316,25 +333,53 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
         return;
       }
       captureEvent("social_channel_connect_started", { provider });
-      window.location.href = url;
+      const newTab = window.open(url, "_blank");
+      if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
+        window.location.href = url;
+      } else {
+        toast.info(`Connecting ${provider}... Complete authorization in the new tab.`);
+        setBusy(null);
+      }
     } catch (e) {
       toast.error(convexErrorMessage(e));
       setBusy(null);
     }
   }
 
-  async function handleDisconnect(accountId: string) {
+  async function handleDisconnect(accountId: string, platform?: string) {
     if (!accountId || disconnectingId) return;
     setDisconnectingId(accountId);
     try {
       await disconnect({ accountId: accountId as any });
-      toast.success("Channel disconnected");
+      if (user?.uid) {
+        if (platform) {
+          await deleteSocialAccountsForPlatform(user.uid, platform).catch(() => {});
+        }
+        await deleteSocialAccount(accountId).catch(() => {});
+      }
+      toast.success("Channel disconnected and sessions logged out");
     } catch (e) {
       console.error("[settings] disconnect failed", e);
       toast.error(convexErrorMessage(e));
     } finally {
       setDisconnectingId(null);
     }
+  }
+
+  if (accounts === undefined) {
+    return (
+      <div
+        className={cn(
+          "mb-3 grid gap-2.5",
+          compact
+            ? "grid-cols-3 sm:grid-cols-4"
+            : "grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8",
+        )}
+      >
+        <div className="flex aspect-square animate-pulse items-center justify-center rounded-xl bg-secondary" />
+        <div className="flex aspect-square animate-pulse items-center justify-center rounded-xl bg-secondary" />
+      </div>
+    );
   }
 
   return (
@@ -384,7 +429,7 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
                 onClick={(ev) => {
                   ev.preventDefault();
                   ev.stopPropagation();
-                  void handleDisconnect(String(account._id));
+                  void handleDisconnect(String(account._id), account.platform);
                 }}
                 className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-background/80 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100"
               >
@@ -434,31 +479,6 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
             <span className="w-full truncate text-[11px] font-medium">Add</span>
           </button>
         )}
-
-        {/* Buy Warmed-Up Accounts Tile */}
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.")}
-          onKeyDown={(ev) => {
-            if (ev.key === "Enter" || ev.key === " ") {
-              ev.preventDefault();
-              toast.info("Buy warmed up accounts feature coming soon! Pre-warmed aged accounts with clean reputation.");
-            }
-          }}
-          className="group relative flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-1.5 text-center transition-all hover:border-amber-500 hover:bg-amber-500/10 cursor-pointer"
-          title="Buy pre-warmed aged social accounts with clean reputation (Coming Soon)"
-        >
-          <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-            <Flame className="h-5 w-5" />
-          </div>
-          <span className="w-full truncate text-[10px] font-semibold text-foreground">
-            Buy Accounts
-          </span>
-          <span className="inline-flex items-center rounded-full bg-amber-500/20 px-1.5 py-0.2 font-mono text-[8px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-            Soon
-          </span>
-        </div>
       </div>
 
       {(showConnectPicker || connected.length === 0) && connectable.length > 0 && (
@@ -468,52 +488,91 @@ function ConvexChannels({ compact }: { compact?: boolean }) {
             const expired = connected.some(
               (a: any) => a.platform === p.id && a.status === "expired",
             );
+            const isComingSoon = !p.available || p.id === "tiktok" || p.id === "twitter" || p.id === "whatsapp";
+
             return (
               <Button
                 key={p.id}
                 variant="outline"
                 size="sm"
-                className="justify-start"
-                disabled={!p.available || busy !== null}
+                className="justify-between text-left"
+                disabled={busy !== null}
                 title={p.available ? undefined : p.reason}
                 onClick={() => handleConnect(p.id)}
               >
-                {busy === p.id ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Icon className="mr-2 h-4 w-4" />
+                <div className="flex items-center min-w-0">
+                  {busy === p.id ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                  ) : (
+                    <Icon className="mr-2 h-4 w-4 shrink-0" />
+                  )}
+                  <span className="truncate">
+                    {expired ? `Reconnect ${p.displayName}` : `Connect ${p.displayName}`}
+                  </span>
+                </div>
+                {isComingSoon && (
+                  <span className="rounded bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider shrink-0 ml-2">
+                    Soon
+                  </span>
                 )}
-                {!p.available
-                  ? `${p.displayName} — soon`
-                  : expired
-                    ? `Reconnect ${p.displayName}`
-                    : `Connect ${p.displayName}`}
               </Button>
             );
           })}
-          <Button
-            variant="outline"
-            size="sm"
-            className="justify-start border-dashed border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
-            onClick={() => toast.info("Buy warmed up accounts feature coming soon!")}
-          >
-            <Flame className="mr-2 h-4 w-4 text-amber-500" />
-            Buy Warmed Up Accounts — Soon
-          </Button>
         </div>
       )}
 
       {!compact && (
         <p className="mt-1 text-xs text-muted-foreground">
-          Tap + to connect Instagram, LinkedIn, YouTube, Facebook, or WhatsApp.
+          Tap + to connect Instagram, LinkedIn, YouTube, Facebook, or explore upcoming channels.
         </p>
       )}
+
+      <WhatsAppV2Modal
+        open={whatsAppModalOpen}
+        onOpenChange={setWhatsAppModalOpen}
+      />
+
+      <ComingSoonChannelModal
+        open={comingSoonPlatform !== null}
+        onOpenChange={(isOpen) => !isOpen && setComingSoonPlatform(null)}
+        platform={comingSoonPlatform}
+        onConnectActivePlatform={(p) => {
+          setComingSoonPlatform(null);
+          void handleConnect(p);
+        }}
+      />
     </div>
   );
 }
 
 export default function Settings() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const resolveTab = (params: URLSearchParams) => {
+    const raw = (params.get("tab") || params.get("section") || "").toLowerCase();
+    if (raw === "connections" || raw === "channels" || raw === "integrations") return "integrations";
+    if (raw === "credits" || raw === "account" || raw === "preferences" || raw === "notifications") return raw;
+    return "account";
+  };
+
+  const [activeTab, setActiveTab] = useState(() => resolveTab(searchParams));
+
+  useEffect(() => {
+    const target = resolveTab(searchParams);
+    setActiveTab(target);
+  }, [searchParams]);
+
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("tab", tabId);
+      return next;
+    }, { replace: true });
+  };
+  
   const [defaultPlatform, setDefaultPlatform] = useState("instagram");
   const [defaultStyle, setDefaultStyle] = useState("professional");
   const [language, setLanguage] = useState("en");
@@ -524,12 +583,23 @@ export default function Settings() {
 
   const credits = useQuery(api.credits.balance, isConvexConfigured ? {} : "skip");
   const claimTrial = useMutation(api.credits.claimTrial);
+  const resetTrial = useMutation(api.credits.resetTrial);
+  const [resettingTrial, setResettingTrial] = useState(false);
   const clock = trialClock(credits);
+  const canRefreshTrial = !!(
+    credits?.canRefreshTrial ||
+    (user?.email &&
+      ["compilelater@gmail.com", "nithindidigam@nhancio.com"].includes(
+        user.email.toLowerCase(),
+      ))
+  );
 
   useEffect(() => {
-    if (!isConvexConfigured || !credits?.needsTrialClaim) return;
-    claimTrial({}).catch(() => undefined);
-  }, [credits?.needsTrialClaim, claimTrial]);
+    if (!isConvexConfigured || !user) return;
+    if (credits?.needsTrialClaim) {
+      claimTrial({}).catch(() => undefined);
+    }
+  }, [isConvexConfigured, user, credits?.needsTrialClaim, claimTrial]);
 
   // Surface the OAuth round-trip result and clean the URL.
   useEffect(() => {
@@ -538,19 +608,27 @@ export default function Settings() {
     if (!social) return;
     if (social === "connected") {
       toast.success(`${params.get("provider") ?? "Channel"} connected`);
+      setActiveTab("integrations");
     } else if (social === "error") {
       const rawReason = params.get("reason");
       let cleanReason = rawReason?.replace(/^Error:\s*/, "").replace(/Uncaught\s+BadBodyError:\s*/, "") || "Could not connect channel";
-      if (rawReason?.includes("no_facebook_pages")) {
+      if (rawReason?.includes("no_youtube_channel")) {
+        cleanReason = "YouTube connection failed: This Google account does not have a YouTube channel. Please visit youtube.com to create a channel on this account, or select a Google account that has a channel.";
+      } else if (rawReason?.includes("invalid_google_client_secret") || rawReason?.includes("invalid_client") || rawReason?.includes("client secret is invalid")) {
+        cleanReason = "YouTube connection failed: The configured Google OAuth Client Secret is invalid. Please ensure GOOGLE_OAUTH_CLIENT_SECRET in your backend environment matches your Google Cloud Console OAuth 2.0 Client credentials.";
+      } else if (rawReason?.includes("no_facebook_pages")) {
         cleanReason = "Facebook connection failed: You must own or manage at least one Facebook Page under your account.";
       } else if (rawReason?.includes("feature_unavailable") || rawReason?.includes("unavailable") || rawReason?.includes("Facebook Login")) {
         cleanReason = "Facebook Login unavailable: Your Meta App is in Development mode or updating details in Meta Developer Console. Add test users under Roles in Meta Dashboard or complete App Review.";
       } else if (rawReason?.includes("access_denied")) {
         cleanReason = "Connection cancelled or access denied by user.";
+      } else if (rawReason?.includes("403") || rawReason?.includes("NotEnoughScopesError")) {
+        cleanReason = "Permission or API quota error. Please ensure the required YouTube/OAuth API permissions are enabled in your developer console.";
       }
-      toast.error(cleanReason, { duration: 6000 });
+      toast.error(cleanReason, { duration: 7000 });
+      setActiveTab("integrations");
     }
-    window.history.replaceState({}, "", window.location.pathname);
+    window.history.replaceState({}, "", window.location.pathname + "?tab=integrations");
   }, []);
 
   const initials = user?.displayName
@@ -562,444 +640,479 @@ export default function Settings() {
         .toUpperCase()
     : "U";
 
-  const iCredits = credits?.needsTrialClaim ? "…" : (credits?.iCredits ?? "—");
-  const vCredits = credits?.needsTrialClaim ? "…" : (credits?.vCredits ?? "—");
+  const loadingCredits = isConvexConfigured && credits === undefined;
+  const iCredits = loadingCredits
+    ? "…"
+    : typeof credits?.iCredits === "number"
+      ? credits.iCredits
+      : (credits?.freeTrial?.i ?? DEFAULT_TRIAL_I);
+  const vCredits = loadingCredits
+    ? "…"
+    : typeof credits?.vCredits === "number"
+      ? credits.vCredits
+      : (credits?.freeTrial?.v ?? DEFAULT_TRIAL_V);
   const creditsFrozen = !!clock?.expired && !credits?.hasPaidPlan;
 
+  const tabs = [
+    { id: "account", label: "Account", icon: User },
+    { id: "credits", label: "AI Credits", icon: Sparkles },
+    { id: "integrations", label: "Integrations", icon: Link2 },
+    { id: "preferences", label: "Preferences", icon: Palette },
+    { id: "notifications", label: "Notifications", icon: Bell },
+  ];
+
   return (
-    <div className="w-full animate-fade-in space-y-6">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-xl border border-border bg-card">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse 70% 80% at 0% 0%, rgb(var(--brand) / 0.12), transparent 55%), radial-gradient(ellipse 50% 60% at 100% 100%, rgb(23 22 20 / 0.04), transparent 50%)",
-          }}
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.35]"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgb(var(--border) / 0.7) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--border) / 0.7) 1px, transparent 1px)",
-            backgroundSize: "28px 28px",
-            maskImage: "linear-gradient(to bottom, black, transparent)",
-          }}
-        />
-        <div className="relative flex flex-col gap-4 px-5 py-6 sm:flex-row sm:items-end sm:justify-between sm:px-7">
-          <div>
-            <span className="eyebrow">
-              <SettingsIcon className="h-3.5 w-3.5" />
-              Account
-            </span>
-            <h2 className="mt-2 font-display text-3xl text-foreground md:text-4xl">Settings</h2>
-            <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
-              Profile, preferences, and the channels you publish to.
-            </p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 sm:p-6 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="relative flex h-full max-h-[85vh] w-full max-w-[1000px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl md:flex-row">
+        
+        {/* Close Button */}
+        <button
+          onClick={() => navigate("/")}
+          className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-secondary/80 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          title="Close Settings"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        {/* Sidebar */}
+        <div className="w-full shrink-0 border-b border-border bg-secondary/30 p-4 md:w-64 md:border-b-0 md:border-r md:p-6 flex flex-col">
+          <div className="mb-6 hidden md:block">
+            <h2 className="text-[13px] font-semibold text-muted-foreground px-3 uppercase tracking-wider">Settings</h2>
           </div>
+          <nav className="flex flex-row overflow-x-auto md:flex-col gap-1 hide-scrollbar">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabChange(tab.id)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 whitespace-nowrap border",
+                    activeTab === tab.id
+                      ? "bg-brand/10 text-brand border-brand/20"
+                      : "text-muted-foreground border-transparent hover:bg-accent hover:text-foreground"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
         </div>
-      </div>
 
-      {/* Credits & plan — prominent, on top */}
-      {isConvexConfigured && (
-        <Card className="glass-card overflow-hidden">
-          <CardContent className="flex flex-col gap-6 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
-            {/* Balances + trial */}
-            <div className="flex flex-1 flex-wrap items-center gap-x-8 gap-y-5">
-              <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand/10 text-brand">
-                  <Sparkles className="h-4.5 w-4.5" />
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto p-6 md:p-10">
+          <div className="mx-auto max-w-2xl">
+            {activeTab === "account" && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="border-b border-border pb-5">
+                  <h3 className="text-xl font-semibold text-foreground">Account</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Manage your profile and personal details.</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Your credits</p>
-                  <p className="text-[11px] text-muted-foreground">Spent as you create</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-6">
-                <div className={cn(creditsFrozen && "opacity-60")}>
-                  <div className="flex items-center gap-1.5">
-                    <ImageIcon className="h-3.5 w-3.5 text-brand" />
-                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
-                      i-credits
-                    </p>
+                
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-2">
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-16 w-16 border-2 border-background shadow-md ring-1 ring-border">
+                      <AvatarImage src={user?.photoURL ?? undefined} />
+                      <AvatarFallback className="bg-brand/10 text-lg text-brand">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="space-y-1">
+                      <h4 className="font-display text-lg text-foreground">
+                        {user?.displayName ?? "User"}
+                      </h4>
+                      <p className="text-sm text-muted-foreground">
+                        {user?.email ?? "No email"}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-0.5 font-display text-3xl tabular-nums text-foreground">
-                    {iCredits}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">1 = text / image post</p>
-                </div>
-                <div className="h-12 w-px bg-border" />
-                <div className={cn(creditsFrozen && "opacity-60")}>
-                  <div className="flex items-center gap-1.5">
-                    <Clapperboard className="h-3.5 w-3.5 text-foreground/70" />
-                    <p className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
-                      v-credits
-                    </p>
-                  </div>
-                  <p className="mt-0.5 font-display text-3xl tabular-nums text-foreground">
-                    {vCredits}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">1 = 1 second of video</p>
-                </div>
-              </div>
-
-              {clock && !credits?.hasPaidPlan && (
-                <div className="min-w-[150px] flex-1 sm:max-w-[220px]">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-mono uppercase tracking-widest text-muted-foreground">
-                      Free trial
-                    </span>
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1 font-medium",
-                        clock.expired ? "text-destructive" : "text-brand",
-                      )}
-                    >
-                      <Clock className="h-3 w-3" />
-                      {clock.expired ? "Ended" : `${clock.daysLeft}d left`}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary">
-                    <div
-                      className="h-full rounded-full bg-brand transition-[width] duration-700"
-                      style={{ width: `${Math.max(4, (clock.expired ? 1 : clock.progress) * 100)}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    {clock.expired
-                      ? "Trial credits are frozen"
-                      : clock.endsOnLabel
-                        ? `Ends ${clock.endsOnLabel}`
-                        : ""}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Offer + upgrade */}
-            <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center lg:flex-col lg:items-stretch">
-              {credits?.hasPaidPlan ? (
-                <div className="rounded-lg border border-brand/25 bg-brand/[0.07] px-4 py-3 text-center">
-                  <p className="text-[11px] font-mono uppercase tracking-widest text-brand">
-                    Plan active
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Credits never expire</p>
-                </div>
-              ) : (
-                <>
-                  <div className="rounded-lg border border-brand/25 bg-brand/[0.07] px-4 py-2.5">
-                    <p className="flex items-center gap-1.5 text-xs font-semibold text-brand">
-                      <Sparkles className="h-3.5 w-3.5" /> Launch offer · Save 20%
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      Pro from <span className="font-medium text-foreground">$23/mo</span> billed
-                      annually
-                    </p>
-                  </div>
-                  <Button asChild className="bg-brand hover:bg-brand/90">
-                    <Link to="/pricing?billing=annual">
-                      <Sparkles className="mr-1.5 h-4 w-4" />
-                      Buy premium
-                    </Link>
-                  </Button>
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Profile + preferences & notifications */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 items-start">
-        <Card className="glass-card overflow-hidden">
-          <CardContent className="p-0">
-            <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-              <div className="flex items-center gap-3.5">
-                <div className="relative">
-                  <Avatar className="h-14 w-14 border-2 border-background shadow-md ring-1 ring-border sm:h-16 sm:w-16">
-                    <AvatarImage src={user?.photoURL ?? undefined} />
-                    <AvatarFallback className="bg-brand/10 text-lg text-brand">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="absolute -bottom-0.5 -right-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-foreground text-background ring-2 ring-card">
-                    <User className="h-2.5 w-2.5" />
-                  </span>
-                </div>
-                <div className="min-w-0 space-y-0.5">
-                  <h3 className="truncate font-display text-xl text-foreground">
-                    {user?.displayName ?? "User"}
-                  </h3>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {user?.email ?? "No email"}
-                  </p>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="shrink-0 h-8 text-xs"
-                onClick={() =>
-                  toast.info("Profile editing coming soon! Your profile is synced with Google.")
-                }
-              >
-                <Pencil className="mr-1.5 h-3 w-3" />
-                Edit Profile
-              </Button>
-            </div>
-
-            <div className="border-t border-border px-4 py-4 sm:px-5">
-              <div className="mb-2 flex items-center gap-2">
-                <Link2 className="h-4 w-4 text-brand" />
-                <p className="text-sm font-medium text-foreground">Connectors</p>
-              </div>
-              <p className="mb-3 text-xs text-muted-foreground">
-                Sign-in and publishing channels in one place.
-              </p>
-              {isConvexConfigured ? (
-                <ConvexChannels compact />
-              ) : (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
-                    <GoogleConnectorTile email={user?.email} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Channel connect needs <code className="font-mono">VITE_CONVEX_URL</code>.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2 border-t border-border px-4 py-3 sm:flex-row sm:px-5">
-              <Button
-                size="sm"
-                variant="outline"
-                className="justify-start h-8 text-xs"
-                onClick={() => {
-                  const data = {
-                    email: user?.email,
-                    displayName: user?.displayName,
-                    exportedAt: new Date().toISOString(),
-                  };
-                  const blob = new Blob([JSON.stringify(data, null, 2)], {
-                    type: "application/json",
-                  });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = "magicbox-account-summary.json";
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  toast.success("Account summary downloaded");
-                }}
-              >
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-                Download summary
-              </Button>
-
-              <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                <DialogTrigger asChild>
                   <Button
                     size="sm"
-                    variant="ghost"
-                    className="justify-start h-8 text-xs border border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    variant="outline"
+                    onClick={() => toast.info("Profile editing coming soon! Your profile is synced with Google.")}
                   >
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                    Request deletion
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                    Edit Profile
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="border-border bg-card">
-                  <DialogHeader>
-                    <DialogTitle className="text-foreground">Request account deletion</DialogTitle>
-                    <DialogDescription className="text-muted-foreground">
-                      Deletion is handled by support while the automated deletion workflow is being
-                      completed. We will verify your identity, help resolve any active subscription,
-                      and confirm the data covered before deletion. This button does not delete or
-                      sign you out immediately.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter className="gap-2 sm:gap-0">
+                </div>
+
+                <div className="pt-6 space-y-4">
+                  <h4 className="text-sm font-semibold text-foreground">Account Actions</h4>
+                  
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <Button
-                      variant="ghost"
-                      onClick={() => setDeleteDialogOpen(false)}
-                      className="text-muted-foreground"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      variant="outline"
+                      className="justify-start flex-1"
                       onClick={() => {
-                        const subject = encodeURIComponent("MagicBox account deletion request");
-                        const body = encodeURIComponent(
-                          `Please start an account deletion request for ${user?.email ?? "my account"}.`,
-                        );
-                        window.location.href = `mailto:support@magicboxai.in?subject=${subject}&body=${body}`;
-                        setDeleteDialogOpen(false);
+                        const data = {
+                          email: user?.email,
+                          displayName: user?.displayName,
+                          exportedAt: new Date().toISOString(),
+                        };
+                        const blob = new Blob([JSON.stringify(data, null, 2)], {
+                          type: "application/json",
+                        });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = "magicbox-account-summary.json";
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        toast.success("Account summary downloaded");
                       }}
                     >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Contact support
+                      <Download className="mr-2 h-4 w-4" />
+                      Download Summary
                     </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Preferences & Notifications column */}
-        <Card className="glass-card">
-          <CardHeader className="pb-3 pt-4 px-5">
-            <CardTitle className="flex items-center gap-2 text-foreground text-base">
-              <Palette className="h-4.5 w-4.5 text-brand" />
-              Preferences
-            </CardTitle>
-            <CardDescription className="text-xs text-muted-foreground">
-              Defaults for platforms, style, and appearance.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 px-5 pb-5">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label className="text-xs text-foreground/80">Default Platform</Label>
-                <Select value={defaultPlatform} onValueChange={setDefaultPlatform}>
-                  <SelectTrigger className="h-9 text-xs border-border bg-secondary">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="instagram">Instagram</SelectItem>
-                    <SelectItem value="linkedin">LinkedIn</SelectItem>
-                    <SelectItem value="youtube">YouTube</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                    <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="justify-start flex-1 border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Request Deletion
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="border-border bg-card">
+                        <DialogHeader>
+                          <DialogTitle className="text-foreground">Request account deletion</DialogTitle>
+                          <DialogDescription className="text-muted-foreground">
+                            Deletion is handled by support while the automated deletion workflow is being
+                            completed. We will verify your identity, help resolve any active subscription,
+                            and confirm the data covered before deletion. This button does not delete or
+                            sign you out immediately.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter className="gap-2 sm:gap-0 mt-4">
+                          <Button
+                            variant="ghost"
+                            onClick={() => setDeleteDialogOpen(false)}
+                            className="text-muted-foreground"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => {
+                              const subject = encodeURIComponent("MagicBox account deletion request");
+                              const body = encodeURIComponent(
+                                `Please start an account deletion request for ${user?.email ?? "my account"}.`,
+                              );
+                              window.location.href = `mailto:hello@nhancio.com?subject=${subject}&body=${body}`;
+                              setDeleteDialogOpen(false);
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Contact support
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs text-foreground/80">Default Style</Label>
-                <Select value={defaultStyle} onValueChange={setDefaultStyle}>
-                  <SelectTrigger className="h-9 text-xs border-border bg-secondary">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="professional">Professional</SelectItem>
-                    <SelectItem value="playful">Playful</SelectItem>
-                    <SelectItem value="bold">Bold</SelectItem>
-                    <SelectItem value="minimal">Minimal</SelectItem>
-                    <SelectItem value="luxury">Luxury</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="flex items-center gap-1.5 text-xs text-foreground/80">
-                  <Globe className="h-3.5 w-3.5" />
-                  Language
-                </Label>
-                <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger className="h-9 text-xs border-border bg-secondary">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="es">Spanish</SelectItem>
-                    <SelectItem value="fr">French</SelectItem>
-                    <SelectItem value="de">German</SelectItem>
-                    <SelectItem value="ja">Japanese</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/60 p-3">
-              <div className="flex items-center gap-2.5">
-                <Moon className="h-4.5 w-4.5 text-brand shrink-0" />
-                <div>
-                  <p className="text-xs font-medium text-foreground">Theme</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Light mode is currently active
-                  </p>
+                <div className="pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <span>MagicBox Platform</span>
+                    <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-foreground font-medium">v1.0.0</span>
+                  </div>
+                  <Link to="/changelog" className="text-brand hover:underline font-medium">
+                    View Changelog
+                  </Link>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 rounded-full border border-brand/20 bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand">
-                <Palette className="h-3 w-3" />
-                Light
-              </div>
-            </div>
+            )}
 
-            {/* Notifications section inside the same card */}
-            <div className="border-t border-border pt-4 space-y-3">
-              <div>
-                <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <Bell className="h-4 w-4 text-brand" />
-                  Notifications
-                </h4>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Choose what notifications you want to receive.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                {[
-                  {
-                    id: "email",
-                    label: "Email Notifications",
-                    description: "Receive updates about your content via email",
-                    icon: Mail,
-                    checked: emailNotifs,
-                    onChange: setEmailNotifs,
-                  },
-                  {
-                    id: "push",
-                    label: "Push Notifications",
-                    description: "Get push notifications in your browser",
-                    icon: Smartphone,
-                    checked: pushNotifs,
-                    onChange: setPushNotifs,
-                  },
-                  {
-                    id: "weekly",
-                    label: "Weekly Report",
-                    description: "Receive a weekly summary of your analytics",
-                    icon: FileBarChart,
-                    checked: weeklyReport,
-                    onChange: setWeeklyReport,
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-lg border border-border bg-secondary/60 p-2.5"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                      <item.icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">{item.label}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">{item.description}</p>
+            {activeTab === "credits" && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="border-b border-border pb-5">
+                  <h3 className="text-xl font-semibold text-foreground">AI Credits</h3>
+                  <p className="text-sm text-muted-foreground mt-1">View your usage and upgrade your plan.</p>
+                </div>
+                
+                {isConvexConfigured ? (
+                  <div className="flex flex-col gap-8 pt-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className={cn("rounded-xl border border-border bg-secondary/50 p-4", creditsFrozen && "opacity-60")}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <ImageIcon className="h-4 w-4 text-brand" />
+                          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">i-credits</p>
+                        </div>
+                        <p className="font-display text-4xl tabular-nums text-foreground">{iCredits}</p>
+                        <p className="text-xs text-muted-foreground mt-1">1 = text / image post</p>
+                      </div>
+                      
+                      <div className={cn("rounded-xl border border-border bg-secondary/50 p-4", creditsFrozen && "opacity-60")}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clapperboard className="h-4 w-4 text-foreground/70" />
+                          <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">v-credits</p>
+                        </div>
+                        <p className="font-display text-4xl tabular-nums text-foreground">{vCredits}</p>
+                        <p className="text-xs text-muted-foreground mt-1">1 = 1 second of video</p>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={item.checked}
-                      onClick={() => item.onChange(!item.checked)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
-                        item.checked ? "bg-brand" : "bg-accent"
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-background shadow-sm ring-0 transition duration-200 ${
-                          item.checked ? "translate-x-4" : "translate-x-0"
-                        }`}
-                      />
-                    </button>
+
+                    {clock && !credits?.hasPaidPlan && (
+                      <div className="rounded-xl border border-border p-4 bg-background">
+                        <div className="flex items-center justify-between text-xs mb-2">
+                          <span className="font-mono uppercase tracking-widest text-muted-foreground">
+                            Free trial
+                          </span>
+                          <span className={cn("inline-flex items-center gap-1 font-medium", clock.expired ? "text-destructive" : "text-brand")}>
+                            <Clock className="h-3.5 w-3.5" />
+                            {clock.expired ? "Ended" : `${clock.daysLeft}d left`}
+                          </span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className="h-full rounded-full bg-brand transition-[width] duration-700"
+                            style={{ width: `${Math.max(4, (clock.expired ? 1 : clock.progress) * 100)}%` }}
+                          />
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            {clock.expired
+                              ? "Trial credits are frozen"
+                              : clock.endsOnLabel
+                                ? `Ends ${clock.endsOnLabel}`
+                                : ""}
+                          </p>
+                          {canRefreshTrial && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={resettingTrial}
+                              onClick={async () => {
+                                setResettingTrial(true);
+                                try {
+                                  await resetTrial({});
+                                  toast.success("Free trial refreshed! 7 days and 50 i-credits / 100 v-credits granted.");
+                                } catch (e) {
+                                  toast.error(`Failed to refresh trial: ${String(e)}`);
+                                } finally {
+                                  setResettingTrial(false);
+                                }
+                              }}
+                              className="h-7 text-xs border-brand/40 hover:bg-brand/10 hover:text-brand"
+                            >
+                              {resettingTrial ? "Refreshing…" : "Refresh 7-day trial"}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-4 pt-6 border-t border-border">
+                      {credits?.hasPaidPlan ? (
+                        <div className="rounded-xl border border-brand/25 bg-brand/[0.07] p-5 text-center">
+                          <p className="text-sm font-mono uppercase tracking-widest text-brand mb-1">
+                            Plan active
+                          </p>
+                          <p className="text-sm text-muted-foreground">Your credits never expire.</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between rounded-xl border border-brand/25 bg-brand/[0.07] p-5">
+                          <div>
+                            <p className="flex items-center gap-1.5 text-sm font-semibold text-brand">
+                              <Sparkles className="h-4 w-4" /> Launch offer · Save 20%
+                            </p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              Pro from <span className="font-medium text-foreground">$23/mo</span> billed annually
+                            </p>
+                          </div>
+                          <Button asChild className="bg-brand hover:bg-brand/90 w-full sm:w-auto">
+                            <Link to="/pricing?billing=annual">
+                              <Sparkles className="mr-1.5 h-4 w-4" />
+                              Buy premium
+                            </Link>
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                ))}
+                ) : (
+                  <p className="text-sm text-muted-foreground">Credit balance requires VITE_CONVEX_URL configuration.</p>
+                )}
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            )}
+
+            {activeTab === "integrations" && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="border-b border-border pb-5">
+                  <h3 className="text-xl font-semibold text-foreground">Integrations</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Sign-in and publishing channels in one place.</p>
+                </div>
+                
+                <div className="pt-2">
+                  {isConvexConfigured ? (
+                    <ConvexChannels />
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
+                        <GoogleConnectorTile email={user?.email} />
+                      </div>
+                      <p className="text-sm text-muted-foreground bg-secondary/50 p-3 rounded-lg border border-border">
+                        Channel connect needs <code className="font-mono text-foreground">VITE_CONVEX_URL</code> to function properly.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "preferences" && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="border-b border-border pb-5">
+                  <h3 className="text-xl font-semibold text-foreground">Preferences</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Defaults for platforms, style, and appearance.</p>
+                </div>
+                
+                <div className="pt-2 space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-2">
+                      <Label className="text-sm text-foreground">Default Platform</Label>
+                      <Select value={defaultPlatform} onValueChange={setDefaultPlatform}>
+                        <SelectTrigger className="w-full bg-secondary">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="instagram">Instagram</SelectItem>
+                          <SelectItem value="linkedin">LinkedIn</SelectItem>
+                          <SelectItem value="youtube">YouTube</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">The primary channel selected when creating new content.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm text-foreground">Default Style</Label>
+                      <Select value={defaultStyle} onValueChange={setDefaultStyle}>
+                        <SelectTrigger className="w-full bg-secondary">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="professional">Professional</SelectItem>
+                          <SelectItem value="playful">Playful</SelectItem>
+                          <SelectItem value="bold">Bold</SelectItem>
+                          <SelectItem value="minimal">Minimal</SelectItem>
+                          <SelectItem value="luxury">Luxury</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">The default tone for generated captions.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 border-t border-border pt-5">
+                    <Label className="flex items-center gap-1.5 text-sm text-foreground">
+                      <Globe className="h-4 w-4 text-muted-foreground" />
+                      Language
+                    </Label>
+                    <Select value={language} onValueChange={setLanguage}>
+                      <SelectTrigger className="w-full max-w-sm bg-secondary">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en">English</SelectItem>
+                        <SelectItem value="es">Spanish</SelectItem>
+                        <SelectItem value="fr">French</SelectItem>
+                        <SelectItem value="de">German</SelectItem>
+                        <SelectItem value="ja">Japanese</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl border border-border bg-secondary/60 p-4 mt-6">
+                    <div className="flex items-center gap-3">
+                      <Moon className="h-5 w-5 text-brand shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Theme</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Light mode is currently active
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 rounded-full border border-brand/20 bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand">
+                      <Palette className="h-3.5 w-3.5" />
+                      Light
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "notifications" && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="border-b border-border pb-5">
+                  <h3 className="text-xl font-semibold text-foreground">Notifications</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Choose what notifications you want to receive.</p>
+                </div>
+                
+                <div className="pt-2 space-y-3">
+                  {[
+                    {
+                      id: "email",
+                      label: "Email Notifications",
+                      description: "Receive updates about your content via email",
+                      icon: Mail,
+                      checked: emailNotifs,
+                      onChange: setEmailNotifs,
+                    },
+                    {
+                      id: "push",
+                      label: "Push Notifications",
+                      description: "Get push notifications in your browser",
+                      icon: Smartphone,
+                      checked: pushNotifs,
+                      onChange: setPushNotifs,
+                    },
+                    {
+                      id: "weekly",
+                      label: "Weekly Report",
+                      description: "Receive a weekly summary of your analytics",
+                      icon: FileBarChart,
+                      checked: weeklyReport,
+                      onChange: setWeeklyReport,
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between rounded-xl border border-border bg-card p-4 hover:bg-secondary/20 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground">
+                          <item.icon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{item.label}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={item.checked}
+                        onClick={() => item.onChange(!item.checked)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                          item.checked ? "bg-brand" : "bg-secondary"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+                            item.checked ? "translate-x-5" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

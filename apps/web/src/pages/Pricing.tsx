@@ -1,11 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@shared/lib/auth";
 import { getUserSubscription, type SubscriptionRecord } from "@shared/lib/firestore";
-import { createDodoCheckout, createDodoPortal } from "@shared/lib/suite";
+import {
+  createDodoCheckout,
+  createDodoPortal,
+  claimGuestEntitlement,
+  syncBillingClaims,
+} from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@shared/lib/utils";
 import { captureEvent } from "@shared/lib/analytics";
+import { useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
+import { isConvexConfigured } from "../lib/convex";
 import {
   Check,
   Crown,
@@ -110,6 +118,8 @@ export default function Pricing() {
   const [isAnnual, setIsAnnual] = useState(true);
   const [requestedPlan, setRequestedPlan] = useState<"pro" | "max" | null>(null);
   const hasTrackedView = useRef(false);
+  const checkoutRecovery = useRef(false);
+  const syncPlan = useMutation(api.credits.syncPlan);
 
   useEffect(() => {
     if (hasTrackedView.current) return;
@@ -125,20 +135,52 @@ export default function Pricing() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  // A return URL is not proof of payment; only the signed webhook activates a plan.
+  // A return URL is not proof of payment. Guest checkout attaches only when
+  // the paying email matches the signed-in Google email; retry the claim so
+  // webhook lag and email mismatch are both visible.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const checkout = params.get("checkout");
     const plan = params.get("plan");
     if (plan === "pro" || plan === "max") setRequestedPlan(plan);
-    if (checkout === "returned") {
-      captureEvent("checkout_returned", { source: "dodo" });
-      toast.info("Checkout returned. Your plan will appear after payment is verified.");
-      if (user) getUserSubscription(user.uid).then(setSubscriptionState).catch(() => {});
-    }
     if (params.get("billing") === "monthly") setIsAnnual(false);
     if (checkout) window.history.replaceState({}, "", window.location.pathname);
-  }, [user]);
+    if (checkout !== "returned" || !user || checkoutRecovery.current) return;
+    checkoutRecovery.current = true;
+    captureEvent("checkout_returned", { source: "dodo" });
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    void (async () => {
+      toast.info("Verifying payment…");
+      try {
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const claim = await claimGuestEntitlement({});
+          await syncBillingClaims({});
+          await user.getIdToken(true);
+          if (isConvexConfigured) {
+            await syncPlan({});
+          }
+          const subscription = await getUserSubscription(user.uid);
+          setSubscriptionState(subscription);
+          if (claim.hasPaidPlan || (subscription?.status === "active" && (subscription.plan === "pro" || subscription.plan === "max"))) {
+            const name = (claim.plan === "max" || subscription?.plan === "max") ? "Max" : "Pro";
+            toast.success(`You're on ${name}.`);
+            return;
+          }
+          if (attempt < 4) await sleep(2000);
+        }
+        toast.error(
+          "We couldn't attach your plan. Sign in with the same Google email you used at checkout. If they already match, wait a minute and refresh — payment confirmation can lag.",
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "We couldn't attach your plan. Sign in with the same Google email you used at checkout.",
+        );
+      }
+    })();
+  }, [user, syncPlan]);
 
   const openBooking = (source: string) => {
     captureEvent("book_appointment_clicked", { source });

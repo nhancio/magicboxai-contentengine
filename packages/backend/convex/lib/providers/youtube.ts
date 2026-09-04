@@ -54,33 +54,38 @@ class YouTubeProvider extends BaseProvider implements SocialProvider {
       state: input.state,
       response_type: "code",
       scope: this.scopes.join(" "),
-      // Offline refresh tokens for scheduled YouTube uploads.
       access_type: "offline",
-      // Keep previously granted scopes if the user already connected once.
-      include_granted_scopes: "true",
-      // Force the consent screen so Google issues a refresh_token on first
-      // YouTube connect. Account picker is skipped via login_hint when the
-      // user is already signed into MagicBox with the same Google email.
       prompt: "consent",
     });
-    if (input.loginHint?.trim()) {
-      params.set("login_hint", input.loginHint.trim());
+    // Add login_hint if passed down (helps route straight to the user's account)
+    // but avoid forcing it if not provided.
+    if (input.loginHint) {
+      params.append("login_hint", input.loginHint);
     }
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   }
 
   async exchangeCode(input: ExchangeInput): Promise<ConnectedProfile[]> {
-    const token = await this.http("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code: input.code,
-        redirect_uri: input.redirectUri,
-        client_id: input.clientId,
-        client_secret: input.clientSecret,
-      }).toString(),
-    });
+    let token: any;
+    try {
+      token = await this.http("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code: input.code,
+          redirect_uri: input.redirectUri,
+          client_id: input.clientId,
+          client_secret: input.clientSecret,
+        }).toString(),
+      });
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (msg.includes("invalid_client") || msg.includes("client secret is invalid")) {
+        throw new BadBodyError("invalid_google_client_secret: The configured GOOGLE_OAUTH_CLIENT_SECRET is invalid. Please ensure it matches the OAuth 2.0 Client Secret from your Google Cloud Console project.");
+      }
+      throw err;
+    }
 
     const accessToken: string | undefined = token.access_token;
     if (!accessToken) throw new BadBodyError("Google returned no access_token");
@@ -91,20 +96,28 @@ class YouTubeProvider extends BaseProvider implements SocialProvider {
     );
 
     // A Google account is not a YouTube account: signing in with a bare Gmail that
-    // has never created a channel returns 200 with an EMPTY items array. Terminal —
-    // the user must create a channel, so retrying or reconnecting cannot help.
+    // has never created a channel returns 200 with an EMPTY items array.
     const channel = channels.items?.[0];
     if (!channel) {
       throw new BadBodyError("no_youtube_channel: this Google account has no YouTube channel");
     }
 
     const snippet = channel.snippet ?? {};
+    const title = snippet.title ?? "YouTube Channel";
+    const customUrl = snippet.customUrl;
+    const username = customUrl ? (customUrl.startsWith("@") ? customUrl : `@${customUrl}`) : title;
+    const avatarUrl =
+      snippet.thumbnails?.default?.url ??
+      snippet.thumbnails?.medium?.url ??
+      snippet.thumbnails?.high?.url ??
+      "";
+
     return [
       {
         externalId: channel.id,
-        username: snippet.customUrl ?? snippet.title,
-        displayName: snippet.title,
-        avatarUrl: snippet.thumbnails?.default?.url,
+        username,
+        displayName: title,
+        avatarUrl,
         token: {
           accessToken,
           refreshToken: token.refresh_token,
@@ -277,6 +290,21 @@ class YouTubeProvider extends BaseProvider implements SocialProvider {
     }
 
     return new Uint8Array(await res.arrayBuffer());
+  }
+
+  async revoke(token: ProviderToken): Promise<void> {
+    const t = token.refreshToken || token.accessToken;
+    if (!t) return;
+    try {
+      await this.http("https://oauth2.googleapis.com/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token: t }).toString(),
+        retries: 1,
+      });
+    } catch (err) {
+      console.warn("[youtube] revoke token error (ignored)", err);
+    }
   }
 }
 

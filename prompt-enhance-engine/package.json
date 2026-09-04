@@ -1,0 +1,28 @@
+{
+  "name": "prompt-enhance-engine",
+  "version": "1.0.0",
+  "description": "AI Video Prompt Enhancement Engine - transforms minimal user prompts into production-grade multi-scene video generation blueprints and API prompts.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "demo": "npx tsx examples/demo.ts",
+    "test": "npx tsx test/engine.test.ts"
+  },
+  "keywords": [
+    "prompt-engineering",
+    "video-generation",
+    "runway-gen3",
+    "google-veo",
+    "kling-ai",
+    "luma-dream-machine",
+    "sora"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.4.0"
+  }
+}

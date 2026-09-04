@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useAuth } from "@shared/lib/auth";
 import type { Automation, SocialPlatform } from "@shared/types";
 import {
@@ -12,7 +13,19 @@ import {
 import { runAutomationNow } from "@shared/lib/suite";
 import { Button } from "@shared/components/ui/button";
 import { cn } from "@shared/lib/utils";
+import { api } from "@convex/_generated/api";
+import { isConvexConfigured } from "../lib/convex";
 import {
+  AUTOMATION_STEPS,
+  clearAutomationDraft,
+  clearStudioDraft,
+  readAutomationDraft,
+  readStudioDraft,
+  type AutomationDraft,
+  type StudioDraftSummary,
+} from "../lib/drafts";
+import {
+  ArrowRight,
   Bot,
   CalendarClock,
   Globe2,
@@ -20,8 +33,10 @@ import {
   Linkedin,
   Loader2,
   Pause,
+  Pencil,
   Play,
   Plus,
+  Sparkles,
   Trash2,
   Twitter,
   MessageCircle,
@@ -36,6 +51,7 @@ const PLATFORM_ICONS: Record<SocialPlatform, typeof Instagram> = {
   youtube: Youtube,
   facebook: Globe2,
   whatsapp: MessageCircle,
+  reddit: MessageCircle,
 };
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -46,6 +62,78 @@ const STATUS_META: Record<Automation["status"], { label: string; dot: string }> 
   draft: { label: "Draft", dot: "bg-muted-foreground/40" },
   error: { label: "Needs attention", dot: "bg-red-500" },
 };
+
+function draftTime(ts: number): string {
+  return new Date(ts).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+type UiAutomation = Automation & { store: "convex" | "firebase" };
+
+function fromConvexRow(row: {
+  _id: string;
+  userId: string;
+  brandProfileId?: string;
+  name: string;
+  status: Automation["status"];
+  brief: string;
+  platforms: SocialPlatform[];
+  socialAccountIds: string[];
+  contentTypes: { text: boolean; image: boolean; video: boolean };
+  preset: string;
+  tone?: string;
+  schedule: {
+    type: "recurring" | "once";
+    time: string;
+    daysOfWeek?: number[];
+    timezone: string;
+    endAt?: number;
+  };
+  nextRunAt: number;
+  lastRunAt?: number;
+  runCount: number;
+  failureCount: number;
+  lastError?: string;
+  generateLeadMinutes: number;
+  requiresApproval: boolean;
+  createdAt: number;
+  updatedAt?: number;
+}): UiAutomation {
+  return {
+    id: String(row._id),
+    userId: row.userId,
+    brandProfileId: row.brandProfileId,
+    name: row.name,
+    status: row.status,
+    brief: row.brief,
+    platforms: row.platforms,
+    socialAccountIds: row.socialAccountIds,
+    contentTypes: row.contentTypes,
+    preset: (row.preset as Automation["preset"]) || "custom",
+    tone: row.tone ?? "",
+    schedule: {
+      type: row.schedule.type,
+      time: row.schedule.time,
+      daysOfWeek: row.schedule.daysOfWeek,
+      timezone: row.schedule.timezone,
+      endAt: row.schedule.endAt ? new Date(row.schedule.endAt) : undefined,
+    },
+    nextRunAt: new Date(row.nextRunAt),
+    lastRunAt: row.lastRunAt ? new Date(row.lastRunAt) : undefined,
+    runCount: row.runCount,
+    failureCount: row.failureCount,
+    lastError: row.lastError,
+    generateLeadMinutes: row.generateLeadMinutes,
+    requiresApproval: row.requiresApproval,
+    createdAt: new Date(row.createdAt),
+    updatedAt: row.updatedAt ? new Date(row.updatedAt) : undefined,
+    store: "convex",
+  };
+}
 
 function scheduleLabel(automation: Automation): string {
   const days = automation.schedule.daysOfWeek;
@@ -59,29 +147,66 @@ function scheduleLabel(automation: Automation): string {
 export default function Automations() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [automations, setAutomations] = useState<Automation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [legacyAutomations, setLegacyAutomations] = useState<Automation[]>([]);
+  const [legacyLoading, setLegacyLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const refresh = async () => {
+  const [wizardDraft, setWizardDraft] = useState<AutomationDraft | null>(null);
+  const [studioDraft, setStudioDraft] = useState<StudioDraftSummary | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    setWizardDraft(readAutomationDraft(user.uid));
+    setStudioDraft(readStudioDraft(user.uid));
+  }, [user]);
+
+  const convexRows = useQuery(api.automations.list, isConvexConfigured ? {} : "skip");
+  const setStatusConvex = useMutation(api.automations.setStatus);
+  const removeConvex = useMutation(api.automations.remove);
+  const runNowConvex = useAction(api.automations.runNow);
+
+  const refreshLegacy = async () => {
     if (!user) return;
     const list = await getAutomations(user.uid);
-    setAutomations(list);
-    setLoading(false);
+    setLegacyAutomations(list);
+    setLegacyLoading(false);
   };
 
   useEffect(() => {
-    refresh();
+    refreshLegacy();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const toggle = async (automation: Automation) => {
+  const automations = useMemo<UiAutomation[]>(() => {
+    const fromConvex = (convexRows ?? []).map((row) =>
+      fromConvexRow({
+        ...row,
+        _id: String(row._id),
+        platforms: row.platforms as SocialPlatform[],
+        preset: String(row.preset),
+      }),
+    );
+    const seen = new Set(fromConvex.map((row) => row.id));
+    const fromLegacy = legacyAutomations
+      .filter((row) => !seen.has(row.id))
+      .map((row) => ({ ...row, store: "firebase" as const }));
+    return [...fromConvex, ...fromLegacy];
+  }, [convexRows, legacyAutomations]);
+
+  const loading =
+    legacyLoading || (isConvexConfigured && convexRows === undefined);
+
+  const toggle = async (automation: UiAutomation) => {
     const next = automation.status === "active" ? "paused" : "active";
     setBusy(automation.id);
     try {
-      await setAutomationStatus(automation.id, next);
+      if (automation.store === "convex") {
+        await setStatusConvex({ automationId: automation.id, status: next });
+      } else {
+        await setAutomationStatus(automation.id, next);
+        await refreshLegacy();
+      }
       toast.success(next === "active" ? "Automation resumed" : "Automation paused");
-      await refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update automation");
     } finally {
@@ -89,10 +214,13 @@ export default function Automations() {
     }
   };
 
-  const runNow = async (automation: Automation) => {
+  const runNow = async (automation: UiAutomation) => {
     setBusy(automation.id);
     try {
-      const result = await runAutomationNow({ automationId: automation.id });
+      const result =
+        automation.store === "convex"
+          ? await runNowConvex({ automationId: automation.id })
+          : await runAutomationNow({ automationId: automation.id });
       toast.success(
         result.status === "pending_approval"
           ? "Post generated — waiting for your approval"
@@ -106,12 +234,30 @@ export default function Automations() {
     }
   };
 
-  const remove = async (automation: Automation) => {
+  const discardWizardDraft = () => {
+    if (!user) return;
+    clearAutomationDraft(user.uid);
+    setWizardDraft(null);
+    toast.success("Draft discarded");
+  };
+
+  const discardStudioDraft = () => {
+    if (!user) return;
+    clearStudioDraft(user.uid);
+    setStudioDraft(null);
+    toast.success("Studio draft discarded");
+  };
+
+  const remove = async (automation: UiAutomation) => {
     if (!confirm(`Delete “${automation.name}”? Scheduled posts already created will remain.`)) return;
     setBusy(automation.id);
     try {
-      await deleteAutomation(automation.id);
-      await refresh();
+      if (automation.store === "convex") {
+        await removeConvex({ automationId: automation.id });
+      } else {
+        await deleteAutomation(automation.id);
+        await refreshLegacy();
+      }
       toast.success("Automation deleted");
     } finally {
       setBusy(null);
@@ -142,17 +288,19 @@ export default function Automations() {
           ))}
         </div>
       ) : automations.length === 0 ? (
-        <div className="glass-card flex flex-col items-center gap-4 py-16 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-brand/10">
-            <Bot className="h-7 w-7 text-brand" />
+        <div className="glass-card flex flex-col items-center justify-between gap-4 p-6 sm:flex-row sm:text-left text-center">
+          <div className="flex items-center gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand/10">
+              <Bot className="h-5 w-5 text-brand" />
+            </div>
+            <div>
+              <h2 className="font-display text-lg text-foreground">Set up your first automation</h2>
+              <p className="mt-0.5 max-w-md text-xs sm:text-sm text-muted-foreground">
+                Give it a brief once — it writes, designs, and posts fresh content across your channels on schedule.
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-display text-2xl text-foreground">Set up your first automation</h2>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-              Give it a brief once — it posts fresh content to your channels every day without you.
-            </p>
-          </div>
-          <Button asChild>
+          <Button asChild className="shrink-0">
             <Link to="/automations/new">
               <Plus className="mr-1.5 h-4 w-4" /> Create automation
             </Link>
@@ -244,6 +392,97 @@ export default function Automations() {
               </motion.div>
             );
           })}
+        </div>
+      )}
+
+      {(wizardDraft || studioDraft) && (
+        <div className="mt-10">
+          <h2 className="text-sm font-semibold text-foreground">Drafts</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Unfinished work, picked up where you left it.
+          </p>
+
+          <div className="mt-3 space-y-3">
+            {wizardDraft && (
+              <div className="glass-card flex flex-col gap-4 border-dashed p-5 sm:flex-row sm:items-center">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                  <Pencil className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2.5">
+                    <span className="truncate font-semibold text-foreground">
+                      {wizardDraft.name.trim() || "Untitled automation"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">Draft</span>
+                  </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">
+                    {wizardDraft.brief || "No brief yet"}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>
+                      Stopped on {AUTOMATION_STEPS[wizardDraft.step] ?? "Brief"} — step{" "}
+                      {wizardDraft.step + 1} of {AUTOMATION_STEPS.length}
+                    </span>
+                    <span>Saved {draftTime(wizardDraft.updatedAt)}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to="/automations/new">
+                      Resume <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={discardWizardDraft}
+                    className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                    title="Discard draft"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {studioDraft && (
+              <div className="glass-card flex flex-col gap-4 border-dashed p-5 sm:flex-row sm:items-center">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2.5">
+                    <span className="truncate font-semibold text-foreground">Studio post</span>
+                    <span className="text-xs capitalize text-muted-foreground">
+                      {studioDraft.postType} · {studioDraft.channel}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">
+                    {studioDraft.caption || studioDraft.prompt}
+                  </p>
+                  {studioDraft.hasMedia && (
+                    <p className="mt-2 text-xs text-muted-foreground">Media attached</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to="/studio">
+                      Open in Studio <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={discardStudioDraft}
+                    className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                    title="Discard draft"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

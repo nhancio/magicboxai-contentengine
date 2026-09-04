@@ -1,17 +1,14 @@
 import { useState, useEffect } from "react";
 import {
   Users,
-  Image,
   Megaphone,
   Activity,
 } from "lucide-react";
 import {
   getTotalUsers,
-  getTotalInfluencers,
   getTotalAds,
   getTotalApiRequests,
   getRecentUsers,
-  getRecentInfluencers,
 } from "@shared/lib/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/components/ui/card";
 import {
@@ -34,34 +31,28 @@ interface StatCard {
 export default function Dashboard() {
   const [stats, setStats] = useState({
     totalUsers: 0,
-    totalAvatars: 0,
     totalAds: 0,
     totalApiRequests: 0,
   });
   const [recentUsers, setRecentUsers] = useState<Record<string, unknown>[]>([]);
-  const [recentAvatars, setRecentAvatars] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [users, avatars, ads, apiReqs, rUsers, rAvatars] =
+        const [users, ads, apiReqs, rUsers] =
           await Promise.all([
             getTotalUsers(),
-            getTotalInfluencers(),
             getTotalAds(),
             getTotalApiRequests(),
             getRecentUsers(5),
-            getRecentInfluencers(5),
           ]);
         setStats({
           totalUsers: users,
-          totalAvatars: avatars,
           totalAds: ads,
           totalApiRequests: apiReqs,
         });
         setRecentUsers(rUsers);
-        setRecentAvatars(rAvatars);
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
       } finally {
@@ -78,13 +69,6 @@ export default function Dashboard() {
       icon: Users,
       color: "text-purple-400",
       bgColor: "bg-purple-500/10",
-    },
-    {
-      label: "Total Avatars",
-      value: stats.totalAvatars,
-      icon: Image,
-      color: "text-pink-400",
-      bgColor: "bg-pink-500/10",
     },
     {
       label: "Total Ads",
@@ -125,7 +109,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {statCards.map((stat) => (
           <div key={stat.label} className="stat-card">
             <div className="flex items-center justify-between mb-4">
@@ -148,7 +132,7 @@ export default function Dashboard() {
       </div>
 
       {/* Recent Activity Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         {/* Recent Users */}
         <Card>
           <CardHeader>
@@ -185,51 +169,6 @@ export default function Dashboard() {
                       </TableCell>
                       <TableCell className="text-white/50 text-xs">
                         {formatTimestamp(user.lastLoginAt)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent Avatars */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Recent Avatars</CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            {loading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-10 bg-white/5 rounded animate-pulse" />
-                ))}
-              </div>
-            ) : recentAvatars.length === 0 ? (
-              <p className="text-white/40 text-sm text-center py-8">
-                No avatars found
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Creator</TableHead>
-                    <TableHead>Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentAvatars.map((avatar, i) => (
-                    <TableRow key={(avatar.id as string) || i}>
-                      <TableCell className="font-medium">
-                        {(avatar.name as string) || "Untitled"}
-                      </TableCell>
-                      <TableCell className="text-white/60 text-xs font-mono">
-                        {((avatar.userId as string) || "N/A").slice(0, 12)}...
-                      </TableCell>
-                      <TableCell className="text-white/50 text-xs">
-                        {formatTimestamp(avatar.createdAt)}
                       </TableCell>
                     </TableRow>
                   ))}

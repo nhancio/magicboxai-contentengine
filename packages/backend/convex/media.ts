@@ -161,7 +161,14 @@ export const attachMedia = internalMutation({
       updatedAt: Date.now(),
     };
     if (p.status === "generating") {
-      patch.status = p.socialAccountIds.length > 0 ? "scheduled" : "draft";
+      let next: "scheduled" | "draft" | "pending_approval" =
+        p.socialAccountIds.length > 0 ? "scheduled" : "draft";
+      if (next === "scheduled" && p.automationId) {
+        const autoId = ctx.db.normalizeId("automations", p.automationId);
+        const automation = autoId ? await ctx.db.get(autoId) : null;
+        if (automation?.requiresApproval) next = "pending_approval";
+      }
+      patch.status = next;
     }
     await ctx.db.patch(p._id, patch);
   },
@@ -183,6 +190,22 @@ async function renderImageToStorage(
   if (!url) throw new Error("[media] storage.getUrl returned null for image");
   return { url, storageId };
 }
+
+/** Internal: one-shot image render for automation posts (no extra i-credit). */
+export const renderImageOnce = internalAction({
+  args: {
+    prompt: v.string(),
+    aspectRatio: v.optional(v.string()),
+  },
+  returns: v.object({ url: v.string(), storageId: v.id("_storage") }),
+  handler: async (ctx, { prompt, aspectRatio }) => {
+    if (!prompt.trim() || prompt.length > MAX_GENERATION_PROMPT_LENGTH) {
+      throw new Error("Image prompt must be between 1 and 8,000 characters");
+    }
+    const ratio = aspectRatio && ["1:1", "9:16", "16:9"].includes(aspectRatio) ? aspectRatio : "1:1";
+    return await renderImageToStorage(ctx, prompt, ratio);
+  },
+});
 
 /** Public: Studio "generate image" — returns a ready-to-use URL immediately. */
 export const generateImage = action({

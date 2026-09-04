@@ -36,10 +36,8 @@ import {
   Flame,
   Instagram,
   Youtube,
-  Check,
   CheckCircle2,
   Shield,
-  Zap,
   ShoppingBag,
   ArrowRight,
   Clock,
@@ -54,11 +52,9 @@ import {
   Tag,
   Mail,
   FileText,
-  UserCheck,
   AlertCircle,
   CalendarClock,
   Building2,
-  HelpCircle,
   Star,
   Users,
 } from "lucide-react";
@@ -72,6 +68,10 @@ export interface AccountOption {
   id: string;
   platform: "instagram" | "youtube";
   title: string;
+  /** Handle shown on the card — the listing's identity, assigned at transfer. */
+  username: string;
+  /** Average views per post / video over the last 30 days. */
+  avgViews: number;
   followersCount: string;
   followerNum: number;
   age: string;
@@ -100,6 +100,8 @@ const ACCOUNTS_CATALOG: AccountOption[] = [
     id: "ig-5k-creator",
     platform: "instagram",
     title: "Instagram 5K Aged Creator",
+    username: "@aged.creator.5k",
+    avgViews: 3200,
     followersCount: "5,000",
     followerNum: 5000,
     age: "6+ Months Aged",
@@ -120,6 +122,8 @@ const ACCOUNTS_CATALOG: AccountOption[] = [
     id: "ig-10k-growth",
     platform: "instagram",
     title: "Instagram 10K Growth Account",
+    username: "@growth.hub.10k",
+    avgViews: 7400,
     followersCount: "10,000",
     followerNum: 10000,
     age: "12+ Months Aged",
@@ -141,6 +145,8 @@ const ACCOUNTS_CATALOG: AccountOption[] = [
     id: "yt-5k-shorts",
     platform: "youtube",
     title: "YouTube 5K Shorts & Video Channel",
+    username: "@shorts.studio5k",
+    avgViews: 4100,
     followersCount: "5,000",
     followerNum: 5000,
     age: "8+ Months Aged",
@@ -161,6 +167,8 @@ const ACCOUNTS_CATALOG: AccountOption[] = [
     id: "yt-10k-authority",
     platform: "youtube",
     title: "YouTube 10K Authority Channel",
+    username: "@authority.ch10k",
+    avgViews: 9600,
     followersCount: "10,000",
     followerNum: 10000,
     age: "14+ Months Aged",
@@ -182,6 +190,8 @@ const ACCOUNTS_CATALOG: AccountOption[] = [
     id: "ig-5k-viral",
     platform: "instagram",
     title: "Instagram 5K Viral Reels Account",
+    username: "@viral.reels.5k",
+    avgViews: 5800,
     followersCount: "5,000",
     followerNum: 5000,
     age: "7+ Months Aged",
@@ -202,6 +212,8 @@ const ACCOUNTS_CATALOG: AccountOption[] = [
     id: "yt-10k-shorts-hub",
     platform: "youtube",
     title: "YouTube 10K Shorts Growth Hub",
+    username: "@shorts.growth10k",
+    avgViews: 12500,
     followersCount: "10,000",
     followerNum: 10000,
     age: "10+ Months Aged",
@@ -432,32 +444,24 @@ export default function WarmedUpAccounts() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-12 animate-fade-in pb-12">
+    <div className="mx-auto max-w-7xl space-y-8 animate-fade-in pb-12">
       {/* Top Banner & Hero */}
       <div className="relative overflow-hidden rounded-2xl border border-brand/20 bg-gradient-to-br from-brand/10 via-card to-background p-6 sm:p-10 shadow-xl">
         <div className="absolute top-0 right-0 -mt-8 -mr-8 h-64 w-64 rounded-full bg-brand/10 blur-3xl pointer-events-none" />
         <div className="relative z-10 max-w-4xl space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="eyebrow bg-brand/15 text-brand border-brand/20">
-              <Flame className="w-3.5 h-3.5 fill-brand text-brand" />
-              Account Marketplace & Listing Hub
-            </span>
-            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-500 font-mono text-xs">
-              0-Day Warmup
-            </Badge>
-            <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-mono text-xs">
-              $10 Flat Standard
-            </Badge>
-          </div>
+          <span className="eyebrow bg-brand/15 text-brand border-brand/20">
+            <Flame className="w-3.5 h-3.5 fill-brand text-brand" />
+            Account Marketplace
+          </span>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-2">
               <h1 className="font-display text-3xl sm:text-4xl md:text-5xl text-foreground tracking-tight leading-tight">
-                Warmed-Up Accounts & Listing Hub
+                Warmed-Up Accounts
               </h1>
 
-              <p className="text-muted-foreground text-base sm:text-lg leading-relaxed max-w-2xl">
-                Buy pre-aged, high-trust Instagram and YouTube accounts with <strong className="text-foreground">5,000+ followers</strong> — or <strong className="text-emerald-400">list your own warmed account for sale</strong> to our creator network.
+              <p className="text-muted-foreground text-base sm:text-lg max-w-xl">
+                Buy or sell aged Instagram and YouTube accounts with <strong className="text-foreground">5,000+ followers</strong>.
               </p>
             </div>
 
@@ -466,71 +470,30 @@ export default function WarmedUpAccounts() {
               className="h-12 px-6 shrink-0 gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold shadow-lg transition-all transform hover:scale-[1.02]"
             >
               <PlusCircle className="w-5 h-5" />
-              <span>List Your Account for Sale</span>
+              <span>List Your Account</span>
             </Button>
-          </div>
-
-          <div className="pt-2 flex flex-wrap items-center gap-6 text-xs sm:text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-emerald-400" />
-              <span>Verified Clean Reputation</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-brand" />
-              <span>Instant MagicBox Auto-Sync</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-amber-400" />
-              <span>Community Peer-to-Peer Submissions</span>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* Feature Value Props Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-brand">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Speed</span>
-            <Clock className="w-4 h-4 text-brand" />
-          </div>
-          <div className="text-xl font-display text-foreground">Zero Days Warmup</div>
-          <p className="text-xs text-muted-foreground">
-            Start posting 50+ pieces of content daily on Day 1 without getting flagged or throttled.
-          </p>
+      {/* Feature Value Props Condensed Trust Strip */}
+      {/* ponytail: merged 4 bloated cards into 1 condensed high-density trust strip to reduce vertical noise */}
+      <div className="glass-card bg-card/30 border border-border/50 py-4 px-6 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 md:divide-x divide-border/30 text-sm">
+        <div className="flex items-center gap-2.5 flex-1 justify-center md:justify-start">
+          <Clock className="w-4 h-4 text-brand shrink-0" />
+          <span className="font-semibold text-foreground">Zero Days Warmup</span>
         </div>
-
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-emerald-500">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Trust</span>
-            <Shield className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-xl font-display text-foreground">Phone Verified (PVA)</div>
-          <p className="text-xs text-muted-foreground">
-            Aged 6–14+ months with organic human engagement baseline and pristine IP history.
-          </p>
+        <div className="flex items-center gap-2.5 flex-1 justify-center md:justify-start md:pl-6">
+          <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="font-semibold text-foreground">Phone Verified (PVA)</span>
         </div>
-
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-amber-500">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Listing</span>
-            <Tag className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-xl font-display text-foreground">List & Sell Account</div>
-          <p className="text-xs text-muted-foreground">
-            Submit your Instagram/YouTube accounts for review and list them for sale in our hub.
-          </p>
+        <div className="flex items-center gap-2.5 flex-1 justify-center md:justify-start md:pl-6">
+          <Tag className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="font-semibold text-foreground">List & Sell Account</span>
         </div>
-
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-purple-500">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Value</span>
-            <ShoppingBag className="w-4 h-4 text-purple-400" />
-          </div>
-          <div className="text-xl font-display text-foreground">$10 Flat Price</div>
-          <p className="text-xs text-muted-foreground">
-            Transparent $10 standard price per account with full ownership transfer and email control.
-          </p>
+        <div className="flex items-center gap-2.5 flex-1 justify-center md:justify-start md:pl-6">
+          <ShoppingBag className="w-4 h-4 text-purple-400 shrink-0" />
+          <span className="font-semibold text-foreground">$10 Flat Price</span>
         </div>
       </div>
 
@@ -645,77 +608,65 @@ export default function WarmedUpAccounts() {
                     )}
 
                     <div className="space-y-4">
-                      {/* Header info */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={cn(
-                              "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border",
-                              isInstagram
-                                ? "bg-gradient-to-tr from-amber-500/20 via-rose-500/20 to-purple-500/20 text-rose-400 border-rose-500/30"
-                                : "bg-red-500/10 text-red-500 border-red-500/20"
-                            )}
-                          >
+                      {/* Identity */}
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={cn(
+                            "relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-semibold text-white",
+                            isInstagram
+                              ? "bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-500"
+                              : "bg-red-500",
+                          )}
+                        >
+                          {account.username.replace("@", "").charAt(0).toUpperCase()}
+                          <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-card bg-card">
                             {isInstagram ? (
-                              <Instagram className="w-5 h-5" />
+                              <Instagram className="h-3 w-3 text-rose-400" />
                             ) : (
-                              <Youtube className="w-5 h-5" />
+                              <Youtube className="h-3 w-3 text-red-500" />
                             )}
-                          </div>
-                          <div>
-                            <h3 className="font-display text-lg text-foreground leading-snug">
-                              {account.title}
-                            </h3>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                              <span>{account.age}</span>
-                              <span>•</span>
-                              <span className="text-emerald-400 font-medium">Trust Score {account.trustScore}%</span>
-                            </p>
-                          </div>
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">{account.username}</p>
+                          <p className="truncate text-xs text-muted-foreground">{account.title}</p>
                         </div>
                       </div>
 
-                      {/* Followers / Subs Hero Stats */}
-                      <div className="bg-background/60 rounded-xl p-3.5 border border-border/80 flex items-center justify-between">
+                      {/* Stats */}
+                      <div className="grid grid-cols-3 divide-x divide-border/60 rounded-xl border border-border/80 bg-background/60 py-3 text-center">
                         <div>
-                          <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-                            {isInstagram ? "Real Followers" : "Real Subscribers"}
-                          </div>
-                          <div className="text-2xl font-display text-foreground mt-0.5 flex items-baseline gap-1">
-                            <span>{account.followersCount}</span>
-                            <span className="text-xs text-brand font-mono font-normal">
-                              {isInstagram ? "followers" : "subs"}
-                            </span>
-                          </div>
+                          <p className="font-display text-base text-foreground">{account.followersCount}</p>
+                          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                            {isInstagram ? "Followers" : "Subs"}
+                          </p>
                         </div>
-
-                        <div className="text-right">
-                          <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-                            Price
-                          </div>
-                          <div className="text-2xl font-display text-foreground mt-0.5">
-                            ${account.price}
-                          </div>
+                        <div>
+                          <p className="font-display text-base text-foreground">
+                            {account.avgViews.toLocaleString()}
+                          </p>
+                          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Avg views
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-display text-base text-foreground">
+                            {account.age.replace(/\s*Months? Aged/i, "mo")}
+                          </p>
+                          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Age
+                          </p>
                         </div>
                       </div>
-
-                      {/* Features List */}
-                      <ul className="space-y-2 text-xs text-muted-foreground pt-1">
-                        {account.features.map((feat, fIdx) => (
-                          <li key={fIdx} className="flex items-start gap-2">
-                            <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                            <span>{feat}</span>
-                          </li>
-                        ))}
-                      </ul>
                     </div>
 
                     {/* Footer Action */}
-                    <div className="pt-6 border-t border-border/60 mt-6">
+                    <div className="mt-5 flex items-center gap-3 border-t border-border/60 pt-4">
+                      <span className="font-display text-lg text-foreground">${account.price}</span>
                       {isPurchased ? (
                         <Button
                           variant="outline"
-                          className="w-full bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-2"
+                          className="flex-1 bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-2"
                           disabled
                         >
                           <CheckCircle2 className="w-4 h-4" />
@@ -724,7 +675,7 @@ export default function WarmedUpAccounts() {
                       ) : (
                         <Button
                           onClick={() => handleOpenDialog(account)}
-                          className="w-full gap-2 transition-all group hover:bg-brand hover:text-brand-foreground"
+                          className="flex-1 gap-2 transition-all group hover:bg-brand hover:text-brand-foreground"
                         >
                           <span>Select & Connect</span>
                           <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -998,107 +949,33 @@ export default function WarmedUpAccounts() {
             </thead>
             <tbody className="divide-y divide-border/60">
               <tr>
-                <td className="py-3.5 px-4 font-medium text-foreground">Follower / Subscriber Base</td>
-                <td className="py-3.5 px-4 text-muted-foreground flex items-center gap-1.5">
-                  <XCircle className="w-4 h-4 text-red-400" />
-                  0 Followers (Zero Social Proof)
+                <td className="py-3 px-4 font-medium text-foreground">Followers & Social Proof</td>
+                <td className="py-3 px-4 text-muted-foreground flex items-center gap-1.5">
+                  <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span>0 Followers (Zero Social Proof)</span>
                 </td>
-                <td className="py-3.5 px-4 font-semibold text-emerald-400 bg-brand/5 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  5,000 – 10,000 Real Followers
+                <td className="py-3 px-4 font-semibold text-emerald-400 bg-brand/5 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>5,000 – 10,000 Real Followers</span>
                 </td>
               </tr>
               <tr>
-                <td className="py-3.5 px-4 font-medium text-foreground">Warmup Delay</td>
-                <td className="py-3.5 px-4 text-muted-foreground">90+ Days of slow manual activity</td>
-                <td className="py-3.5 px-4 font-semibold text-foreground bg-brand/5">0 Days (Instant Posting)</td>
+                <td className="py-3 px-4 font-medium text-foreground">Warmup Delay & Posting</td>
+                <td className="py-3 px-4 text-muted-foreground">90+ Days of slow manual activity</td>
+                <td className="py-3 px-4 font-semibold text-foreground bg-brand/5">0 Days (Instant 50+ posts/day)</td>
               </tr>
               <tr>
-                <td className="py-3.5 px-4 font-medium text-foreground">Daily Post Tolerance</td>
-                <td className="py-3.5 px-4 text-muted-foreground">1-2 posts/day max (rate-limited)</td>
-                <td className="py-3.5 px-4 font-semibold text-foreground bg-brand/5">50+ posts/day capability</td>
+                <td className="py-3 px-4 font-medium text-foreground">Ban & Shadowban Risk</td>
+                <td className="py-3 px-4 text-red-400">High risk of automated flags</td>
+                <td className="py-3 px-4 font-semibold text-emerald-400 bg-brand/5">Zero (PVA Clean Reputation)</td>
               </tr>
               <tr>
-                <td className="py-3.5 px-4 font-medium text-foreground">Shadowban Risk</td>
-                <td className="py-3.5 px-4 text-red-400">High risk of automated flags</td>
-                <td className="py-3.5 px-4 font-semibold text-emerald-400 bg-brand/5">Zero (PVA Clean Reputation)</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-medium text-foreground">MagicBox Automation Sync</td>
-                <td className="py-3.5 px-4 text-muted-foreground">Manual setup required</td>
-                <td className="py-3.5 px-4 font-semibold text-foreground bg-brand/5">1-Click Auto-Bind Connector</td>
+                <td className="py-3 px-4 font-medium text-foreground">Pricing & Setup Value</td>
+                <td className="py-3 px-4 text-muted-foreground">Time-intensive labor & proxy costs</td>
+                <td className="py-3 px-4 font-semibold text-emerald-400 bg-brand/5">$10 Flat (Immediate Publishing)</td>
               </tr>
             </tbody>
           </table>
-        </div>
-      </div>
-
-      {/* How MagicBox Connector Works */}
-      <div className="space-y-6">
-        <div className="text-center max-w-2xl mx-auto space-y-2">
-          <span className="eyebrow justify-center">
-            <Zap className="w-3.5 h-3.5" />
-            Seamless Workflow Integration
-          </span>
-          <h2 className="font-display text-3xl text-foreground">How 1-Click Connection Works</h2>
-          <p className="text-sm text-muted-foreground">
-            From purchase or listing to automated posting in 3 simple steps.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="glass-card p-6 space-y-3 relative">
-            <div className="w-8 h-8 rounded-lg bg-brand/10 text-brand font-mono font-bold flex items-center justify-center text-sm">
-              01
-            </div>
-            <h3 className="font-display text-lg text-foreground">1. Select or List</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Choose an aged account or submit your own Instagram / YouTube account. Credentials and metrics are validated.
-            </p>
-          </div>
-
-          <div className="glass-card p-6 space-y-3 relative">
-            <div className="w-8 h-8 rounded-lg bg-brand/10 text-brand font-mono font-bold flex items-center justify-center text-sm">
-              02
-            </div>
-            <h3 className="font-display text-lg text-foreground">2. Auto-Bind Connector</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              MagicBox automatically binds the OAuth connection into your channels manager. No manual daily logins or phone code hassles required.
-            </p>
-          </div>
-
-          <div className="glass-card p-6 space-y-3 relative">
-            <div className="w-8 h-8 rounded-lg bg-brand/10 text-brand font-mono font-bold flex items-center justify-center text-sm">
-              03
-            </div>
-            <h3 className="font-display text-lg text-foreground">3. Maya Auto-Publishes</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Maya AI writes, designs, and schedules posts straight to your warmed-up channel, driving high-reach distribution from Day 1.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* FAQ Accordion */}
-      <div className="glass-card p-6 sm:p-8 space-y-6">
-        <div className="space-y-2">
-          <span className="eyebrow">
-            <HelpCircle className="w-3.5 h-3.5" />
-            Frequently Asked Questions
-          </span>
-          <h2 className="font-display text-2xl text-foreground">Everything you need to know</h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {FAQS.map((faq, i) => (
-            <div key={i} className="space-y-1.5 p-4 rounded-xl bg-background/50 border border-border/80">
-              <h3 className="font-medium text-foreground text-sm flex items-start gap-2">
-                <Check className="w-4 h-4 text-brand shrink-0 mt-0.5" />
-                <span>{faq.question}</span>
-              </h3>
-              <p className="text-xs text-muted-foreground pl-6 leading-relaxed">{faq.answer}</p>
-            </div>
-          ))}
         </div>
       </div>
 

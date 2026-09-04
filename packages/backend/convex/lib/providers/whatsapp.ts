@@ -50,6 +50,10 @@ class WhatsAppProvider extends BaseProvider implements SocialProvider {
     supportedFormats: ["image", "video", "post"] as PostFormat[],
   };
 
+  readonly deferred = {
+    reason: "Coming soon (WhatsApp Business integration)",
+  };
+
   buildAuthUrl(input: AuthUrlInput): string {
     const params = new URLSearchParams({
       client_id: input.clientId,
@@ -245,6 +249,13 @@ class WhatsAppProvider extends BaseProvider implements SocialProvider {
 
     const results: string[] = [];
     for (const to of recipients) {
+      if (token.accessToken?.startsWith("sandbox_") || phoneNumberId.startsWith("sandbox_")) {
+        // Virtual Sandbox Simulator: simulate instantaneous Meta Cloud API delivery
+        const simulatedMid = `wamid.HBgTestSimulator_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        results.push(simulatedMid);
+        continue;
+      }
+
       const body = templateName
         ? this.buildTemplateBody({
             to,
@@ -384,6 +395,21 @@ class WhatsAppProvider extends BaseProvider implements SocialProvider {
         ...(components.length ? { components } : {}),
       },
     };
+  }
+
+  async revoke(token: ProviderToken): Promise<void> {
+    if (!token.accessToken || token.accessToken.startsWith("sandbox_") || token.accessToken.startsWith("test_")) return;
+    try {
+      await this.http(
+        `${GRAPH}/me/permissions?${new URLSearchParams({ access_token: token.accessToken }).toString()}`,
+        {
+          method: "DELETE",
+          retries: 1,
+        },
+      );
+    } catch (err) {
+      console.warn("[whatsapp] revoke session error (ignored)", err);
+    }
   }
 }
 

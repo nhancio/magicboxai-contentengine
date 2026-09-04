@@ -103,14 +103,17 @@ export type SocialPlatform =
   | "linkedin"
   | "youtube"
   | "facebook"
-  | "whatsapp";
-/** Providers we connect directly via OAuth. Twitter/X is intentionally deferred. */
+  | "whatsapp"
+  | "reddit";
+/** Mirrors Convex socialProvider; twitter/reddit stay deferred at connect-time. */
 export type SocialProvider =
   | "instagram"
   | "linkedin"
   | "youtube"
   | "facebook"
-  | "whatsapp";
+  | "whatsapp"
+  | "twitter"
+  | "reddit";
 
 export interface SocialAccount {
   id: string;
@@ -142,6 +145,25 @@ export interface BrandProfile {
   industry: string;
   toneOfVoice: string;
   audience: string;
+  
+  // Brand Identity & Product
+  coreIdentity?: string;
+  productOffering?: string;
+  uniqueBenefits?: string;
+  problemSolution?: string;
+
+  // Purpose & Positioning
+  mission?: string;
+  differentiation?: string;
+  ownedSpace?: string;
+
+  // New Layout Fields
+  contentAngles?: string[];
+  toneDos?: string[];
+  toneDonts?: string[];
+  customerSegments?: Array<{ segmentName: string; percentage: number }>;
+  competitors?: string[];
+
   bannedTopics?: string[];
   hashtagSets?: { default: string[] };
   sampleCaptions?: string[];

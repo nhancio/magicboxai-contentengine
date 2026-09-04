@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Minus } from "lucide-react";
+import { Check, Minus, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { appLoginUrl } from "@/lib/config";
 import { captureEvent } from "@shared/lib/analytics";
@@ -176,12 +176,13 @@ export function IntegrationsSection() {
             Short-form AI video generation is a gated beta and off by default. X / TikTok /
             Threads are not available for direct publishing yet.
           </p>
-          <Button asChild size="lg" variant="brand" className="h-14 rounded-full px-8 text-base">
+          <Button asChild size="lg" variant="brand" className="group h-16 rounded-full px-14 text-xl font-medium shadow-[0_12px_24px_rgba(139,92,246,0.28)] transition-all hover:shadow-[0_16px_32px_rgba(139,92,246,0.38)]">
             <a
-              href={appLoginUrl()}
-              onClick={() => captureEvent("landing_cta_clicked", { cta: "supported_connect_channels", destination: "onboarding" })}
+              href={appLoginUrl("/settings?tab=integrations")}
+              onClick={() => captureEvent("landing_cta_clicked", { cta: "supported_connect_channels", destination: "connections" })}
             >
               Connect your channels
+              <ArrowUpRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
             </a>
           </Button>
         </div>

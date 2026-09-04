@@ -19,7 +19,8 @@ export type PlatformId =
   | "linkedin"
   | "youtube"
   | "reddit"
-  | "whatsapp";
+  | "whatsapp"
+  | "tiktok";
 
 export type PostFormat =
   | "image"
@@ -197,4 +198,7 @@ export interface SocialProvider {
   refresh(token: ProviderToken, clientId: string, clientSecret: string): Promise<ProviderToken>;
 
   publish(token: ProviderToken, input: PublishInput): Promise<PublishResult>;
+
+  /** Revoke tokens / permissions and log out all active sessions on the provider side. */
+  revoke?(token: ProviderToken, clientId?: string, clientSecret?: string): Promise<void>;
 }

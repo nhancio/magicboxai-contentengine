@@ -184,6 +184,20 @@ export type BrandExtractResult = {
   brandedImageSource: "website" | "generated" | "";
   colors: { primary?: string; secondary?: string; accent?: string };
   fonts: string[];
+  
+  coreIdentity?: string;
+  productOffering?: string;
+  uniqueBenefits?: string;
+  problemSolution?: string;
+  mission?: string;
+  differentiation?: string;
+  ownedSpace?: string;
+
+  contentAngles?: string[];
+  toneDos?: string[];
+  toneDonts?: string[];
+  customerSegments?: Array<{ segmentName: string; percentage: number }>;
+  competitors?: string[];
 };
 
 export const extractBrandFromWebsite = callable<{ url: string }, BrandExtractResult>(
@@ -216,3 +230,15 @@ export const syncBillingClaims = callable<
   Record<string, never>,
   { plan: "free" | "pro" | "max"; status: string; hasPaidPlan: boolean }
 >("syncBillingClaims");
+
+/** Attach a guest-checkout purchase keyed by the signed-in Google email. */
+export const claimGuestEntitlement = callable<
+  Record<string, never>,
+  {
+    outcome: "claimed" | "already_active" | "none";
+    plan: "free" | "pro" | "max";
+    status: string;
+    hasPaidPlan: boolean;
+    email: string;
+  }
+>("claimGuestEntitlement");

@@ -140,23 +140,20 @@ export default function Dashboard() {
     loading || (isConvexConfigured && convexPostsRaw === undefined);
 
   const accounts: ChannelRow[] = useMemo(() => {
-    const fromConvex: ChannelRow[] = (convexAccounts ?? [])
-      .filter((a: any) => a.status === "active" || a.status === "expired")
-      .map((a: any) => ({
-        id: String(a._id),
-        platform: String(a.platform),
-        username: String(a.username || ""),
-        displayName: String(a.displayName || a.username || a.platform),
-        status: String(a.status),
-      }));
+    if (isConvexConfigured) {
+      return (convexAccounts ?? [])
+        .filter((a: any) => a.status === "active" || a.status === "expired")
+        .map((a: any) => ({
+          id: String(a._id),
+          platform: String(a.platform),
+          username: String(a.username || ""),
+          displayName: String(a.displayName || a.username || a.platform),
+          status: String(a.status),
+        }));
+    }
 
-    const seen = new Set(
-      fromConvex.map((a) => channelKey(a.platform, a.username, a.displayName)),
-    );
-
-    const fromLegacy: ChannelRow[] = legacyAccounts
+    return legacyAccounts
       .filter((a) => a.status === "active" || a.status === "expired")
-      .filter((a) => !seen.has(channelKey(a.platform, a.username, a.displayName)))
       .map((a) => ({
         id: a.id,
         platform: a.platform,
@@ -164,8 +161,6 @@ export default function Dashboard() {
         displayName: a.displayName || a.username || a.platform,
         status: a.status,
       }));
-
-    return [...fromConvex, ...fromLegacy];
   }, [convexAccounts, legacyAccounts]);
 
   const channelsLoading =
@@ -185,11 +180,7 @@ export default function Dashboard() {
         ["scheduled", "generating", "ready", "posting", "pending_approval"].includes(p.status),
     )
     .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime())
-    .slice(0, 5);
-  const recent = posts
-    .filter((p) => ["posted", "failed"].includes(p.status))
-    .sort((a, b) => b.scheduledFor.getTime() - a.scheduledFor.getTime())
-    .slice(0, 5);
+    .slice(0, 4);
   const awaitingApproval =
     posts.filter((p) => p.status === "pending_approval").length +
     (mayaDeck?.pending?.length ?? 0);
@@ -208,11 +199,11 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <span className="eyebrow">Dashboard</span>
-          <h1 className="mt-2 font-display text-3xl tracking-tight">
+          <h1 className="mt-1 font-display text-2xl tracking-tight sm:text-3xl">
             Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {firstName}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -231,7 +222,7 @@ export default function Dashboard() {
       {erroredAutomations.length > 0 && (
         <Link
           to="/automations"
-          className="mb-6 flex items-center gap-3 rounded-lg border border-red-500/25 bg-red-500/[0.07] p-4 text-sm text-red-700 transition-colors hover:bg-red-500/10"
+          className="flex items-center gap-3 rounded-lg border border-red-500/25 bg-red-500/[0.07] p-3 text-sm text-red-700 transition-colors hover:bg-red-500/10"
         >
           <ShieldAlert className="h-5 w-5 shrink-0 text-red-600" />
           {erroredAutomations.length === 1
@@ -242,90 +233,84 @@ export default function Dashboard() {
       )}
 
       {/* Stats */}
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stats.map((stat, i) => (
           <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05, duration: 0.2 }}
-            className="glass-card p-4"
+            className="glass-card p-3.5 sm:p-4"
           >
             <div className="flex items-center gap-2 text-muted-foreground">
               <stat.icon className="h-4 w-4" />
               <span className="text-[10px] font-mono uppercase tracking-widest">{stat.label}</span>
             </div>
-            <div className="mt-2 font-display text-3xl tabular-nums">
+            <div className="mt-1.5 font-display text-2xl tabular-nums sm:text-3xl">
               {postsLoading ? "—" : stat.value}
             </div>
           </motion.div>
         ))}
       </div>
 
-      {/* Connected channels — Convex (Settings) + legacy Firebase fill-ins */}
-      <div className="glass-card mb-6 p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-xl">Connected channels</h2>
-          <Link to="/settings" className="text-xs font-mono uppercase tracking-widest text-brand hover:text-brand/80">
-            Manage →
-          </Link>
-        </div>
-        {channelsLoading ? (
-          <div className="h-12 animate-pulse rounded-lg bg-secondary" />
-        ) : accounts.length === 0 ? (
-          <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-border p-5 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
-              No channels connected yet. Connect YouTube, LinkedIn, Instagram, Facebook, or WhatsApp
-              in Settings.
-            </p>
-            <Button asChild variant="outline" size="sm">
-              <Link to="/settings">
-                <Plus className="mr-1.5 h-3.5 w-3.5" /> Connect a channel
-              </Link>
-            </Button>
+      {/* Channels + Coming up — 50/50 */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Connected channels */}
+        <div className="glass-card flex min-h-0 flex-col p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-display text-lg sm:text-xl">Connected channels</h2>
+            <Link to="/settings" className="text-xs font-mono uppercase tracking-widest text-brand hover:text-brand/80">
+              Manage →
+            </Link>
           </div>
-        ) : (
-          <div className="flex flex-wrap gap-2.5">
-            {accounts.map((account) => {
-              const Icon = PLATFORM_ICONS[account.platform] ?? Instagram;
-              const brand = PLATFORM_BRAND[account.platform];
-              const raw = (account.username || account.displayName || "").trim();
-              const handle = raw ? (raw.startsWith("@") ? raw : `@${raw}`) : account.platform;
-              return (
-                <div
-                  key={account.id}
-                  className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2"
-                >
+          {channelsLoading ? (
+            <div className="h-12 animate-pulse rounded-lg bg-secondary" />
+          ) : accounts.length === 0 ? (
+            <div className="flex flex-1 flex-col items-start justify-center gap-3 rounded-lg border border-dashed border-border p-4">
+              <p className="text-sm text-muted-foreground">
+                No channels connected yet. Connect YouTube, LinkedIn, Instagram, Facebook, or WhatsApp
+                in Settings.
+              </p>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/settings">
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> Connect a channel
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap content-start gap-2.5">
+              {accounts.map((account) => {
+                const Icon = PLATFORM_ICONS[account.platform] ?? Instagram;
+                const brand = PLATFORM_BRAND[account.platform];
+                const raw = (account.username || account.displayName || "").trim();
+                const handle = raw ? (raw.startsWith("@") ? raw : `@${raw}`) : account.platform;
+                const label =
+                  account.platform === "twitter" ? "Twitter / X" : (brand?.label ?? account.platform);
+                return (
                   <div
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-white"
+                    key={account.id}
+                    title={`${handle} · ${label}`}
+                    className="relative flex h-10 w-10 items-center justify-center rounded-lg text-white"
                     style={{ background: brand?.bg ?? "#6b7280" }}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-5 w-5" />
+                    <span
+                      className={cn(
+                        "absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ring-2 ring-card",
+                        account.status === "active" ? "bg-emerald-500" : "bg-amber-500",
+                      )}
+                    />
                   </div>
-                  <div className="pr-1">
-                    <div className="text-sm font-medium leading-tight">{handle}</div>
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                      {account.platform === "twitter" ? "Twitter / X" : account.platform}
-                    </div>
-                  </div>
-                  <span
-                    className={cn(
-                      "ml-1 h-1.5 w-1.5 rounded-full",
-                      account.status === "active" ? "bg-emerald-500" : "bg-amber-500",
-                    )}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Upcoming */}
-        <div className="glass-card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-display text-xl">Coming up</h2>
+        {/* Coming up */}
+        <div className="glass-card flex min-h-0 flex-col p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-display text-lg sm:text-xl">Coming up</h2>
             <Link to="/calendar" className="text-xs font-mono uppercase tracking-widest text-brand hover:text-brand/80">
               Calendar →
             </Link>
@@ -333,138 +318,110 @@ export default function Dashboard() {
           {postsLoading ? (
             <div className="space-y-2">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-14 animate-pulse rounded-lg bg-secondary" />
+                <div key={i} className="h-12 animate-pulse rounded-lg bg-secondary" />
               ))}
             </div>
           ) : upcoming.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              No posts queued.{" "}
-              <Link to="/studio" className="text-brand hover:underline">
-                Open Studio
-              </Link>{" "}
-              or{" "}
-              <Link to="/maya" className="text-brand hover:underline">
-                review Maya
-              </Link>
-              .
+            <div className="flex flex-1 items-center justify-center py-6 text-center text-sm text-muted-foreground">
+              <p>
+                No posts queued.{" "}
+                <Link to="/studio" className="text-brand hover:underline">
+                  Open Studio
+                </Link>{" "}
+                or{" "}
+                <Link to="/maya" className="text-brand hover:underline">
+                  review Maya
+                </Link>
+                .
+              </p>
             </div>
           ) : (
             <div className="space-y-2">
-              {upcoming.map((post) => (
-                <a
-                  key={post.id}
-                  href={getSocialPostUrl(post)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Open in social platform"
-                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent"
-                >
-                  <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
-                  <p className="min-w-0 flex-1 truncate text-sm text-foreground">
-                    {post.content?.caption ?? post.brief}
-                  </p>
-                  <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
-                    {post.platforms.slice(0, 3).map((p) => {
-                      const Icon = PLATFORM_ICONS[p];
-                      return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;
-                    })}
-                  </span>
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    {post.scheduledFor.toLocaleString(undefined, {
-                      weekday: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Recent activity */}
-        <div className="glass-card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-display text-xl">Recent activity</h2>
-            <Link to="/posts" className="text-xs font-mono uppercase tracking-widest text-brand hover:text-brand/80">
-              All posts →
-            </Link>
-          </div>
-          {postsLoading ? (
-            <div className="space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-14 animate-pulse rounded-lg bg-secondary" />
-              ))}
-            </div>
-          ) : recent.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              Published posts will show up here.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {recent.map((post) => (
-                <a
-                  key={post.id}
-                  href={getSocialPostUrl(post)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Open in social platform"
-                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent"
-                >
-                  <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
-                  <p className="min-w-0 flex-1 truncate text-sm text-foreground">
-                    {post.content?.caption ?? post.brief}
-                  </p>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {post.status === "posted" ? "Published" : "Failed"}
-                  </span>
-                </a>
-              ))}
+              {upcoming.map((post) => {
+                const url = getSocialPostUrl(post);
+                const className =
+                  "flex items-center gap-3 rounded-lg border border-border bg-card p-2.5 transition-colors sm:p-3";
+                const inner = (
+                  <>
+                    <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[post.status])} />
+                    <p className="min-w-0 flex-1 truncate text-sm text-foreground">
+                      {post.content?.caption ?? post.brief}
+                    </p>
+                    <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                      {post.platforms.slice(0, 3).map((p) => {
+                        const Icon = PLATFORM_ICONS[p];
+                        return Icon ? <Icon key={p} className="h-3.5 w-3.5" /> : null;
+                      })}
+                    </span>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {post.scheduledFor.toLocaleString(undefined, {
+                        weekday: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </>
+                );
+                return url ? (
+                  <a
+                    key={post.id}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="View post"
+                    className={cn(className, "hover:bg-accent")}
+                  >
+                    {inner}
+                  </a>
+                ) : (
+                  <div key={post.id} className={className}>
+                    {inner}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
 
       {/* Automations strip */}
-      <div className="mt-6">
-        <div className="glass-card p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-display text-xl">Your automations</h2>
-            <Link to="/automations" className="text-xs font-mono uppercase tracking-widest text-brand hover:text-brand/80">
-              Manage →
-            </Link>
-          </div>
-          {loading ? (
-            <div className="h-14 animate-pulse rounded-lg bg-secondary" />
-          ) : automations.length === 0 ? (
-            <div className="flex items-center gap-3 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-              <Zap className="h-4 w-4 text-brand" />
-              One brief. Daily posts. Zero effort — that's an automation.
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {automations.slice(0, 6).map((automation) => (
-                <Link
-                  key={automation.id}
-                  to={`/automations/${automation.id}`}
-                  className="flex items-center gap-2 rounded-full border border-border bg-card py-1.5 pl-3 pr-4 text-sm text-foreground/80 transition-colors hover:bg-accent"
-                >
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full",
-                      automation.status === "active"
-                        ? "bg-emerald-500"
-                        : automation.status === "error"
-                          ? "bg-red-500"
-                          : "bg-amber-500"
-                    )}
-                  />
-                  {automation.name}
-                </Link>
-              ))}
-            </div>
-          )}
+      <div className="glass-card p-4 sm:p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-display text-lg sm:text-xl">Your automations</h2>
+          <Link to="/automations" className="text-xs font-mono uppercase tracking-widest text-brand hover:text-brand/80">
+            Manage →
+          </Link>
         </div>
+        {loading ? (
+          <div className="h-10 animate-pulse rounded-lg bg-secondary" />
+        ) : automations.length === 0 ? (
+          <div className="flex items-center gap-3 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+            <Zap className="h-4 w-4 text-brand" />
+            One brief. Daily posts. Zero effort — that's an automation.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {automations.slice(0, 6).map((automation) => (
+              <Link
+                key={automation.id}
+                to={`/automations/${automation.id}`}
+                className="flex items-center gap-2 rounded-full border border-border bg-card py-1.5 pl-3 pr-4 text-sm text-foreground/80 transition-colors hover:bg-accent"
+              >
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full",
+                    automation.status === "active"
+                      ? "bg-emerald-500"
+                      : automation.status === "error"
+                        ? "bg-red-500"
+                        : "bg-amber-500"
+                  )}
+                />
+                {automation.name}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

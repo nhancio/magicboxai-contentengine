@@ -91,46 +91,68 @@ function ReelCard({
   index: number;
   ariaHidden?: boolean;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [isInView, setIsInView] = useState(false);
 
   useEffect(() => {
-    const el = videoRef.current;
+    const el = containerRef.current;
     if (!el) return;
-
-    el.muted = true;
-    el.setAttribute("muted", "");
-    el.setAttribute("playsinline", "");
-    el.setAttribute("webkit-playsinline", "");
 
     const io = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) void el.play().catch(() => {});
-        else el.pause();
+        if (entry.isIntersecting) {
+          setIsInView(true);
+          const vid = videoRef.current;
+          if (vid) void vid.play().catch(() => {});
+        } else {
+          const vid = videoRef.current;
+          if (vid) vid.pause();
+        }
       },
-      { threshold: 0.25 }
+      { rootMargin: "100px 0px", threshold: 0.2 }
     );
     io.observe(el);
     return () => io.disconnect();
   }, []);
 
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !isInView) return;
+
+    vid.muted = true;
+    vid.defaultMuted = true;
+    vid.setAttribute("muted", "");
+    vid.setAttribute("playsinline", "");
+    vid.setAttribute("webkit-playsinline", "");
+
+    void vid.play().catch(() => {});
+  }, [isInView]);
+
   return (
     <div
+      ref={containerRef}
       aria-hidden={ariaHidden}
       className="group relative aspect-[9/16] w-[200px] shrink-0 select-none overflow-hidden rounded-2xl border border-foreground/10 bg-neutral-900 shadow-sm transition-transform duration-300 hover:-translate-y-1 sm:w-[230px]"
       style={{ transitionDelay: `${index * 30}ms` }}
     >
       <div className={`absolute inset-0 pointer-events-none bg-gradient-to-br ${format.poster}`} />
-      <video
-        ref={videoRef}
-        className="absolute inset-0 h-full w-full object-cover pointer-events-none"
-        src={format.src}
-        muted
-        loop
-        playsInline
-        preload="metadata"
-        title={format.label}
-        aria-label={`${format.label} format video`}
-      />
+      {isInView ? (
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full object-cover pointer-events-none"
+          src={format.src}
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="metadata"
+          aria-hidden="true"
+          tabIndex={-1}
+          disablePictureInPicture
+          disableRemotePlayback
+        />
+      ) : null}
       <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/85 via-black/5 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 p-4 text-white pointer-events-none">
         <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/70">
@@ -147,9 +169,6 @@ export function ReelsShowcaseSection() {
   const sectionRef = useRef<HTMLElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll control refs
-  const resumeAutoScrollAtRef = useRef(0);
-  const isInteractingRef = useRef(false);
   const isMouseDownRef = useRef(false);
   const startXRef = useRef(0);
   const scrollLeftRef = useRef(0);
@@ -157,15 +176,15 @@ export function ReelsShowcaseSection() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) setIsVisible(true);
+        setIsVisible(entry.isIntersecting);
       },
-      { threshold: 0.1 }
+      { threshold: 0.05 }
     );
     if (sectionRef.current) observer.observe(sectionRef.current);
     return () => observer.disconnect();
   }, []);
 
-  // Smooth drift auto-scroll that pauses immediately when user touches or drags
+  // Smooth continuous cyclic auto-scroll that never stops on hover
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el || !isVisible) return;
@@ -178,21 +197,20 @@ export function ReelsShowcaseSection() {
       const elapsed = Math.min(now - previousTime, 64);
       previousTime = now;
 
+      // Never stop on hover; only pause while actively holding mouse down to drag
       const shouldMove =
         !reducedMotion.matches &&
-        !isInteractingRef.current &&
         !isMouseDownRef.current &&
-        document.visibilityState === "visible" &&
-        now >= resumeAutoScrollAtRef.current;
+        document.visibilityState === "visible";
 
       if (shouldMove) {
         const pixelsPerSecond = 35;
         el.scrollLeft += pixelsPerSecond * (elapsed / 1000);
 
-        // Infinite wrap check
-        const maxScroll = el.scrollWidth - el.clientWidth;
-        if (el.scrollLeft >= maxScroll - 10) {
-          el.scrollLeft = 0;
+        // Seamless infinite wrap (cards are duplicated in 2 sets)
+        const halfScroll = el.scrollWidth / 2;
+        if (halfScroll > 0 && el.scrollLeft >= halfScroll) {
+          el.scrollLeft -= halfScroll;
         }
       }
 
@@ -203,17 +221,18 @@ export function ReelsShowcaseSection() {
     return () => window.cancelAnimationFrame(frameId);
   }, [isVisible]);
 
-  const pauseAutoScroll = (milliseconds = 4000) => {
-    resumeAutoScrollAtRef.current = performance.now() + milliseconds;
-  };
-
   const scrollByCards = (direction: 1 | -1) => {
     const el = scrollerRef.current;
     if (!el) return;
-    pauseAutoScroll(6000);
     const first = el.children[0] as HTMLElement | undefined;
     const cardStep = first ? first.getBoundingClientRect().width + 16 : 240;
+    // The drift loop writes scrollLeft every frame, which cancels a smooth
+    // scroll mid-flight — hold it off until the animation lands.
+    isMouseDownRef.current = true;
     el.scrollBy({ left: direction * cardStep, behavior: "smooth" });
+    window.setTimeout(() => {
+      isMouseDownRef.current = false;
+    }, 600);
   };
 
   // Mouse Drag-to-Scroll Handlers for Desktop
@@ -221,10 +240,8 @@ export function ReelsShowcaseSection() {
     const el = scrollerRef.current;
     if (!el) return;
     isMouseDownRef.current = true;
-    isInteractingRef.current = true;
     startXRef.current = e.pageX - el.offsetLeft;
     scrollLeftRef.current = el.scrollLeft;
-    pauseAutoScroll(10000);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -235,13 +252,10 @@ export function ReelsShowcaseSection() {
     const x = e.pageX - el.offsetLeft;
     const walk = (x - startXRef.current) * 1.5; // Scroll speed factor
     el.scrollLeft = scrollLeftRef.current - walk;
-    pauseAutoScroll(10000);
   };
 
   const handleMouseUpOrLeave = () => {
     isMouseDownRef.current = false;
-    isInteractingRef.current = false;
-    pauseAutoScroll(4000);
   };
 
   return (
@@ -294,17 +308,6 @@ export function ReelsShowcaseSection() {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUpOrLeave}
         onMouseLeave={handleMouseUpOrLeave}
-        onTouchStart={() => {
-          isInteractingRef.current = true;
-          pauseAutoScroll(8000);
-        }}
-        onTouchEnd={() => {
-          isInteractingRef.current = false;
-          pauseAutoScroll(5000);
-        }}
-        onScroll={() => {
-          pauseAutoScroll(4000);
-        }}
         className="no-scrollbar flex gap-4 overflow-x-auto touch-pan-x cursor-grab active:cursor-grabbing px-6 pb-4 lg:px-12 select-none"
       >
         {[0, 1].flatMap((copy) =>

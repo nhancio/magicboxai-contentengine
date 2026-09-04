@@ -13,7 +13,12 @@ import { GEMINI_API_BASE, MODELS, EMBEDDING_DIMS, requireGeminiKey } from "./mod
 
 type GeminiPart = { text?: string; inlineData?: { mimeType: string; data: string } };
 
-async function geminiFetch(
+/**
+ * Exported for callers that need a request shape geminiJson/geminiText don't
+ * cover (e.g. multiple inlineData image parts for a classification prompt) —
+ * still gets the shared retry/backoff behavior.
+ */
+export async function geminiFetch(
   path: string,
   body: unknown,
   { retries = 3 }: { retries?: number } = {},

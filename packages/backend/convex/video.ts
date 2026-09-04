@@ -17,13 +17,17 @@ export const startVideoRender = action({
     // In production, RENDERER_URL would point to the deployed Express/Cloud Run worker
     // or we would use @remotion/lambda directly here.
     const rendererUrl = process.env.RENDERER_URL || "http://localhost:8005/api/render";
-    
+    const token = process.env.RENDERER_TOKEN;
+
     console.log(`[Convex:Video] Starting render for template ${args.templateId}`);
-    
+
     try {
       const response = await fetch(rendererUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           templateId: args.templateId,
           props: args.props,

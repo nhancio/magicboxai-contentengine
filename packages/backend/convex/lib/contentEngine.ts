@@ -337,6 +337,61 @@ ${hooks}
 Target platforms: ${platforms.join(", ")}.`;
 }
 
+/**
+ * Compose the image-model prompt for a suggestion's poster creative.
+ *
+ * The static-creative rules above are the contract: one focal subject, a stated
+ * composition and lighting, a defined relationship to the brand palette, and
+ * NO rendered text, logo, or watermark — MagicBox draws the hook and the
+ * supplied logo over the result deterministically, so anything the model writes
+ * would collide with it.
+ *
+ * `subject` is the engine's own mediaPrompt/openingVisual when it produced one.
+ * Text-only suggestions have neither, so the brand's industry and audience
+ * carry the image instead of falling back to an empty gradient.
+ */
+export function buildBrandImagePrompt(args: {
+  subject?: string;
+  hook?: string;
+  brandName?: string;
+  industry?: string;
+  audience?: string;
+  toneOfVoice?: string;
+  colors?: { primary?: string; secondary?: string; accent?: string };
+  aspectRatio?: string;
+}): string {
+  const palette = [args.colors?.primary, args.colors?.secondary, args.colors?.accent]
+    .filter((c): c is string => !!c && /^#?[0-9a-fA-F]{3,8}$/.test(c))
+    .join(", ");
+
+  const focal =
+    args.subject?.trim() ||
+    [
+      args.industry ? `a real working moment in ${args.industry}` : "a real working moment",
+      args.audience ? `as experienced by ${args.audience}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+  return [
+    `Editorial brand photograph for ${args.brandName || "a modern brand"}.`,
+    `Focal subject: ${focal}.`,
+    args.hook ? `It should visually support this idea: ${args.hook}` : "",
+    palette
+      ? `Colour direction: derive the grade, props, and background from this brand palette (${palette}) without printing the swatches.`
+      : "",
+    args.toneOfVoice ? `Mood: ${args.toneOfVoice}.` : "",
+    "Composition: single clear subject, generous negative space in the lower third for a caption overlay.",
+    "Lighting: natural directional light, honest colour, shallow depth of field.",
+    "Photographic realism. No collage, no infographic, no frames or borders.",
+    // Hard constraint from the static-creative rules.
+    "Absolutely no text, letters, numbers, captions, logos, watermarks, or UI elements anywhere in the image.",
+    `Framing: ${args.aspectRatio || "4:5"}.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 export function buildTrendDiscoveryPrompt(args: { today: string; region: string }): string {
   return `Today is ${args.today}. Search the live web for current social-content signals in ${args.region}.
 Cover Instagram Reels, TikTok-style short video, X/Twitter, LinkedIn, and YouTube.

@@ -40,6 +40,7 @@ const promises_1 = require("node:dns/promises");
 const node_net_1 = require("node:net");
 const uuid_1 = require("uuid");
 const core_1 = require("./core");
+const image_1 = require("./image");
 const models_1 = require("./models");
 // ── URL safety ───────────────────────────────────────────────────────────────
 // Every URL in this feature comes from an untrusted website. Validate the
@@ -237,28 +238,65 @@ function resolveHref(href, baseUrl) {
 // ── Logo extraction ──────────────────────────────────────────────────────────
 /** Every asset on the page that could be the brand mark, tagged by kind. */
 function collectLogoCandidates(html, baseUrl) {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const found = [];
     const seen = new Set();
+    const order = {
+        "logo-img": 0, "apple-touch-icon": 1, favicon: 2, social: 3,
+    };
     const add = (href, kind) => {
         const url = resolveHref(href, baseUrl);
-        if (!url || seen.has(url))
+        if (!url)
             return;
+        const existing = found.find((c) => c.url === url);
+        if (existing) {
+            if (order[kind] < order[existing.kind]) {
+                existing.kind = kind;
+            }
+            return;
+        }
         seen.add(url);
         found.push({ url, kind });
     };
-    for (const meta of findTags(html, "meta")) {
-        const key = (_b = (_a = meta.property) !== null && _a !== void 0 ? _a : meta.name) !== null && _b !== void 0 ? _b : "";
-        if (["og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
-            add(meta.content, "social");
+    // 1. Schema.org JSON-LD logos
+    try {
+        const jsonLdBlocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+        if (jsonLdBlocks) {
+            for (const block of jsonLdBlocks) {
+                const rawJson = block.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "").trim();
+                const parsed = JSON.parse(rawJson);
+                const searchLd = (item) => {
+                    var _a;
+                    if (!item || typeof item !== "object")
+                        return;
+                    if (item.logo) {
+                        const l = typeof item.logo === "string" ? item.logo : (_a = item.logo) === null || _a === void 0 ? void 0 : _a.url;
+                        if (typeof l === "string")
+                            add(l, "logo-img");
+                    }
+                    if (Array.isArray(item["@graph"])) {
+                        item["@graph"].forEach(searchLd);
+                    }
+                };
+                searchLd(parsed);
+            }
         }
     }
+    catch (_j) { }
     for (const link of findTags(html, "link")) {
-        const rel = ((_c = link.rel) !== null && _c !== void 0 ? _c : "").toLowerCase();
+        const rel = ((_a = link.rel) !== null && _a !== void 0 ? _a : "").toLowerCase();
+        const href = ((_b = link.href) !== null && _b !== void 0 ? _b : "").toLowerCase();
+        const isLogo = /logo|brand/i.test(href);
         if (rel.includes("apple-touch-icon"))
-            add(link.href, "apple-touch-icon");
+            add(link.href, isLogo ? "logo-img" : "apple-touch-icon");
         else if (rel.includes("icon"))
-            add(link.href, "favicon");
+            add(link.href, isLogo ? "logo-img" : "favicon");
+    }
+    for (const meta of findTags(html, "meta")) {
+        const key = (_d = (_c = meta.property) !== null && _c !== void 0 ? _c : meta.name) !== null && _d !== void 0 ? _d : "";
+        if (["og:logo", "og:image", "og:image:secure_url", "twitter:image"].includes(key)) {
+            add(meta.content, key === "og:logo" ? "logo-img" : "social");
+        }
     }
     // <img> tags that look like a logo. Match on class/id/alt (reliable) or the
     // image *filename* — not the full CDN URL, whose hashes/paths cause false
@@ -268,10 +306,10 @@ function collectLogoCandidates(html, baseUrl) {
         const src = img.src || img["data-src"] || "";
         let filename = "";
         try {
-            filename = (_e = (_d = new URL(src, baseUrl).pathname.split("/").pop()) === null || _d === void 0 ? void 0 : _d.toLowerCase()) !== null && _e !== void 0 ? _e : "";
+            filename = (_f = (_e = new URL(src, baseUrl).pathname.split("/").pop()) === null || _e === void 0 ? void 0 : _e.toLowerCase()) !== null && _f !== void 0 ? _f : "";
         }
-        catch (_h) {
-            filename = (_g = (_f = src.split("/").pop()) === null || _f === void 0 ? void 0 : _f.toLowerCase()) !== null && _g !== void 0 ? _g : "";
+        catch (_k) {
+            filename = (_h = (_g = src.split("/").pop()) === null || _g === void 0 ? void 0 : _g.toLowerCase()) !== null && _h !== void 0 ? _h : "";
         }
         if (/logo|brand/.test(hint) || /logo|brand/.test(filename)) {
             add(src, "logo-img");
@@ -280,12 +318,22 @@ function collectLogoCandidates(html, baseUrl) {
     return found;
 }
 /** Best asset to DISPLAY as the brand logo. */
-function pickDisplayLogo(candidates) {
-    var _a, _b;
+function pickDisplayLogo(candidates, baseUrl) {
+    var _a;
     const order = {
-        "logo-img": 0, "apple-touch-icon": 1, social: 2, favicon: 3,
+        "logo-img": 0, "apple-touch-icon": 1, favicon: 2, social: 3,
     };
-    return (_b = (_a = [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]) === null || _a === void 0 ? void 0 : _a.url) !== null && _b !== void 0 ? _b : "";
+    const best = (_a = [...candidates].sort((a, b) => order[a.kind] - order[b.kind])[0]) === null || _a === void 0 ? void 0 : _a.url;
+    if (best)
+        return best;
+    if (baseUrl) {
+        try {
+            const domain = new URL(baseUrl).hostname.replace(/^www\./, "");
+            return `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128`;
+        }
+        catch (_b) { }
+    }
+    return "";
 }
 /**
  * Best asset to SAMPLE COLORS from — the app icon is the most reliable brand
@@ -539,6 +587,18 @@ Return ONLY a JSON object with exactly these keys:
 - "industry": string — a short phrase (e.g. "B2B SaaS", "DTC skincare", "3PL logistics").
 - "audience": string — who they sell to, in one concise sentence.
 - "tone": string — their brand voice in 3-6 words (e.g. "Confident, plain-spoken, no hype").
+- "coreIdentity": string — what the company essentially is and does.
+- "productOffering": string — the main products or services they offer.
+- "uniqueBenefits": string — the key benefits that their products provide.
+- "problemSolution": string — the problem they solve for their customers.
+- "mission": string — the overarching goal or mission of the brand.
+- "differentiation": string — how they distinguish themselves from competitors.
+- "ownedSpace": string — the unique category or space they own in the market.
+- "contentAngles": array of exactly 3 concise content pillar titles
+- "toneDos": array of up to 5 concise tone Do's
+- "toneDonts": array of up to 5 concise tone Don'ts
+- "customerSegments": array of objects with "segmentName" (string) and "percentage" (number, total 100)
+- "competitors": array of string competitor names
 - "hashtags": array of 5-8 lowercase hashtag words WITHOUT the # (e.g. ["supplychain","manufacturing"]), relevant to their industry and audience.
 - "sampleCaptions": array of exactly 2 short social captions (max 140 chars each) written in the brand's voice about what they do.
 If a field is genuinely unknowable from the text, use an empty string or empty array. Do not invent facts.
@@ -556,6 +616,23 @@ function parseBrandJson(text) {
         industry: str(parsed.industry, 120),
         audience: str(parsed.audience, 300),
         tone: str(parsed.tone, 200),
+        coreIdentity: str(parsed.coreIdentity, 500),
+        productOffering: str(parsed.productOffering, 500),
+        uniqueBenefits: str(parsed.uniqueBenefits, 500),
+        problemSolution: str(parsed.problemSolution, 500),
+        mission: str(parsed.mission, 500),
+        differentiation: str(parsed.differentiation, 500),
+        ownedSpace: str(parsed.ownedSpace, 500),
+        contentAngles: Array.isArray(parsed.contentAngles) ? parsed.contentAngles.map(x => str(x, 100)) : [],
+        toneDos: Array.isArray(parsed.toneDos) ? parsed.toneDos.map(x => str(x, 100)) : [],
+        toneDonts: Array.isArray(parsed.toneDonts) ? parsed.toneDonts.map(x => str(x, 100)) : [],
+        customerSegments: Array.isArray(parsed.customerSegments)
+            ? parsed.customerSegments.map(x => ({
+                segmentName: str(x === null || x === void 0 ? void 0 : x.segmentName, 100),
+                percentage: typeof (x === null || x === void 0 ? void 0 : x.percentage) === 'number' ? x.percentage : 0
+            }))
+            : [],
+        competitors: Array.isArray(parsed.competitors) ? parsed.competitors.map(x => str(x, 100)) : [],
         hashtags: Array.isArray(parsed.hashtags)
             ? parsed.hashtags.slice(0, 8).map((x) => str(x, 40).replace(/^#/, "")).filter(Boolean)
             : [],
@@ -565,7 +642,7 @@ function parseBrandJson(text) {
     };
 }
 exports.extractBrandFromWebsite = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { timeoutSeconds: 60, memory: "512MiB" }), async (request) => {
-    var _a, _b, _c, _d, _e;
+    var _a, _b;
     const uid = (0, core_1.requireAuth)(request);
     const url = normalizeUrl((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.url) !== null && _b !== void 0 ? _b : "");
     await (0, core_1.enforceCallableRateLimit)(uid, "brand-extraction", core_1.AI_RATE_LIMITS.brandExtraction);
@@ -643,9 +720,9 @@ exports.extractBrandFromWebsite = (0, https_1.onCall)(Object.assign(Object.assig
         brandedImageSource = sourceBuffer ? "website" : "generated";
         if (!sourceBuffer) {
             await (0, core_1.enforceCallableRateLimit)(uid, "onboarding-branded-image", core_1.AI_RATE_LIMITS.imageGeneration);
-            const ai = (0, core_1.getAI)();
-            const response = await ai.models.generateImages({
-                model: "imagen-3.0-generate-001",
+            sourceBuffer = await (0, image_1.renderImageBuffer)({
+                ai: (0, core_1.getAI)(),
+                aspectRatio: "1:1",
                 prompt: [
                     "Create a polished square social media photograph or editorial illustration.",
                     `Brand: ${profile.companyName || new URL(finalUrl).hostname}.`,
@@ -653,11 +730,7 @@ exports.extractBrandFromWebsite = (0, https_1.onCall)(Object.assign(Object.assig
                     profile.sampleCaptions[0] ? `Post context: ${profile.sampleCaptions[0]}.` : "",
                     "Show a specific, credible subject relevant to the business. No logos, no text, no generic gradient background.",
                 ].filter(Boolean).join("\n"),
-                config: { numberOfImages: 1, outputMimeType: "image/png", aspectRatio: "1:1" },
             });
-            const bytes = (_e = (_d = (_c = response.generatedImages) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.image) === null || _e === void 0 ? void 0 : _e.imageBytes;
-            if (bytes)
-                sourceBuffer = Buffer.from(bytes, "base64");
         }
         if (sourceBuffer) {
             const logoBuffer = logoUrl ? await fetchBinary(logoUrl, 2000000, 8000) : null;
@@ -713,7 +786,7 @@ async function createBrandedSquare(sourceBuffer, logoBuffer, colors) {
  * server-side fetch as an arbitrary URL proxy.
  */
 exports.generateBrandedPostImage = (0, https_1.onCall)(Object.assign(Object.assign({}, core_1.callableSecurity), { invoker: "public", timeoutSeconds: 120, memory: "1GiB" }), async (request) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const uid = (0, core_1.requireAuth)(request);
     const websiteUrl = normalizeUrl((_b = (_a = request.data) === null || _a === void 0 ? void 0 : _a.websiteUrl) !== null && _b !== void 0 ? _b : "");
     const brandName = String((_d = (_c = request.data) === null || _c === void 0 ? void 0 : _c.brandName) !== null && _d !== void 0 ? _d : "").trim().slice(0, 120);
@@ -732,9 +805,9 @@ exports.generateBrandedPostImage = (0, https_1.onCall)(Object.assign(Object.assi
     let source = "website";
     if (!sourceBuffer) {
         source = "generated";
-        const ai = (0, core_1.getAI)();
-        const response = await ai.models.generateImages({
-            model: "imagen-3.0-generate-001",
+        sourceBuffer = await (0, image_1.renderImageBuffer)({
+            ai: (0, core_1.getAI)(),
+            aspectRatio: "1:1",
             prompt: [
                 "Create a polished square social media photograph or editorial illustration.",
                 `Brand: ${brandName}.`,
@@ -742,15 +815,10 @@ exports.generateBrandedPostImage = (0, https_1.onCall)(Object.assign(Object.assi
                 ((_g = request.data) === null || _g === void 0 ? void 0 : _g.caption) ? `Post context: ${String(request.data.caption).slice(0, 500)}.` : "",
                 "Show a specific, credible subject relevant to the business. No logos, no text, no generic gradient background.",
             ].filter(Boolean).join("\n"),
-            config: { numberOfImages: 1, outputMimeType: "image/png", aspectRatio: "1:1" },
         });
-        const bytes = (_k = (_j = (_h = response.generatedImages) === null || _h === void 0 ? void 0 : _h[0]) === null || _j === void 0 ? void 0 : _j.image) === null || _k === void 0 ? void 0 : _k.imageBytes;
-        if (!bytes)
-            throw new https_1.HttpsError("internal", "No image was generated.");
-        sourceBuffer = Buffer.from(bytes, "base64");
     }
     const logoBuffer = logoUrl ? await fetchBinary(logoUrl, 2000000, 8000) : null;
-    const output = await createBrandedSquare(sourceBuffer, logoBuffer, (_l = request.data) === null || _l === void 0 ? void 0 : _l.colors);
+    const output = await createBrandedSquare(sourceBuffer, logoBuffer, (_h = request.data) === null || _h === void 0 ? void 0 : _h.colors);
     const storagePath = `users/${uid}/brand-creatives/${(0, uuid_1.v4)()}.png`;
     await (0, core_1.getBucket)().file(storagePath).save(output, {
         metadata: { contentType: "image/png", cacheControl: "private, max-age=31536000" },

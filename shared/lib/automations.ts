@@ -11,6 +11,7 @@ import {
   limit,
   serverTimestamp,
   updateDoc,
+  setDoc,
   onSnapshot,
   Timestamp,
   type Unsubscribe,
@@ -27,10 +28,25 @@ import type {
   SocialPlatform,
 } from "../types";
 
-function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([, v]) => v !== undefined)
-  ) as T;
+export function deepStripUndefined<T>(val: T): T {
+  if (val === null || val === undefined) return val;
+  if (Array.isArray(val)) {
+    return val.map(deepStripUndefined).filter((v) => v !== undefined) as unknown as T;
+  }
+  if (typeof val === "object" && !(val instanceof Date) && !(val instanceof Timestamp)) {
+    const res: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      if (v !== undefined) {
+        res[k] = deepStripUndefined(v);
+      }
+    }
+    return res as T;
+  }
+  return val;
+}
+
+export function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
+  return deepStripUndefined(obj);
 }
 
 function toDate(v: unknown): Date | undefined {
@@ -57,6 +73,55 @@ export async function getSocialAccounts(userId: string): Promise<SocialAccount[]
       } as SocialAccount;
     })
     .filter((a) => a.status !== "disconnected");
+}
+
+export async function saveSocialAccount(
+  data: Omit<SocialAccount, "id" | "linkedAt"> & { id?: string; linkedAt?: Date | number }
+): Promise<string> {
+  if (!db) return "";
+  const id = data.id || `${data.userId}_${data.platform}_${data.externalId || data.username || "account"}`;
+  const linkedAtVal =
+    data.linkedAt instanceof Date
+      ? Timestamp.fromDate(data.linkedAt)
+      : typeof data.linkedAt === "number"
+      ? Timestamp.fromMillis(data.linkedAt)
+      : serverTimestamp();
+
+  await setDoc(
+    doc(db, "socialAccounts", id),
+    stripUndefined({
+      userId: data.userId,
+      provider: data.provider,
+      platform: data.platform,
+      externalId: data.externalId,
+      username: data.username,
+      displayName: data.displayName || data.username,
+      avatarUrl: data.avatarUrl ?? "",
+      status: data.status,
+      linkedAt: linkedAtVal,
+      lastSyncedAt: serverTimestamp(),
+    }),
+    { merge: true }
+  );
+  return id;
+}
+
+export async function deleteSocialAccount(id: string): Promise<void> {
+  if (!db) return;
+  await deleteDoc(doc(db, "socialAccounts", id)).catch(() => {});
+}
+
+export async function deleteSocialAccountsForPlatform(userId: string, platform: string): Promise<void> {
+  if (!db) return;
+  const q = query(
+    collection(db, "socialAccounts"),
+    where("userId", "==", userId),
+    where("platform", "==", platform)
+  );
+  const snap = await getDocs(q);
+  for (const d of snap.docs) {
+    await deleteDoc(d.ref).catch(() => {});
+  }
 }
 
 // --- Brand Profiles ---
