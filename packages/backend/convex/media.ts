@@ -264,25 +264,117 @@ export const renderImageForSuggestion = internalAction({
 // Video (durable, long-running)
 // ---------------------------------------------------------------------------
 
-async function startVeoOperation(prompt: string, aspectRatio: string): Promise<string> {
-  const key = requireGeminiKey();
-  const res = await fetch(`${GEMINI_API_BASE}/models/${MODELS.video}:predictLongRunning`, {
+/** Reference images are capped hard — they ride inline in the request body. */
+const MAX_REFERENCE_IMAGE_BYTES = 6 * 1024 * 1024;
+
+/**
+ * Fetch an image and inline it for Veo. Best-effort: a missing or oversized
+ * brand asset must degrade to a text-only render, never fail the whole job.
+ */
+async function fetchReferenceImage(
+  url: string | undefined,
+): Promise<{ mimeType: string; bytesBase64Encoded: string } | null> {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (!bytes.length || bytes.length > MAX_REFERENCE_IMAGE_BYTES) return null;
+    const mimeType = res.headers.get("content-type")?.split(";")[0] || "image/png";
+    if (!mimeType.startsWith("image/")) return null;
+
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 8192) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    }
+    return { mimeType, bytesBase64Encoded: btoa(binary) };
+  } catch (e) {
+    console.warn("[veo] reference image fetch failed, rendering from text alone:", e);
+    return null;
+  }
+}
+
+async function postVeo(body: unknown): Promise<Response> {
+  return await fetch(`${GEMINI_API_BASE}/models/${MODELS.video}:predictLongRunning`, {
     method: "POST",
-    headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      instances: [{ prompt }],
-      // personGeneration=allow_all: this is a creator tool; avatar/UGC clips are
-      // people-first. Surfaces as an error in job.error if a region forbids it,
-      // rather than silently producing empty frames.
-      parameters: { aspectRatio, personGeneration: "allow_all" },
-    }),
+    headers: { "x-goog-api-key": requireGeminiKey(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
+}
+
+async function startVeoOperation(
+  prompt: string,
+  aspectRatio: string,
+  referenceImage?: { mimeType: string; bytesBase64Encoded: string } | null,
+): Promise<string> {
+  // personGeneration=allow_adult, NOT allow_all. allow_all additionally permits
+  // generating minors and is allowlist-gated in most regions; when it isn't
+  // granted, Veo does not reject the request — it accepts it and then silently
+  // drops the sample through the RAI filter, which is indistinguishable from a
+  // broken pipeline. Every character in this product is an adult anyway.
+  const parameters = { aspectRatio, personGeneration: "allow_adult" };
+
+  // A reference image is what keeps the product identical across beats that are
+  // generated in separate calls sharing no context. Support for it varies by
+  // Veo revision, so a rejection falls back to a text-only render rather than
+  // losing the beat — a slightly less consistent clip beats no clip.
+  if (referenceImage) {
+    const res = await postVeo({
+      instances: [
+        {
+          prompt,
+          referenceImages: [{ image: referenceImage, referenceType: "asset" }],
+        },
+      ],
+      parameters,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.name) return data.name as string;
+    } else {
+      console.warn(
+        `[veo] reference image rejected (${res.status}), retrying text-only: ${(await res.text()).slice(0, 200)}`,
+      );
+    }
+  }
+
+  const res = await postVeo({ instances: [{ prompt }], parameters });
   if (!res.ok) {
     throw new Error(`[veo] start ${res.status}: ${(await res.text()).slice(0, 300)}`);
   }
   const data = await res.json();
   if (!data?.name) throw new Error("[veo] predictLongRunning returned no operation name");
   return data.name as string;
+}
+
+/**
+ * Explain a Veo operation that finished successfully but produced no video.
+ *
+ * This is NOT a generic failure: `done: true` with no `error` and an empty
+ * `generatedSamples` is how Veo reports that its Responsible-AI filter dropped
+ * the render. The reason lives in `raiMediaFilteredReasons`, which we surfaced
+ * as a useless "completed operation had no video uri" until this existed —
+ * leaving a caller unable to tell a blocked prompt from a broken pipeline.
+ *
+ * The field has moved between API revisions, so check both known locations.
+ */
+function describeEmptyVeoResponse(data: any): string {
+  const inner = data?.response?.generateVideoResponse ?? data?.response ?? {};
+  const reasons: string[] = inner.raiMediaFilteredReasons ?? [];
+  const count: number = Number(inner.raiMediaFilteredCount ?? 0);
+
+  if (reasons.length) {
+    return `blocked by Veo's safety filter: ${reasons.join("; ")}`;
+  }
+  if (count > 0) {
+    return `blocked by Veo's safety filter (${count} sample(s) filtered, no reason given)`;
+  }
+  return "Veo returned no video and gave no reason (likely a silent safety filter)";
+}
+
+/** True when a job died because Veo's safety filter rejected it, not because of an outage. */
+export function isVeoSafetyBlock(error: string | null | undefined): boolean {
+  return typeof error === "string" && error.includes("safety filter");
 }
 
 /**
@@ -427,7 +519,7 @@ export const pollVeo = internalAction({
 
     const uri: string | undefined =
       data?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
-    if (!uri) return await fail("completed operation had no video uri");
+    if (!uri) return await fail(describeEmptyVeoResponse(data));
 
     try {
       const dl = await fetch(uri, { headers: { "x-goog-api-key": key } });

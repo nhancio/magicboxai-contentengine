@@ -18,6 +18,12 @@ export const MODELS = {
   image: "gemini-3.1-flash-image",
   /** Text-to-video. Long-running (predictLongRunning) — see media.ts. */
   video: "veo-3.1-generate-preview",
+  /**
+   * Video *understanding* (not generation). Accepts video input, used to watch
+   * a fetched reel and reverse-engineer a prompt that would recreate it —
+   * see lib/maya/videoReference.ts.
+   */
+  videoAnalysis: "gemini-3.8-flash",
   /** Embeddings for Maya's duplicate-suggestion detection. */
   embedding: "gemini-embedding-001",
 } as const;

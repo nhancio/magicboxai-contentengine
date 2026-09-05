@@ -561,11 +561,13 @@ export default function MayaTemplatesTest() {
       const { jobId, mode } = await dispatchVideoGeneration({ adaptationId: adaptationId as any });
       setVideoJobId(jobId as unknown as string);
       toast.success(
-        mode === "lipsync"
-          ? "Lip-syncing the original reel to your brand's new script..."
-          : mode === "dub"
-            ? "Dubbing your brand's script onto the original reel..."
-            : "Generating a new video with Google Veo from your adapted script..."
+        mode === "replicate"
+          ? "Watching the reel, writing the production prompt, then generating each beat..."
+          : mode === "lipsync"
+            ? "Lip-syncing the original reel to your brand's new script..."
+            : mode === "dub"
+              ? "Dubbing your brand's script onto the original reel..."
+              : "Generating a new video with Google Veo from your adapted script..."
       );
     } catch (err: any) {
       toast.error("Video generation dispatch failed: " + err.message);
@@ -1388,11 +1390,13 @@ export default function MayaTemplatesTest() {
                           Final Adapted Reel
                         </h4>
                         <span className="bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">
-                          {videoJob.mode === "lipsync"
-                            ? "Lip-synced onto original"
-                            : videoJob.mode === "dub"
-                              ? "Original reel · new voiceover"
-                              : "Veo generated (new footage)"}{" "}
+                          {videoJob.mode === "replicate"
+                            ? "Replicated · fresh multi-beat cut"
+                            : videoJob.mode === "lipsync"
+                              ? "Lip-synced onto original"
+                              : videoJob.mode === "dub"
+                                ? "Original reel · new voiceover"
+                                : "Veo generated (new footage)"}{" "}
                           • {videoJob.status === "completed" ? "ready" : videoJob.stage}
                         </span>
                       </div>
@@ -1436,18 +1440,80 @@ export default function MayaTemplatesTest() {
                         <div className="py-8 text-center space-y-2">
                           <RefreshCw className="w-6 h-6 mx-auto animate-spin text-emerald-600" />
                           <p className="text-xs text-emerald-800 dark:text-emerald-300 font-medium">
-                            Adapting the reel to your script...
+                            {videoJob.stage === "analyze"
+                              ? "Watching the reel and writing the production prompt..."
+                              : "Adapting the reel to your script..."}
                           </p>
                           <p className="text-[11px] text-zinc-500">
-                            {videoJob.stage === "generate"
-                              ? videoJob.mode === "lipsync"
-                                ? "Lip-syncing the original footage to the new dialogue."
-                                : "Generating footage and voicing your script."
-                              : videoJob.mode === "dub"
-                                ? "Laying your script's voiceover over the original reel and burning in captions."
-                                : "Burning in captions, overlays and your logo."}{" "}
+                            {videoJob.stage === "analyze"
+                              ? "Reverse-engineering its pacing, camera language and energy into a shot-by-shot brief."
+                              : videoJob.stage === "generate"
+                                ? videoJob.mode === "replicate"
+                                  ? "Generating one fresh clip per beat — this is the slow part."
+                                  : videoJob.mode === "lipsync"
+                                    ? "Lip-syncing the original footage to the new dialogue."
+                                    : "Generating footage and voicing your script."
+                                : videoJob.mode === "replicate"
+                                  ? "Stitching the beats together and laying the voiceover over the cut."
+                                  : videoJob.mode === "dub"
+                                    ? "Laying your script's voiceover over the original reel and burning in captions."
+                                    : "Burning in captions, overlays and your logo."}{" "}
                             This takes a minute or two — it keeps updating on its own.
                           </p>
+
+                          {/* Per-beat progress, so a 4-clip run isn't an opaque wait */}
+                          {videoJob.beatClips && videoJob.beatClips.length > 0 && (
+                            <div className="pt-2 space-y-1 text-left max-w-md mx-auto">
+                              {videoJob.beatClips.map((clip: any) => (
+                                <div
+                                  key={clip.index}
+                                  className="flex items-start gap-2 text-[11px] text-zinc-600 dark:text-zinc-400"
+                                >
+                                  <span className="mt-0.5">
+                                    {clip.url ? "✅" : clip.failed ? "❌" : clip.retries ? "🔄" : "⏳"}
+                                  </span>
+                                  <span className="flex-1">
+                                    <strong>Beat {clip.index}</strong> — {clip.description}
+                                    {/* A bare ❌ tells you nothing; the generator's own
+                                        reason is the only way to know whether to reword
+                                        the script or just try again. */}
+                                    {clip.failed && clip.error && (
+                                      <span className="block text-rose-600 dark:text-rose-400">
+                                        {clip.error}
+                                      </span>
+                                    )}
+                                    {!clip.failed && !clip.url && clip.retries > 0 && (
+                                      <span className="block text-amber-600 dark:text-amber-400">
+                                        Blocked by the video model's safety filter — retrying
+                                        with softer wording ({clip.retries}/2).
+                                      </span>
+                                    )}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* The production prompt, for pasting into Omni/Higgsfield directly */}
+                      {videoJob.fullPrompt && (
+                        <div className="pt-3 border-t border-emerald-200 dark:border-emerald-800">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
+                              Production prompt
+                            </span>
+                            <button
+                              onClick={() => copyToClipboard(videoJob.fullPrompt!, "full_prompt")}
+                              className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
+                            >
+                              {copiedKey === "full_prompt" ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                              <span>{copiedKey === "full_prompt" ? "Copied" : "Copy for Omni / Higgsfield"}</span>
+                            </button>
+                          </div>
+                          <pre className="p-3 rounded-lg bg-zinc-950 text-zinc-300 text-[10px] font-mono whitespace-pre-wrap max-h-48 overflow-y-auto border border-zinc-800 leading-relaxed">
+                            {videoJob.fullPrompt}
+                          </pre>
                         </div>
                       )}
                     </div>

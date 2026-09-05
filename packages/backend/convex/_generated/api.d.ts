@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as _diag from "../_diag.js";
 import type * as ai from "../ai.js";
 import type * as automations from "../automations.js";
 import type * as brands from "../brands.js";
@@ -25,8 +26,10 @@ import type * as lib_gemini from "../lib/gemini.js";
 import type * as lib_maya_adaptationLogic from "../lib/maya/adaptationLogic.js";
 import type * as lib_maya_aiContentFilter from "../lib/maya/aiContentFilter.js";
 import type * as lib_maya_curatedTemplates from "../lib/maya/curatedTemplates.js";
+import type * as lib_maya_higgsfieldPrompts from "../lib/maya/higgsfieldPrompts.js";
 import type * as lib_maya_searchQueries from "../lib/maya/searchQueries.js";
 import type * as lib_maya_types from "../lib/maya/types.js";
+import type * as lib_maya_videoReference from "../lib/maya/videoReference.js";
 import type * as lib_models from "../lib/models.js";
 import type * as lib_monid from "../lib/monid.js";
 import type * as lib_presets from "../lib/presets.js";
@@ -64,6 +67,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  _diag: typeof _diag;
   ai: typeof ai;
   automations: typeof automations;
   brands: typeof brands;
@@ -81,8 +85,10 @@ declare const fullApi: ApiFromModules<{
   "lib/maya/adaptationLogic": typeof lib_maya_adaptationLogic;
   "lib/maya/aiContentFilter": typeof lib_maya_aiContentFilter;
   "lib/maya/curatedTemplates": typeof lib_maya_curatedTemplates;
+  "lib/maya/higgsfieldPrompts": typeof lib_maya_higgsfieldPrompts;
   "lib/maya/searchQueries": typeof lib_maya_searchQueries;
   "lib/maya/types": typeof lib_maya_types;
+  "lib/maya/videoReference": typeof lib_maya_videoReference;
   "lib/models": typeof lib_models;
   "lib/monid": typeof lib_monid;
   "lib/presets": typeof lib_presets;
