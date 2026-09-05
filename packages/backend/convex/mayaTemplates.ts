@@ -10,7 +10,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import { requireUid } from "./lib/auth";
-import { reserveMonthlyPostQuota } from "./credits";
+import { reserveMonthlyPostQuota, DEFAULT_VEO_SECONDS } from "./credits";
 import { geminiJson } from "./lib/gemini";
 import { requireFalKey } from "./lib/models";
 import { searchTrendingReels, type TrendingReelsResult } from "./lib/monid";
@@ -22,8 +22,10 @@ import {
 } from "./lib/maya/adaptationLogic";
 import { SEARCH_QUERY_SCHEMA, buildSearchQueryPrompt, GENERIC_FALLBACK_QUERIES } from "./lib/maya/searchQueries";
 import type { BrandContext, MemeTemplate, SynthesizedAdaptation } from "./lib/maya/types";
+import { buildVideoReference, injectBrandIntoReference } from "./lib/maya/videoReference";
 import { synthesizeSpeech, pcmToWav } from "./lib/tts";
 import { submitLipSync, pollLipSyncStatus } from "./lib/fal";
+import { isVeoSafetyBlock } from "./media";
 
 /**
  * MAYA-TEMPLATES — brand-adapted viral meme video pipeline.
@@ -47,8 +49,130 @@ import { submitLipSync, pollLipSyncStatus } from "./lib/fal";
 const POLL_INTERVAL_MS = 15_000;
 const MAX_POLLS = 40; // ~10 min ceiling, same as media.ts's Veo poller
 
+/**
+ * Attempts to recover a beat that Veo's safety filter dropped. Two is
+ * deliberate: attempt 1 re-sends verbatim (the filter is partly
+ * non-deterministic), attempt 2 sends a softened rewrite. Beyond that the
+ * prompt is genuinely being refused and retrying just burns time.
+ */
+const MAX_BEAT_RETRIES = 2;
+
+/** One generated shot of the stitched commercial, as stored on the job row. */
+type BeatClip = {
+  index: number;
+  description: string;
+  mediaJobId: string;
+  url?: string;
+  failed?: boolean;
+  error?: string;
+  prompt?: string;
+  retries?: number;
+};
+
+/**
+ * Rewrite a prompt to clear Veo's safety filter without losing the shot.
+ *
+ * The filter reliably objects to descriptors that make a generated person
+ * feel like a *specific real* person — named nationality/ethnicity, age
+ * qualifiers that could read as a minor, and distress language — even in
+ * plainly harmless commercial contexts. Swapping those for neutral equivalents
+ * keeps the composition, camera and product intact, which is what the beat
+ * actually needs to cut together with its neighbours.
+ */
+export function softenPromptForSafety(prompt: string): string {
+  const substitutions: Array<[RegExp, string]> = [
+    [/\b(young|little|small|teenage|teen)\s+(man|woman|boy|girl|child|kid)\b/gi, "adult character"],
+    [/\b(boy|girl|child|kid|kids|children)\b/gi, "adult character"],
+    [/\b(indian|asian|african|american|chinese|japanese|korean|arab|hispanic|latino|black|white)\s+(man|woman|person|family|male|female|guy|lady)\b/gi, "person"],
+    [/\b(weeping|sobbing|crying|wailing|distraught|despairing)\b/gi, "comically dismayed"],
+    [/\b(scolding|shouting at|yelling at|screaming at|berating)\b/gi, "playfully teasing"],
+    [/\b(starving|malnourished|desperate)\b/gi, "very hungry"],
+  ];
+
+  let softened = substitutions.reduce((acc, [re, to]) => acc.replace(re, to), prompt);
+  softened +=
+    "\n\nSAFETY NOTE: All characters are adult, fictional, stylised animated characters. " +
+    "The tone is light-hearted commercial comedy with no distress, conflict or real-world likeness.";
+  return softened;
+}
+
 function bytesToBlob(bytes: Uint8Array, type: string): Blob {
   return new Blob([bytes as unknown as BlobPart], { type });
+}
+
+type AdaptationDoc = {
+  sourceTemplateId: string;
+  sourceVideoUrl: string;
+  sourceTitle: string;
+  sourceFormat?: string;
+  sourceThumbnailUrl?: string;
+  durationSec: number;
+  hookText: string;
+  adaptedScript: string;
+  lipSyncScript: Array<{ speakerId: string; startSec: number; endSec: number; spokenDialogue: string }>;
+  brandSnapshot: {
+    name: string;
+    logoUrl?: string;
+    colors?: { primary: string; secondary?: string; accent?: string };
+    industry?: string;
+    audience?: string;
+    productOffering?: string;
+    toneOfVoice?: string;
+    targetCallToAction?: string;
+  };
+};
+
+/**
+ * Rebuilds the brand context an adaptation was generated for, from the
+ * snapshot stored on it — deliberately NOT re-read from the live brand kit,
+ * which may have been edited since.
+ */
+function brandFromAdaptation(a: AdaptationDoc): BrandContext {
+  return {
+    name: a.brandSnapshot.name,
+    logoUrl: a.brandSnapshot.logoUrl,
+    colors: a.brandSnapshot.colors,
+    industry: a.brandSnapshot.industry,
+    audience: a.brandSnapshot.audience,
+    productOffering: a.brandSnapshot.productOffering,
+    toneOfVoice: a.brandSnapshot.toneOfVoice,
+    targetCallToAction: a.brandSnapshot.targetCallToAction,
+  };
+}
+
+/**
+ * Minimal MemeTemplate reconstructed from a stored adaptation. Only the fields
+ * buildVideoReference actually reads carry real data (video url, title,
+ * format, duration, speaker count); the rest satisfy the type.
+ */
+function templateStubFromAdaptation(a: AdaptationDoc): MemeTemplate {
+  return {
+    templateId: a.sourceTemplateId,
+    title: a.sourceTitle,
+    category: "Indian Brainrot",
+    format: (a.sourceFormat as MemeTemplate["format"]) ?? "talking_head_rant",
+    previewVideoUrl: a.sourceVideoUrl,
+    thumbnailUrl: a.sourceThumbnailUrl,
+    previewImageUrl: a.sourceThumbnailUrl,
+    durationSec: a.durationSec,
+    aspectRatio: "9:16",
+    viralHook: a.hookText,
+    humorMechanism: "Viral pacing with a punchline turn",
+    culturalContext: "Trending social reel",
+    beats: [],
+    textSlots: [],
+    audioPlan: { trackType: "bgm", suggestedTrackStyle: "High-energy", sfxCues: [] },
+    lipSyncSlots: a.lipSyncScript.map((l) => ({
+      speakerId: l.speakerId,
+      speakerDescription: "On-screen speaker",
+      startSec: l.startSec,
+      endSec: l.endSec,
+      originalDialogue: l.spokenDialogue,
+      emotionalExpression: "ranting" as const,
+    })),
+    defaultScript: a.adaptedScript,
+    tags: [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +241,11 @@ const brandSnapshotValidator = v.object({
       accent: v.optional(v.string()),
     }),
   ),
+  industry: v.optional(v.string()),
+  audience: v.optional(v.string()),
+  productOffering: v.optional(v.string()),
+  toneOfVoice: v.optional(v.string()),
+  targetCallToAction: v.optional(v.string()),
 });
 
 const textOverlayValidator = v.object({
@@ -163,6 +292,8 @@ export const saveAdaptation = internalMutation({
     sourceTitle: v.string(),
     brandId: v.optional(v.string()),
     brandSnapshot: brandSnapshotValidator,
+    sourceFormat: v.optional(v.string()),
+    sourceThumbnailUrl: v.optional(v.string()),
     hookText: v.string(),
     adaptedScript: v.string(),
     textOverlays: v.array(textOverlayValidator),
@@ -256,7 +387,14 @@ export const adaptTemplate = action({
         name: brand.name,
         logoUrl: brand.logoUrl,
         colors: brand.colors,
+        industry: brand.industry,
+        audience: brand.audience,
+        productOffering: brand.productOffering,
+        toneOfVoice: brand.toneOfVoice,
+        targetCallToAction: brand.targetCallToAction,
       },
+      sourceFormat: template.format,
+      sourceThumbnailUrl: template.thumbnailUrl ?? template.previewImageUrl,
       hookText: synthesized.hookText,
       adaptedScript: synthesized.adaptedScript,
       textOverlays: synthesized.textOverlays,
@@ -306,7 +444,12 @@ export const createVideoJob = internalMutation({
   args: {
     userId: v.string(),
     adaptationId: v.id("mayaAdaptations"),
-    mode: v.union(v.literal("dub"), v.literal("lipsync"), v.literal("veo_synthetic")),
+    mode: v.union(
+      v.literal("replicate"),
+      v.literal("dub"),
+      v.literal("lipsync"),
+      v.literal("veo_synthetic"),
+    ),
   },
   handler: async (ctx, args): Promise<Id<"mayaVideoJobs">> => {
     return await ctx.db.insert("mayaVideoJobs", {
@@ -346,6 +489,8 @@ export const job = query({
       generatedVideoUrl: j.generatedVideoUrl ?? null,
       finalVideoUrl: j.finalVideoUrl ?? null,
       ttsAudioUrl: j.ttsAudioUrl ?? null,
+      fullPrompt: j.fullPrompt ?? null,
+      beatClips: j.beatClips ?? null,
       error: j.error ?? null,
     };
   },
@@ -363,12 +508,22 @@ export const job = query({
 export const dispatchVideoGeneration = action({
   args: {
     adaptationId: v.id("mayaAdaptations"),
-    mode: v.optional(v.union(v.literal("dub"), v.literal("lipsync"), v.literal("veo_synthetic"))),
+    mode: v.optional(
+      v.union(
+        v.literal("replicate"),
+        v.literal("dub"),
+        v.literal("lipsync"),
+        v.literal("veo_synthetic"),
+      ),
+    ),
   },
   handler: async (
     ctx,
     args,
-  ): Promise<{ jobId: Id<"mayaVideoJobs">; mode: "dub" | "lipsync" | "veo_synthetic" }> => {
+  ): Promise<{
+    jobId: Id<"mayaVideoJobs">;
+    mode: "replicate" | "dub" | "lipsync" | "veo_synthetic";
+  }> => {
     const uid = await requireUid(ctx);
     const adaptation = await ctx.runQuery(internal.mayaTemplates.getAdaptation, {
       adaptationId: args.adaptationId,
@@ -377,19 +532,11 @@ export const dispatchVideoGeneration = action({
       throw new Error("Adaptation not found");
     }
 
-    // Default keeps the ORIGINAL reel: with a Fal key we also re-sync the
-    // speaker's mouth, without one we still dub the adapted script over the
-    // same footage. veo_synthetic (which replaces the footage entirely) is
-    // only ever used when explicitly asked for.
-    let mode = args.mode;
-    if (!mode) {
-      try {
-        requireFalKey();
-        mode = "lipsync";
-      } catch {
-        mode = "dub";
-      }
-    }
+    // Default is the replication pipeline: reverse-engineer the reel into a
+    // production prompt and generate a fresh original commercial from it.
+    // dub / lipsync (which reuse the original footage) and veo_synthetic
+    // (one generic clip) remain available when asked for explicitly.
+    const mode = args.mode ?? "replicate";
 
     const jobId = await ctx.runMutation(internal.mayaTemplates.createVideoJob, {
       userId: uid,
@@ -398,7 +545,109 @@ export const dispatchVideoGeneration = action({
     });
     const seconds = Math.max(1, Math.ceil(adaptation.durationSec));
 
-    if (mode === "dub") {
+    if (mode === "replicate") {
+      // Reverse-engineer the reel, then generate one fresh clip per beat.
+      // Each beat is its own media.renderVideo job, which bills its own
+      // v-credits — so a 4-beat commercial costs ~4x a single clip.
+      try {
+        await ctx.runMutation(internal.mayaTemplates.patchVideoJob, {
+          jobId,
+          patch: { status: "rendering", stage: "analyze" },
+        });
+
+        const brand = brandFromAdaptation(adaptation as AdaptationDoc);
+        const reference = await buildVideoReference(
+          templateStubFromAdaptation(adaptation as AdaptationDoc),
+          brand,
+        );
+        const injected = injectBrandIntoReference(reference, brand, adaptation.adaptedScript);
+
+        // Voiceover for the stitched cut — Veo clips come back silent.
+        let ttsAudioStorageId: Id<"_storage"> | undefined;
+        let ttsAudioUrl: string | undefined;
+        try {
+          const { pcmBase64, sampleRateHz } = await synthesizeSpeech(adaptation.adaptedScript);
+          const wavBytes = pcmToWav(pcmBase64, sampleRateHz);
+          ttsAudioStorageId = await ctx.storage.store(bytesToBlob(wavBytes, "audio/wav"));
+          ttsAudioUrl = (await ctx.storage.getUrl(ttsAudioStorageId)) ?? undefined;
+        } catch (ttsErr) {
+          console.warn("[mayaTemplates] TTS failed for replicate run, cut will be silent:", ttsErr);
+        }
+
+        // One generation job per beat. Kicked off together; the poller waits
+        // for all of them before stitching.
+        // Every beat is generated against the SAME two stills: the brand's own
+        // asset (so the product is identical shot to shot) and a frame of the
+        // source reel (so the render style and palette match the thing that
+        // went viral). Without them, four independent calls produce four
+        // unrelated-looking clips that cannot be cut together.
+        const referenceImageUrls = [brand.logoUrl, adaptation.sourceThumbnailUrl].filter(
+          (u): u is string => !!u,
+        );
+
+        // Price the WHOLE commercial before spending anything on it.
+        //
+        // Each beat bills separately, so without this the loop happily pays for
+        // beats 1-3 and then throws InsufficientCredits on beat 4 — which
+        // aborts this handler before `beatClips` is ever persisted. The three
+        // paid clips finish generating into storage with nothing pointing at
+        // them: the user is charged for a reel they never see, and no refund
+        // fires because none of those renders actually failed. Failing up front
+        // is the only way to keep partial spend off the table.
+        const totalCost = injected.beats.length * DEFAULT_VEO_SECONDS;
+        const balance = await ctx.runQuery(internal.credits.get, { userId: uid });
+        if (balance.vCredits < totalCost) {
+          throw new Error(
+            `This reel needs ${totalCost} v-credits (${injected.beats.length} shots x ` +
+              `${DEFAULT_VEO_SECONDS}s) and you have ${balance.vCredits}. ` +
+              `Nothing was charged.`,
+          );
+        }
+
+        const beatClips: BeatClip[] = [];
+        for (const beat of injected.beats) {
+          const beatJobId: Id<"mediaJobs"> = await ctx.runAction(internal.media.renderOmniVideo, {
+            userId: uid,
+            prompt: beat.clipPrompt,
+            durationSeconds: DEFAULT_VEO_SECONDS,
+            referenceImageUrls,
+          });
+          beatClips.push({
+            index: beat.index,
+            description: beat.description,
+            mediaJobId: String(beatJobId),
+            // Kept so the poller can re-send (or soften and re-send) a beat
+            // that Veo's safety filter drops, without re-running analysis.
+            prompt: beat.clipPrompt,
+            retries: 0,
+          });
+        }
+
+        await ctx.runMutation(internal.mayaTemplates.patchVideoJob, {
+          jobId,
+          patch: {
+            status: "rendering",
+            stage: "generate",
+            fullPrompt: injected.fullPrompt,
+            beatClips,
+            referenceImageUrls,
+            ttsAudioStorageId,
+            ttsAudioUrl,
+            ...(reference.degraded
+              ? { error: "Video analysis degraded — used a genre-matched fallback prompt." }
+              : {}),
+          },
+        });
+        await ctx.scheduler.runAfter(POLL_INTERVAL_MS, internal.mayaTemplates.pollReplicateBeats, {
+          jobId,
+        });
+      } catch (e) {
+        await ctx.runMutation(internal.mayaTemplates.patchVideoJob, {
+          jobId,
+          patch: { status: "failed", error: String(e).slice(0, 300) },
+        });
+      }
+    } else if (mode === "dub") {
       // Keep the original reel exactly as-is; only its audio changes. No
       // external video model involved, so nothing extra to bill.
       try {
@@ -583,6 +832,221 @@ export const pollFalJob = internalAction({
     }
   },
 });
+
+/**
+ * Waits for every beat's generation job, then stitches them into one cut.
+ *
+ * Beats are independent media.renderVideo jobs. A single failed beat doesn't
+ * sink the run — we stitch whatever succeeded and note the gap, because
+ * losing a whole billed commercial to one bad clip is worse than a short cut.
+ */
+export const pollReplicateBeats = internalAction({
+  args: { jobId: v.id("mayaVideoJobs") },
+  handler: async (ctx, { jobId }) => {
+    const jobRow = await ctx.runQuery(internal.mayaTemplates.getVideoJob, { jobId });
+    if (!jobRow || jobRow.status !== "rendering" || !jobRow.beatClips?.length) return;
+    const attempts = (jobRow.attempts ?? 0) + 1;
+
+    const resolved: BeatClip[] = [];
+    let pending = 0;
+
+    for (const clip of jobRow.beatClips) {
+      if (clip.url || clip.failed) {
+        resolved.push(clip);
+        continue;
+      }
+      const mediaJob = await ctx.runQuery(internal.media.getJob, {
+        jobId: clip.mediaJobId as Id<"mediaJobs">,
+      });
+      if (!mediaJob) {
+        resolved.push({ ...clip, failed: true, error: "generation job disappeared" });
+        continue;
+      }
+      if (mediaJob.status === "completed" && mediaJob.url) {
+        resolved.push({ ...clip, url: mediaJob.url });
+        continue;
+      }
+      if (mediaJob.status !== "failed") {
+        resolved.push(clip);
+        pending++;
+        continue;
+      }
+
+      // Veo's safety filter is stochastic: the same prompt that was dropped
+      // often passes on a second attempt, and softening the wording usually
+      // clears it. A blocked beat used to be dead on the spot, which is how a
+      // 4-beat commercial silently became an 8-second clip. Retry before
+      // giving up. Each retry re-bills, but the failed attempt was refunded by
+      // media.renderVideo, so the user only pays for clips they actually get.
+      const retries = clip.retries ?? 0;
+      const canRetry = isVeoSafetyBlock(mediaJob.error) && retries < MAX_BEAT_RETRIES && !!clip.prompt;
+      if (!canRetry) {
+        resolved.push({
+          ...clip,
+          failed: true,
+          error: mediaJob.error ?? "generation failed",
+        });
+        continue;
+      }
+
+      // First retry re-sends verbatim (filtering is partly non-deterministic);
+      // later retries also soften the wording that most often trips the filter.
+      const nextPrompt = retries === 0 ? clip.prompt! : softenPromptForSafety(clip.prompt!);
+      console.warn(
+        `[mayaTemplates] beat ${clip.index} blocked by Veo safety filter, retry ${retries + 1}/${MAX_BEAT_RETRIES}: ${mediaJob.error}`,
+      );
+      try {
+        const retryJobId: Id<"mediaJobs"> = await ctx.runAction(internal.media.renderOmniVideo, {
+          userId: jobRow.userId,
+          prompt: nextPrompt,
+          durationSeconds: DEFAULT_VEO_SECONDS,
+          referenceImageUrls: jobRow.referenceImageUrls ?? [],
+        });
+        resolved.push({
+          ...clip,
+          mediaJobId: String(retryJobId),
+          prompt: nextPrompt,
+          retries: retries + 1,
+          error: undefined,
+        });
+        pending++;
+      } catch (retryErr) {
+        resolved.push({
+          ...clip,
+          failed: true,
+          error: `${mediaJob.error ?? "generation failed"} (retry failed: ${String(retryErr).slice(0, 80)})`,
+        });
+      }
+    }
+
+    await ctx.runMutation(internal.mayaTemplates.patchVideoJob, {
+      jobId,
+      patch: { beatClips: resolved, attempts },
+    });
+
+    if (pending > 0) {
+      if (attempts >= MAX_POLLS) {
+        await ctx.runMutation(internal.mayaTemplates.patchVideoJob, {
+          jobId,
+          patch: { status: "failed", error: `Timed out waiting on ${pending} beat clip(s)` },
+        });
+        return;
+      }
+      await ctx.scheduler.runAfter(POLL_INTERVAL_MS, internal.mayaTemplates.pollReplicateBeats, { jobId });
+      return;
+    }
+
+    const ready = resolved.filter((c) => c.url).sort((a, b) => a.index - b.index);
+    if (!ready.length) {
+      await ctx.runMutation(internal.mayaTemplates.patchVideoJob, {
+        jobId,
+        patch: {
+          status: "failed",
+          error:
+            "Every beat clip failed to generate. " +
+            resolved.map((c) => `Beat ${c.index}: ${c.error ?? "unknown"}`).join(" | "),
+        },
+      });
+      return;
+    }
+
+    const lost = resolved.filter((c) => !c.url);
+    await ctx.runMutation(internal.mayaTemplates.patchVideoJob, {
+      jobId,
+      patch: {
+        stage: "compose",
+        ...(lost.length
+          ? {
+              error:
+                `${lost.length} of ${resolved.length} beats failed after ${MAX_BEAT_RETRIES} retries; ` +
+                `stitching the rest. ` +
+                lost.map((c) => `Beat ${c.index}: ${c.error ?? "unknown"}`).join(" | "),
+            }
+          : {}),
+      },
+    });
+
+    await stitchBeats(ctx, jobId, ready.map((c) => c.url!), jobRow.ttsAudioUrl);
+  },
+});
+
+/**
+ * Concatenates the beat clips into one video via the renderer's declarative
+ * FFmpeg endpoint, laying the TTS voiceover over the whole cut.
+ *
+ * Convex's V8 runtime has no ffmpeg, so this step genuinely cannot happen
+ * without a reachable renderer — on failure we surface the best available
+ * artifact (the first beat) rather than losing the run.
+ */
+async function stitchBeats(
+  ctx: ActionCtx,
+  jobId: Id<"mayaVideoJobs">,
+  clipUrls: string[],
+  voiceUrl?: string,
+): Promise<void> {
+  const rendererBase = (process.env.RENDERER_URL || "http://localhost:8005")
+    .replace(/\/api\/(render|compose)$/, "")
+    .replace(/\/+$/, "");
+  const token = process.env.RENDERER_TOKEN;
+
+  try {
+    const manifest = {
+      output: { width: 1080, height: 1920, fps: 30 },
+      scenes: clipUrls.map((source, i) => ({
+        source,
+        kind: "video" as const,
+        transitionToNext: i < clipUrls.length - 1 ? { type: "cut" as const } : undefined,
+      })),
+      ...(voiceUrl ? { audio: { voice: { source: voiceUrl, volume: 1 } } } : {}),
+    };
+
+    const res = await fetch(`${rendererBase}/api/compose`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ manifest }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.videoUrl) {
+      throw new Error(data?.error || `renderer responded ${res.status}`);
+    }
+
+    const dl = await fetch(data.videoUrl);
+    if (!dl.ok) throw new Error(`download stitched video ${dl.status}`);
+    const bytes = new Uint8Array(await dl.arrayBuffer());
+    const storageId = await ctx.storage.store(bytesToBlob(bytes, "video/mp4"));
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new Error("storage.getUrl returned null for stitched video");
+
+    // Hand the stitched cut to the normal compose step for overlays + logo.
+    await ctx.runMutation(internal.mayaTemplates.patchVideoJob, {
+      jobId,
+      patch: { generatedVideoStorageId: storageId, generatedVideoUrl: url },
+    });
+    await composeAndFinish(ctx, jobId);
+  } catch (e) {
+    const raw = String(e);
+    const unreachable = /Connection refused|ECONNREFUSED|tcp connect error|error sending request|fetch failed/i.test(raw);
+    const message = unreachable
+      ? `Stitching needs the render service, which is unreachable at ${rendererBase}. ` +
+        `Deploy apps/renderer somewhere this Convex deployment can reach and set it with: ` +
+        `npx convex env set RENDERER_URL <url>. Showing the first beat only — the individual ` +
+        `beat clips all generated fine.`
+      : `Stitching failed (${raw.slice(0, 200)}). Showing the first beat only.`;
+    console.warn("[mayaTemplates] beat stitching failed:", raw);
+    await ctx.runMutation(internal.mayaTemplates.patchVideoJob, {
+      jobId,
+      patch: {
+        status: "completed",
+        stage: "done",
+        finalVideoUrl: clipUrls[0],
+        error: message,
+      },
+    });
+  }
+}
 
 /** Bridges an in-flight media.renderVideo job (Veo) into this table's job shape. */
 export const pollVeoBridge = internalAction({

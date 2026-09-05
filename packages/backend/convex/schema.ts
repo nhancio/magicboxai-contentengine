@@ -717,7 +717,18 @@ export default defineSchema({
           accent: v.optional(v.string()),
         }),
       ),
+      // Captured so a later generation run can rebuild the full brand context
+      // without re-reading the (possibly since-edited) brand kit. Optional so
+      // rows written before these existed still validate.
+      industry: v.optional(v.string()),
+      audience: v.optional(v.string()),
+      productOffering: v.optional(v.string()),
+      toneOfVoice: v.optional(v.string()),
+      targetCallToAction: v.optional(v.string()),
     }),
+    // Enough of the source template to re-derive a MemeTemplate for analysis.
+    sourceFormat: v.optional(v.string()),
+    sourceThumbnailUrl: v.optional(v.string()),
     hookText: v.string(),
     adaptedScript: v.string(),
     textOverlays: v.array(
@@ -785,12 +796,24 @@ export default defineSchema({
   mayaVideoJobs: defineTable({
     userId: v.string(),
     adaptationId: v.id("mayaAdaptations"),
-    // "dub" = keep the ORIGINAL reel footage, replace its audio with the
-    // adapted script's voiceover + burn in overlays (no external video model,
-    // works with the Google key alone). "lipsync" additionally re-syncs the
-    // speaker's mouth via Fal. "veo_synthetic" discards the original footage.
-    mode: v.union(v.literal("dub"), v.literal("lipsync"), v.literal("veo_synthetic")),
-    stage: v.union(v.literal("tts"), v.literal("generate"), v.literal("compose"), v.literal("done")),
+    // "replicate" = reverse-engineer the reel into a sectioned production
+    // prompt, generate one fresh clip per beat, stitch them into the full
+    // commercial. "dub" = keep the ORIGINAL reel footage and only replace its
+    // audio. "lipsync" additionally re-syncs the speaker's mouth via Fal.
+    // "veo_synthetic" = one generic generated clip, no beat structure.
+    mode: v.union(
+      v.literal("replicate"),
+      v.literal("dub"),
+      v.literal("lipsync"),
+      v.literal("veo_synthetic"),
+    ),
+    stage: v.union(
+      v.literal("tts"),
+      v.literal("analyze"),
+      v.literal("generate"),
+      v.literal("compose"),
+      v.literal("done"),
+    ),
     status: v.union(
       v.literal("pending"),
       v.literal("rendering"),
@@ -803,6 +826,34 @@ export default defineSchema({
     // (veo_synthetic mode, stored as a string so this table stays provider-agnostic).
     falRequestId: v.optional(v.string()),
     veoMediaJobId: v.optional(v.string()),
+    // "replicate" mode: the sectioned production document (shown in the UI so
+    // it can be pasted into Omni/Higgsfield manually) and one tracked clip per
+    // beat. Optional so rows written before this mode existed still validate.
+    fullPrompt: v.optional(v.string()),
+    beatClips: v.optional(
+      v.array(
+        v.object({
+          index: v.number(),
+          description: v.string(),
+          /** mediaJobs _id as a string, so this table stays provider-agnostic. */
+          mediaJobId: v.string(),
+          url: v.optional(v.string()),
+          failed: v.optional(v.boolean()),
+          /** Why this beat failed, verbatim from the generator. Shown in the UI. */
+          error: v.optional(v.string()),
+          /** The prompt actually sent, so a safety-blocked beat can be retried softened. */
+          prompt: v.optional(v.string()),
+          /** Retries already spent on this beat (safety blocks are stochastic). */
+          retries: v.optional(v.number()),
+        }),
+      ),
+    ),
+    /**
+     * Stills handed to the video model on every beat — the brand asset plus a
+     * frame of the source reel — so the product and the render style stay
+     * identical across independently-generated shots.
+     */
+    referenceImageUrls: v.optional(v.array(v.string())),
     generatedVideoStorageId: v.optional(v.id("_storage")),
     generatedVideoUrl: v.optional(v.string()),
     finalVideoStorageId: v.optional(v.id("_storage")),
