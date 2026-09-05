@@ -19,6 +19,22 @@ export const MODELS = {
   /** Text-to-video. Long-running (predictLongRunning) — see media.ts. */
   video: "veo-3.1-generate-preview",
   /**
+   * Video generation WITH reference images — the generator Maya's replication
+   * pipeline actually uses.
+   *
+   * Chosen over Veo for that path because, verified live on 2026-09-05 against
+   * this deployment's key, it: accepts inline reference images and videos that
+   * genuinely condition the output; returns 9:16 vertical WITH an audio track;
+   * and completes in ONE synchronous call. Veo 3.1 on the Gemini Developer API
+   * does none of those — its `referenceImages` are rejected on 9:16 renders,
+   * its clips come back silent, and it needs long-running-operation polling.
+   *
+   * Reached through the Interactions API (POST /v1beta/interactions), NOT
+   * generateContent — that endpoint 400s with "only supports Interactions
+   * API". See lib/omni.ts.
+   */
+  omniVideo: "gemini-omni-1.1-flash",
+  /**
    * Video *understanding* (not generation). Accepts video input, used to watch
    * a fetched reel and reverse-engineer a prompt that would recreate it —
    * see lib/maya/videoReference.ts.

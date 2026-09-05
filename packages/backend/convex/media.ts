@@ -11,6 +11,7 @@ import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import { requireUid } from "./lib/auth";
 import { geminiImage } from "./lib/gemini";
+import { fetchOmniReference, generateOmniVideo } from "./lib/omni";
 import { GEMINI_API_BASE, MODELS, requireGeminiKey } from "./lib/models";
 import { DEFAULT_VEO_SECONDS } from "./credits";
 
@@ -264,81 +265,21 @@ export const renderImageForSuggestion = internalAction({
 // Video (durable, long-running)
 // ---------------------------------------------------------------------------
 
-/** Reference images are capped hard — they ride inline in the request body. */
-const MAX_REFERENCE_IMAGE_BYTES = 6 * 1024 * 1024;
-
-/**
- * Fetch an image and inline it for Veo. Best-effort: a missing or oversized
- * brand asset must degrade to a text-only render, never fail the whole job.
- */
-async function fetchReferenceImage(
-  url: string | undefined,
-): Promise<{ mimeType: string; bytesBase64Encoded: string } | null> {
-  if (!url) return null;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (!bytes.length || bytes.length > MAX_REFERENCE_IMAGE_BYTES) return null;
-    const mimeType = res.headers.get("content-type")?.split(";")[0] || "image/png";
-    if (!mimeType.startsWith("image/")) return null;
-
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += 8192) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-    }
-    return { mimeType, bytesBase64Encoded: btoa(binary) };
-  } catch (e) {
-    console.warn("[veo] reference image fetch failed, rendering from text alone:", e);
-    return null;
-  }
-}
-
-async function postVeo(body: unknown): Promise<Response> {
-  return await fetch(`${GEMINI_API_BASE}/models/${MODELS.video}:predictLongRunning`, {
+async function startVeoOperation(prompt: string, aspectRatio: string): Promise<string> {
+  const res = await fetch(`${GEMINI_API_BASE}/models/${MODELS.video}:predictLongRunning`, {
     method: "POST",
     headers: { "x-goog-api-key": requireGeminiKey(), "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      instances: [{ prompt }],
+      // personGeneration MUST stay "allow_all". This endpoint rejects
+      // "allow_adult" outright with 400 "currently not supported" — that value
+      // is documented and valid on Vertex AI, but not on the Gemini Developer
+      // API. Do not "tighten" this without a response proving otherwise; the
+      // only other value this surface takes is dont_allow, which would forbid
+      // the people most clips contain.
+      parameters: { aspectRatio, personGeneration: "allow_all" },
+    }),
   });
-}
-
-async function startVeoOperation(
-  prompt: string,
-  aspectRatio: string,
-  referenceImage?: { mimeType: string; bytesBase64Encoded: string } | null,
-): Promise<string> {
-  // personGeneration=allow_adult, NOT allow_all. allow_all additionally permits
-  // generating minors and is allowlist-gated in most regions; when it isn't
-  // granted, Veo does not reject the request — it accepts it and then silently
-  // drops the sample through the RAI filter, which is indistinguishable from a
-  // broken pipeline. Every character in this product is an adult anyway.
-  const parameters = { aspectRatio, personGeneration: "allow_adult" };
-
-  // A reference image is what keeps the product identical across beats that are
-  // generated in separate calls sharing no context. Support for it varies by
-  // Veo revision, so a rejection falls back to a text-only render rather than
-  // losing the beat — a slightly less consistent clip beats no clip.
-  if (referenceImage) {
-    const res = await postVeo({
-      instances: [
-        {
-          prompt,
-          referenceImages: [{ image: referenceImage, referenceType: "asset" }],
-        },
-      ],
-      parameters,
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.name) return data.name as string;
-    } else {
-      console.warn(
-        `[veo] reference image rejected (${res.status}), retrying text-only: ${(await res.text()).slice(0, 200)}`,
-      );
-    }
-  }
-
-  const res = await postVeo({ instances: [{ prompt }], parameters });
   if (!res.ok) {
     throw new Error(`[veo] start ${res.status}: ${(await res.text()).slice(0, 300)}`);
   }
@@ -438,6 +379,124 @@ export const renderVideo = internalAction({
       });
     }
     return jobId;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Video via Gemini Omni (reference-image capable)
+// ---------------------------------------------------------------------------
+
+/**
+ * Start an Omni render as a durable job in the SAME `mediaJobs` shape Veo uses,
+ * so every existing poller and consumer works unchanged.
+ *
+ * Omni is synchronous — one call blocks for minutes and returns the finished
+ * MP4 — so there is no operation to poll. The actual work is handed to a
+ * scheduled action instead of being done inline, which gives every clip its own
+ * fresh action budget: four beats generated inside one caller would race that
+ * caller's timeout, and a timeout there loses every clip at once.
+ */
+export const renderOmniVideo = internalAction({
+  args: {
+    userId: v.string(),
+    prompt: v.string(),
+    target: v.optional(targetValidator),
+    durationSeconds: v.optional(v.number()),
+    /** Product/brand stills and style frames that condition the render. */
+    referenceImageUrls: v.optional(v.array(v.string())),
+    /** Source clip whose energy the render should carry. */
+    referenceVideoUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Id<"mediaJobs">> => {
+    if (!args.prompt.trim() || args.prompt.length > MAX_GENERATION_PROMPT_LENGTH) {
+      throw new Error("Video prompt must be between 1 and 8,000 characters");
+    }
+    const requestedSeconds = args.durationSeconds ?? DEFAULT_VEO_SECONDS;
+    if (!Number.isFinite(requestedSeconds) || requestedSeconds < 1 || requestedSeconds > MAX_VIDEO_SECONDS) {
+      throw new Error(`Video duration must be between 1 and ${MAX_VIDEO_SECONDS} seconds`);
+    }
+    const seconds = Math.ceil(requestedSeconds);
+    await ctx.runMutation(internal.credits.spendV, {
+      userId: args.userId,
+      amount: seconds,
+      reason: "generate_video",
+    });
+
+    const jobId = await ctx.runMutation(internal.media.createJob, {
+      userId: args.userId,
+      kind: "video",
+      prompt: args.prompt,
+      aspectRatio: "9:16",
+      target: args.target,
+    });
+    await ctx.runMutation(internal.media.patchJob, {
+      jobId,
+      patch: { status: "rendering", billedSeconds: seconds },
+    });
+    await ctx.scheduler.runAfter(0, internal.media.runOmniJob, {
+      jobId,
+      referenceImageUrls: args.referenceImageUrls,
+      referenceVideoUrl: args.referenceVideoUrl,
+    });
+    return jobId;
+  },
+});
+
+/** The blocking half of an Omni render: generate, store, settle the job. */
+export const runOmniJob = internalAction({
+  args: {
+    jobId: v.id("mediaJobs"),
+    referenceImageUrls: v.optional(v.array(v.string())),
+    referenceVideoUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, { jobId, referenceImageUrls, referenceVideoUrl }) => {
+    const jobRow = await ctx.runQuery(internal.media.getJob, { jobId });
+    if (!jobRow || jobRow.status !== "rendering") return;
+
+    try {
+      const references = await Promise.all([
+        ...(referenceImageUrls ?? []).map((url) => fetchOmniReference(url, "image")),
+        ...(referenceVideoUrl ? [fetchOmniReference(referenceVideoUrl, "video")] : []),
+      ]);
+
+      const { mimeType, bytes } = await generateOmniVideo({
+        prompt: jobRow.prompt,
+        references,
+      });
+
+      const storageId = await ctx.storage.store(bytesToBlob(bytes, mimeType));
+      const url = await ctx.storage.getUrl(storageId);
+      if (!url) throw new Error("storage.getUrl returned null for video");
+
+      await ctx.runMutation(internal.media.patchJob, {
+        jobId,
+        patch: { status: "completed", url, storageId },
+      });
+
+      if (jobRow.target) {
+        await ctx.runMutation(internal.media.attachMedia, {
+          target: jobRow.target,
+          type: "video",
+          url,
+          storagePath: storageId,
+          source: "veo",
+        });
+      }
+    } catch (e) {
+      const billed = Number((jobRow as any).billedSeconds ?? 0);
+      if (billed > 0) {
+        await ctx.runMutation(internal.credits.refundV, {
+          userId: jobRow.userId,
+          amount: billed,
+          reason: "refund_generate_video_failed",
+          refId: String(jobId),
+        });
+      }
+      await ctx.runMutation(internal.media.patchJob, {
+        jobId,
+        patch: { status: "failed", error: String(e).slice(0, 300), billedSeconds: 0 },
+      });
+    }
   },
 });
 

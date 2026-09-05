@@ -8,7 +8,6 @@
  * @module
  */
 
-import type * as _diag from "../_diag.js";
 import type * as ai from "../ai.js";
 import type * as automations from "../automations.js";
 import type * as brands from "../brands.js";
@@ -32,6 +31,7 @@ import type * as lib_maya_types from "../lib/maya/types.js";
 import type * as lib_maya_videoReference from "../lib/maya/videoReference.js";
 import type * as lib_models from "../lib/models.js";
 import type * as lib_monid from "../lib/monid.js";
+import type * as lib_omni from "../lib/omni.js";
 import type * as lib_presets from "../lib/presets.js";
 import type * as lib_providers_base from "../lib/providers/base.js";
 import type * as lib_providers_facebook from "../lib/providers/facebook.js";
@@ -67,7 +67,6 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  _diag: typeof _diag;
   ai: typeof ai;
   automations: typeof automations;
   brands: typeof brands;
@@ -91,6 +90,7 @@ declare const fullApi: ApiFromModules<{
   "lib/maya/videoReference": typeof lib_maya_videoReference;
   "lib/models": typeof lib_models;
   "lib/monid": typeof lib_monid;
+  "lib/omni": typeof lib_omni;
   "lib/presets": typeof lib_presets;
   "lib/providers/base": typeof lib_providers_base;
   "lib/providers/facebook": typeof lib_providers_facebook;

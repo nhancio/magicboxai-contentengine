@@ -576,14 +576,41 @@ export const dispatchVideoGeneration = action({
 
         // One generation job per beat. Kicked off together; the poller waits
         // for all of them before stitching.
+        // Every beat is generated against the SAME two stills: the brand's own
+        // asset (so the product is identical shot to shot) and a frame of the
+        // source reel (so the render style and palette match the thing that
+        // went viral). Without them, four independent calls produce four
+        // unrelated-looking clips that cannot be cut together.
+        const referenceImageUrls = [brand.logoUrl, adaptation.sourceThumbnailUrl].filter(
+          (u): u is string => !!u,
+        );
+
+        // Price the WHOLE commercial before spending anything on it.
+        //
+        // Each beat bills separately, so without this the loop happily pays for
+        // beats 1-3 and then throws InsufficientCredits on beat 4 — which
+        // aborts this handler before `beatClips` is ever persisted. The three
+        // paid clips finish generating into storage with nothing pointing at
+        // them: the user is charged for a reel they never see, and no refund
+        // fires because none of those renders actually failed. Failing up front
+        // is the only way to keep partial spend off the table.
+        const totalCost = injected.beats.length * DEFAULT_VEO_SECONDS;
+        const balance = await ctx.runQuery(internal.credits.get, { userId: uid });
+        if (balance.vCredits < totalCost) {
+          throw new Error(
+            `This reel needs ${totalCost} v-credits (${injected.beats.length} shots x ` +
+              `${DEFAULT_VEO_SECONDS}s) and you have ${balance.vCredits}. ` +
+              `Nothing was charged.`,
+          );
+        }
+
         const beatClips: BeatClip[] = [];
         for (const beat of injected.beats) {
-          const beatJobId: Id<"mediaJobs"> = await ctx.runAction(internal.media.renderVideo, {
+          const beatJobId: Id<"mediaJobs"> = await ctx.runAction(internal.media.renderOmniVideo, {
             userId: uid,
             prompt: beat.clipPrompt,
-            aspectRatio: "9:16",
             durationSeconds: DEFAULT_VEO_SECONDS,
-            referenceImageUrl: brand.logoUrl,
+            referenceImageUrls,
           });
           beatClips.push({
             index: beat.index,
@@ -603,7 +630,7 @@ export const dispatchVideoGeneration = action({
             stage: "generate",
             fullPrompt: injected.fullPrompt,
             beatClips,
-            referenceImageUrl: brand.logoUrl,
+            referenceImageUrls,
             ttsAudioStorageId,
             ttsAudioUrl,
             ...(reference.degraded
@@ -869,12 +896,11 @@ export const pollReplicateBeats = internalAction({
         `[mayaTemplates] beat ${clip.index} blocked by Veo safety filter, retry ${retries + 1}/${MAX_BEAT_RETRIES}: ${mediaJob.error}`,
       );
       try {
-        const retryJobId: Id<"mediaJobs"> = await ctx.runAction(internal.media.renderVideo, {
+        const retryJobId: Id<"mediaJobs"> = await ctx.runAction(internal.media.renderOmniVideo, {
           userId: jobRow.userId,
           prompt: nextPrompt,
-          aspectRatio: "9:16",
           durationSeconds: DEFAULT_VEO_SECONDS,
-          referenceImageUrl: jobRow.referenceImageUrl ?? undefined,
+          referenceImageUrls: jobRow.referenceImageUrls ?? [],
         });
         resolved.push({
           ...clip,

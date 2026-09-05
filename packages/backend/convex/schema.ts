@@ -849,10 +849,11 @@ export default defineSchema({
       ),
     ),
     /**
-     * Brand asset handed to the video model on every beat so the product stays
-     * visually identical across independently-generated shots.
+     * Stills handed to the video model on every beat — the brand asset plus a
+     * frame of the source reel — so the product and the render style stay
+     * identical across independently-generated shots.
      */
-    referenceImageUrl: v.optional(v.string()),
+    referenceImageUrls: v.optional(v.array(v.string())),
     generatedVideoStorageId: v.optional(v.id("_storage")),
     generatedVideoUrl: v.optional(v.string()),
     finalVideoStorageId: v.optional(v.id("_storage")),
